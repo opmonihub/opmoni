@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
+import { formatOfficeErpMoney, parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { panelBodyClass } from '~/components/data-table/panel'
 
@@ -44,6 +44,7 @@ const record = ref<ContractDetail | null>(null)
 const loading = ref(false)
 const loadError = ref('')
 const mutationError = ref('')
+const recoveryInFlight = ref(false)
 const pendingAction = ref<'suspend' | 'cancel' | ''>('')
 const actionReason = ref('')
 const price = ref('')
@@ -61,7 +62,10 @@ const recoveryKey = computed(() => command.recoveryKey.value)
 const canMaintain = computed(() => !!context.capabilities.value?.can_maintain && !!record.value)
 const lifecycleStatus = computed(() => record.value?.agreement_status === 'effective' ? 'Vigente' : record.value?.agreement_status === 'accepted' ? 'Aceito · aguardando ativação' : record.value?.agreement_status === 'canceled' ? 'Cancelado' : record.value?.agreement_status ?? 'Indisponível')
 const licenceStatus = computed(() => ({ active: 'Ativa', pending: 'Pendente', suspended: 'Suspensa', past_due: 'Em atraso', canceled: 'Cancelada' } as Record<string, string>)[record.value?.licence_status ?? ''] ?? 'Sem licença vinculada')
-const moduleOptions = computed(() => (context.capabilities.value?.allowance.module_keys ?? []).map(value => ({ label: value, value })))
+const moduleOptions = computed(() => [...new Set([
+  ...(record.value?.current_revision?.module_keys ?? []),
+  ...(context.capabilities.value?.allowance.module_keys ?? [])
+])].map(value => ({ label: value, value })))
 
 async function loadContract() {
   const request = ++loadGeneration
@@ -88,12 +92,12 @@ async function loadContract() {
   }
 }
 
-async function execute(action: string, path: string, body: Record<string, unknown> = {}) {
-  if (!canMaintain.value || command.pending.value || !record.value) return
+async function execute(action: string, path: string, body: Record<string, unknown> = {}, method: 'POST' | 'PATCH' = 'POST') {
+  if (!canMaintain.value || command.pending.value || recoveryInFlight.value || !record.value) return
   const scope = identityStamp.value
   const token = context.capture()
   mutationError.value = ''
-  const result = await command.execute<{ contract_id?: number, revision_id?: number }>(action, path, body)
+  const result = await command.execute<{ contract_id?: number, revision_id?: number }>(action, path, body, method)
   if (scope !== identityStamp.value || !context.isCurrent(token)) return
   if (result.status === 'confirmed') {
     pendingAction.value = ''
@@ -109,31 +113,39 @@ async function execute(action: string, path: string, body: Record<string, unknow
 
 async function recoverOperation() {
   const key = recoveryKey.value
-  if (!key || command.pending.value) return
+  if (!key || recoveryInFlight.value) return
   const scope = identityStamp.value
   const token = context.capture()
-  const result = await command.recover<unknown>(key)
-  if (scope !== identityStamp.value || !context.isCurrent(token)) return
-  if (result.status === 'confirmed') {
-    mutationError.value = ''
-    pendingAction.value = ''
-    actionReason.value = ''
-    await loadContract()
-  } else if (result.status === 'failed') {
-    mutationError.value = result.failure.message
-  } else if (result.status === 'unknown') {
-    mutationError.value = 'A operação ainda não pôde ser confirmada. Os campos foram mantidos para você tentar recuperar novamente.'
+  recoveryInFlight.value = true
+  try {
+    const result = await command.recover<unknown>(key)
+    if (scope !== identityStamp.value || !context.isCurrent(token)) return
+    if (result.status === 'confirmed') {
+      mutationError.value = ''
+      pendingAction.value = ''
+      actionReason.value = ''
+      await loadContract()
+    } else if (result.status === 'failed') {
+      mutationError.value = result.failure.message
+    } else if (result.status === 'unknown') {
+      mutationError.value = 'A operação ainda não pôde ser confirmada. Os campos foram mantidos para você tentar recuperar novamente.'
+    }
+  } finally {
+    recoveryInFlight.value = false
   }
 }
 
 function amend() {
-  if (!price.value.trim() || !/^\d{1,18}(?:,\d{1,2}|\.\d{1,2})?$/.test(price.value.trim())) {
+  let canonicalPrice: string
+  try {
+    canonicalPrice = parseOfficeErpMoney(price.value.trim())
+  } catch {
     mutationError.value = 'Informe um preço em reais com até duas casas decimais.'
     return
   }
   void execute('contract.amend', `/erp-commercial/contracts/${route.params.id}/terms`, {
-    price: price.value.trim().replace(',', '.'), interval_months: Number(intervalMonths.value), due_in_days: Number(dueInDays.value), module_keys: selectedModules.value
-  })
+    price: canonicalPrice, interval_months: Number(intervalMonths.value), due_in_days: Number(dueInDays.value), module_keys: selectedModules.value
+  }, 'PATCH')
 }
 
 function confirmReasonAction() {
@@ -179,19 +191,20 @@ watch(identityStamp, () => {
       :description="loadError"
     />
     <UAlert
-      v-if="mutationError"
+      v-if="mutationError || recoveryKey"
       color="error"
       title="A alteração precisa de atenção"
       :description="mutationError"
     >
       <template #description>
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <span>{{ mutationError }}</span>
+          <span>{{ mutationError || 'Há uma operação sem confirmação. Recupere-a pelo identificador original antes de iniciar outra alteração.' }}</span>
           <UButton
             v-if="recoveryKey"
             color="neutral"
             variant="outline"
-            :disabled="command.pending.value"
+            :disabled="recoveryInFlight"
+            :loading="recoveryInFlight"
             @click="recoverOperation"
           >
             Recuperar operação
@@ -287,43 +300,45 @@ watch(identityStamp, () => {
         </UButton>
       </section>
 
-      <section v-if="record.agreement_status === 'effective' && !record.pending_revision && !record.cancel_effective_on" class="grid gap-4 border-t border-default pt-4 lg:grid-cols-2">
+      <section v-if="record.agreement_status === 'effective'" class="grid gap-4 border-t border-default pt-4 lg:grid-cols-2">
         <div class="space-y-3">
-          <h2 class="font-semibold text-highlighted">
-            Agendar termos para o próximo ciclo
-          </h2>
-          <UFormField label="Preço mensal ou do ciclo" hint="Informe reais com até duas casas decimais.">
-            <UInput
-              v-model="price"
-              type="text"
-              inputmode="decimal"
-              autocomplete="off"
-              aria-label="Preço do contrato"
-            />
-          </UFormField>
-          <UFormField label="Intervalo em meses">
-            <USelect v-model="intervalMonths" :items="['1', '3', '6', '12']" aria-label="Intervalo do contrato" />
-          </UFormField>
-          <UFormField label="Dias até o vencimento">
-            <UInput
-              v-model="dueInDays"
-              type="text"
-              inputmode="numeric"
-              aria-label="Dias até o vencimento"
-            />
-          </UFormField>
-          <UFormField label="Módulos no próximo ciclo" hint="Expandir módulos exige capacidade e direito de nova venda.">
-            <USelectMenu
-              v-model="selectedModules"
-              :items="moduleOptions"
-              value-key="value"
-              multiple
-              aria-label="Módulos do contrato"
-            />
-          </UFormField>
-          <UButton :disabled="!canMaintain || command.pending.value" :loading="command.pending.value" @click="amend">
-            Agendar alteração
-          </UButton>
+          <template v-if="!record.pending_revision && !record.cancel_effective_on">
+            <h2 class="font-semibold text-highlighted">
+              Agendar termos para o próximo ciclo
+            </h2>
+            <UFormField label="Preço mensal ou do ciclo" hint="Informe reais com até duas casas decimais.">
+              <UInput
+                v-model="price"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                aria-label="Preço do contrato"
+              />
+            </UFormField>
+            <UFormField label="Intervalo em meses">
+              <USelect v-model="intervalMonths" :items="['1', '3', '6', '12']" aria-label="Intervalo do contrato" />
+            </UFormField>
+            <UFormField label="Dias até o vencimento">
+              <UInput
+                v-model="dueInDays"
+                type="text"
+                inputmode="numeric"
+                aria-label="Dias até o vencimento"
+              />
+            </UFormField>
+            <UFormField label="Módulos no próximo ciclo" hint="Expandir módulos exige capacidade e direito de nova venda.">
+              <USelectMenu
+                v-model="selectedModules"
+                :items="moduleOptions"
+                value-key="value"
+                multiple
+                aria-label="Módulos do contrato"
+              />
+            </UFormField>
+            <UButton :disabled="!canMaintain || command.pending.value" :loading="command.pending.value" @click="amend">
+              Agendar alteração
+            </UButton>
+          </template>
         </div>
         <div class="space-y-3">
           <h2 class="font-semibold text-highlighted">
@@ -336,7 +351,7 @@ watch(identityStamp, () => {
             <UButton
               color="neutral"
               variant="outline"
-              :disabled="!canMaintain || command.pending.value"
+              :disabled="!canMaintain || command.pending.value || !!record.pending_revision || !!record.cancel_effective_on"
               @click="execute('contract.renew', `/erp-commercial/contracts/${record.id}/renew`)"
             >
               Renovar sem mudar termos

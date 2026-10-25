@@ -4,6 +4,7 @@ namespace App\Erp\Commercial;
 
 use App\Enums\Erp\ErpSubscriptionStatus;
 use App\Erp\ErpCoreModules;
+use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
@@ -56,7 +57,7 @@ final class OfficeErpContracts
                 $company = ErpCompany::query()->whereKey($contract->erp_company_id)->firstOrFail();
                 abort_unless($company->status === 'active', 403, 'company_inactive');
                 $subscription = ErpSubscription::query()->where('erp_company_id', $company->id)->lockForUpdate()->firstOrFail();
-                abort_unless($subscription->office_erp_contract_id === null || (int) $subscription->office_erp_contract_id === $contractId, 409, 'company_already_linked');
+                abort_unless($this->subscriptionCanLink($ctx, $subscription, $contractId), 409, 'company_already_linked');
                 abort_unless((int) $contract->current_revision_id > 0, 409, 'contract_revision_missing');
                 $revision = $this->revision($ctx, $contract, (int) $contract->current_revision_id);
                 $now = CarbonImmutable::now($contract->billing_timezone);
@@ -73,7 +74,10 @@ final class OfficeErpContracts
                 OfficeErpRecords::persist($ctx, $contract);
                 $subscription->forceFill([
                     'office_erp_contract_id' => $contractId,
-                    'status' => $subscription->status === ErpSubscriptionStatus::Pending->value
+                    'status' => in_array($subscription->status, [
+                        ErpSubscriptionStatus::Pending->value,
+                        ErpSubscriptionStatus::Canceled->value,
+                    ], true)
                         ? ErpSubscriptionStatus::Active->value
                         : $subscription->status,
                 ]);
@@ -98,7 +102,7 @@ final class OfficeErpContracts
         $terms = $this->terms($ctx, $contract, $terms);
         $current = $this->revision($ctx, $contract, (int) $contract->current_revision_id);
         $expands = array_diff($terms['module_keys'], $current->module_keys ?? []) !== [];
-        $action = $expands ? 'modules.expand' : 'contract.amend.price';
+        $action = $this->existingAmendmentAction($ctx, $key) ?? ($expands ? 'modules.expand' : 'contract.amend.price');
         $payload = ['command' => 'amend', 'contract_id' => (int) $contract->id, 'terms' => $terms];
         $outcome = $this->operations->execute(
             $ctx,
@@ -204,14 +208,10 @@ final class OfficeErpContracts
         if ($pending->service_period_start === null || $pending->service_period_start->toDateString() > $localDate) {
             return;
         }
-        $nextOffset = (int) $locked->next_period_month_offset;
         $locked->forceFill([
             'current_revision_id' => $pending->id,
             'pending_revision_id' => null,
-            'next_period_index' => (int) ($locked->next_period_index ?? 0) + 1,
-            'next_period_month_offset' => $nextOffset + (int) $pending->interval_months,
         ]);
-        // Keep the next cycle on the immutable original anchor even when the interval changes.
         OfficeErpRecords::persist($ctx, $locked);
     }
 
@@ -263,7 +263,7 @@ final class OfficeErpContracts
         abort_unless(is_int($id) && $id > 0, 409);
         $expected = match ($command) {
             'activate' => 'contract.activate',
-            'amend' => array_diff($payload['terms']['module_keys'] ?? [], $this->revision($ctx, $this->contract($ctx, $id), (int) $this->contract($ctx, $id)->current_revision_id)->module_keys ?? []) === [] ? 'contract.amend.price' : 'modules.expand',
+            'amend' => in_array($action, ['contract.amend.price', 'modules.expand'], true) ? $action : null,
             'renew' => 'contract.renew',
             'suspend' => 'contract.suspend',
             'resume' => 'contract.resume',
@@ -284,14 +284,21 @@ final class OfficeErpContracts
         }
         $locked = $this->contract($ctx, $id, true)->load('currentRevision');
         $allocation = $this->allocation($ctx, $id, true);
-        if (in_array($action, ['contract.renew', 'contract.amend.price', 'modules.expand', 'contract.suspend', 'contract.resume'], true)
+        $authorizationAction = $action;
+        if (in_array($action, ['contract.amend.price', 'modules.expand'], true)) {
+            abort_unless(is_array($payload['terms'] ?? null), 409);
+            $terms = $this->terms($ctx, $locked, $payload['terms']);
+            $currentModules = $locked->currentRevision?->module_keys ?? [];
+            $authorizationAction = array_diff($terms['module_keys'], $currentModules) === [] ? 'contract.amend.price' : 'modules.expand';
+        }
+        if (in_array($authorizationAction, ['contract.renew', 'contract.amend.price', 'modules.expand', 'contract.suspend', 'contract.resume'], true)
             || ($action === 'contract.activate' && $locked->agreement_status === 'accepted')) {
-            $this->admission->assertCommand($ctx, $action, $locked, $payload['terms']['module_keys'] ?? []);
+            $this->admission->assertCommand($ctx, $authorizationAction, $locked, $payload['terms']['module_keys'] ?? []);
         }
         if ($action === 'contract.activate') {
             abort_unless($locked->erp_company_id !== null && $allocation?->state === 'occupied'
                 && (int) $allocation->erp_company_id === (int) $locked->erp_company_id, 409, 'occupied_allocation_required');
-            abort_unless($subscription !== null && ($subscription->office_erp_contract_id === null || (int) $subscription->office_erp_contract_id === $id), 409, 'company_subscription_unavailable');
+            abort_unless($subscription !== null && $this->subscriptionCanLink($ctx, $subscription, $id), 409, 'company_subscription_unavailable');
             abort_unless($company?->status === 'active', 403, 'company_inactive');
             abort_unless(in_array($locked->agreement_status, ['accepted', 'effective'], true), 409, 'contract_not_accepted');
             $revision = $this->revision($ctx, $locked, (int) $locked->current_revision_id);
@@ -318,11 +325,7 @@ final class OfficeErpContracts
         if ($action === 'contract.suspend' || $action === 'contract.resume') {
             abort_unless($locked->agreement_status === 'effective', 409, 'contract_not_effective');
         }
-        if ($action === 'modules.expand') {
-            abort_unless(is_array($payload['terms'] ?? null), 409);
-        }
-        if ($action === 'contract.amend.price' || $action === 'modules.expand') {
-            $this->terms($ctx, $locked, $payload['terms'] ?? []);
+        if (in_array($action, ['contract.amend.price', 'modules.expand'], true)) {
             abort_unless($locked->agreement_status === 'effective', 409, 'contract_not_effective');
         }
         if ($action === 'contract.renew') {
@@ -445,12 +448,15 @@ final class OfficeErpContracts
             $outstanding = OfficeErpMoney::add($outstanding, $balance['outstanding']);
         }
         $current = $contract->currentRevision;
+        $subscription = $contract->company?->subscription;
         $data = [
             'id' => (int) $contract->id,
             'client' => ['id' => (int) $contract->client_id, 'name' => (string) $contract->client?->name],
             'company' => $contract->company === null ? null : ['id' => (int) $contract->company->id, 'name' => (string) $contract->company->name],
             'agreement_status' => (string) $contract->agreement_status,
-            'licence_status' => $contract->company?->subscription?->status,
+            'licence_status' => $subscription !== null && (int) $subscription->office_erp_contract_id === (int) $contract->id
+                ? $subscription->status
+                : null,
             'current_revision' => $current === null ? null : $this->revisionData($current),
             'pending_revision' => $contract->pendingRevision === null ? null : $this->revisionData($contract->pendingRevision),
             'service_anchor_on' => $contract->service_anchor_on?->toDateString(),
@@ -501,6 +507,19 @@ final class OfficeErpContracts
         return 'activate-invoice-'.substr(hash('sha256', $key), 0, 48);
     }
 
+    private function existingAmendmentAction(OfficeErpExecutionContext $ctx, string $key): ?string
+    {
+        $operation = OfficeErpRecords::query($ctx, OfficeErpCommercialOperation::class)
+            ->where('actor_kind', $ctx->actorKind)
+            ->where('actor_identity', $ctx->actorIdentity)
+            ->where('idempotency_key', $key)
+            ->first(['action']);
+
+        return in_array($operation?->action, ['contract.amend.price', 'modules.expand'], true)
+            ? (string) $operation->action
+            : null;
+    }
+
     private function lockInvoiceCounter(OfficeErpExecutionContext $ctx, int $year): void
     {
         $query = OfficeErpRecords::query($ctx, OfficeErpInvoiceCounter::class)->where('year', $year);
@@ -545,6 +564,24 @@ final class OfficeErpContracts
     {
         return ErpSubscription::query()->where('erp_company_id', $contract->erp_company_id)
             ->where('office_erp_contract_id', $contract->id)->firstOrFail();
+    }
+
+    private function subscriptionCanLink(OfficeErpExecutionContext $ctx, ErpSubscription $subscription, int $contractId): bool
+    {
+        $previousContractId = $subscription->office_erp_contract_id;
+        if ($previousContractId === null || (int) $previousContractId === $contractId) {
+            return true;
+        }
+
+        $previous = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+            ->whereKey($previousContractId)
+            ->where('erp_company_id', $subscription->erp_company_id)
+            ->first();
+        if ($previous?->agreement_status !== 'canceled') {
+            return false;
+        }
+
+        return $this->allocation($ctx, (int) $previous->id)?->state === 'released';
     }
 
     private function contract(OfficeErpExecutionContext $ctx, int $id, bool $lock = false): OfficeErpContract

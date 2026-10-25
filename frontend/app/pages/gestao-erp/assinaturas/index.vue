@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
+import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
 
@@ -156,7 +157,7 @@ watch(identityStamp, () => {
             </template>
             <template #terms-cell="{ row }">
               <span v-if="row.original.current_revision" class="text-sm text-muted">
-                R$ {{ row.original.current_revision.price }} · {{ row.original.current_revision.interval_months === 1 ? 'mensal' : `a cada ${row.original.current_revision.interval_months} meses` }}
+                {{ formatOfficeErpMoney(row.original.current_revision.price) }} · {{ row.original.current_revision.interval_months === 1 ? 'mensal' : `a cada ${row.original.current_revision.interval_months} meses` }}
               </span>
               <span v-else class="text-sm text-muted">Sem revisão</span>
             </template>

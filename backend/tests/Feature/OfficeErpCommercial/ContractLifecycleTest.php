@@ -141,7 +141,10 @@ class ContractLifecycleTest extends OfficeErpCommercialTestCase
         $this->withOfficeAccount($ctx, fn () => DB::transaction(fn () => app(OfficeErpContracts::class)->applyDueChanges($ctx, $contract, CarbonImmutable::now('America/Sao_Paulo'))));
 
         self::assertSame((int) $revision->id, (int) $contract->fresh()->current_revision_id);
-        self::assertSame(4, (int) $contract->fresh()->next_period_month_offset);
+        self::assertSame(1, (int) $contract->fresh()->next_period_month_offset);
+        $this->withOfficeAccount($ctx, fn () => DB::transaction(fn () => app(OfficeErpContracts::class)->applyDueChanges($ctx, $contract, CarbonImmutable::now('America/Sao_Paulo'))));
+        self::assertSame(1, (int) $contract->fresh()->next_period_month_offset);
+        self::assertSame(1, (int) $contract->fresh()->next_period_index);
         self::assertSame(['start' => '2026-02-28', 'end' => '2026-05-31', 'due_on' => '2026-02-28'],
             app(OfficeErpCalendar::class)->periodAtMonthOffset('2026-01-31', 3, 1, 'America/Sao_Paulo', 0));
     }
@@ -159,9 +162,71 @@ class ContractLifecycleTest extends OfficeErpCommercialTestCase
         $this->withOfficeAccount($ctx, fn () => DB::transaction(fn () => app(OfficeErpContracts::class)->applyDueChanges($ctx, $contract, CarbonImmutable::now('America/Sao_Paulo'))));
 
         self::assertSame((int) $revision->id, (int) $contract->fresh()->current_revision_id);
-        self::assertSame(4, (int) $contract->fresh()->next_period_month_offset);
+        self::assertSame(3, (int) $contract->fresh()->next_period_month_offset);
         self::assertSame(['start' => '2026-04-30', 'end' => '2026-05-31', 'due_on' => '2026-04-30'],
             app(OfficeErpCalendar::class)->periodAtMonthOffset('2026-01-31', 1, 3, 'America/Sao_Paulo', 0));
+    }
+
+    public function test_module_expansion_outcome_remains_recoverable_after_revision_becomes_current(): void
+    {
+        CarbonImmutable::setTestNow('2026-01-31 12:00:00');
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases', 'stock_transfers']]);
+        [$contract] = $this->acceptedOccupiedContract($ctx, 'effective');
+        $contract->forceFill(['service_anchor_on' => '2026-01-31', 'next_period_index' => 1, 'next_period_month_offset' => 1])->save();
+        $contract = $contract->fresh();
+        $revision = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx,
+            $contract,
+            ['module_keys' => ['purchases', 'stock_transfers']],
+            'amend-modules-recover',
+        ));
+        CarbonImmutable::setTestNow('2026-02-28 12:00:00');
+        $this->withOfficeAccount($ctx, fn () => DB::transaction(fn () => app(OfficeErpContracts::class)->applyDueChanges($ctx, $contract, CarbonImmutable::now('America/Sao_Paulo'))));
+        $plan = $ctx->account->subscription->plan;
+        $allowance = $plan->erp_commercial;
+        $allowance['enabled'] = false;
+        $allowance['module_keys'] = [];
+        $plan->forceFill(['erp_commercial' => $allowance])->save();
+
+        $replayed = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx,
+            $contract,
+            ['module_keys' => ['purchases', 'stock_transfers']],
+            'amend-modules-recover',
+        ));
+        $outcome = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->lookup($ctx, 'amend-modules-recover'));
+
+        self::assertSame((int) $revision->id, (int) $replayed->id);
+        self::assertSame((int) $revision->id, (int) $outcome['data']['revision_id']);
+    }
+
+    public function test_new_accepted_contract_reuses_company_subscription_after_previous_contract_canceled(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases']]);
+        [$previous, $company, $subscription] = $this->acceptedOccupiedContract($ctx, 'effective');
+        $subscription->forceFill(['office_erp_contract_id' => $previous->id])->save();
+        $previousInvoiceIds = OfficeErpInvoice::query()->where('contract_id', $previous->id)->pluck('id')->all();
+        $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->cancel($ctx, $previous, 'immediate', 'Encerramento anterior', 'cancel-before-relink'));
+        self::assertSame('released', OfficeErpLicenceAllocation::query()->where('contract_id', $previous->id)->value('state'));
+
+        $next = $this->acceptedContract($ctx);
+        $next->forceFill(['erp_company_id' => $company->id])->save();
+        OfficeErpLicenceAllocation::factory()->create([
+            'account_id' => $ctx->accountId,
+            'contract_id' => $next->id,
+            'erp_company_id' => $company->id,
+            'state' => 'occupied',
+            'expires_at' => null,
+        ]);
+
+        $result = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->activate($ctx, $next, 'activate-after-relink'));
+
+        self::assertSame((int) $subscription->id, $result['subscription_id']);
+        self::assertSame((int) $next->id, (int) $subscription->fresh()->office_erp_contract_id);
+        self::assertSame('active', $subscription->fresh()->status);
+        self::assertSame('canceled', $previous->fresh()->agreement_status);
+        self::assertSame($previousInvoiceIds, OfficeErpInvoice::query()->where('contract_id', $previous->id)->pluck('id')->all());
+        self::assertNull($this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->show($ctx, (int) $previous->id)['data']['licence_status']));
     }
 
     /** @return array{OfficeErpContract, ErpCompany, ErpSubscription} */
