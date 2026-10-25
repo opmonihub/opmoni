@@ -1,0 +1,276 @@
+<script setup lang="ts">
+import { formatOfficeErpMoney, parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
+
+interface InvoiceChoice {
+  id: number
+  label: string
+  outstanding: string
+}
+
+interface ReceiptAllocation {
+  invoice_id: number
+  amount: string
+}
+
+interface ReceiptPayload {
+  amount: string
+  received_on: string
+  reference?: string
+  proof_id?: string
+  allocations: ReceiptAllocation[]
+}
+
+const props = withDefaults(defineProps<{
+  open: boolean
+  invoices: InvoiceChoice[]
+  proofId?: string | null
+  proofName?: string
+  errors?: Record<string, string[]>
+  error?: string
+  proofError?: string
+  busy?: boolean
+  pending?: boolean
+  unknown?: boolean
+  recoveryKey?: string | null
+}>(), {
+  proofId: null,
+  proofName: '',
+  errors: () => ({}),
+  error: '',
+  proofError: '',
+  busy: false,
+  pending: false,
+  unknown: false,
+  recoveryKey: null
+})
+
+const emit = defineEmits<{
+  'update:open': [open: boolean]
+  'submit': [payload: ReceiptPayload]
+  'uploadProof': [file: File]
+  'recover': [key: string]
+  'cancel': []
+}>()
+
+const selectedInvoiceIds = ref<string[]>([])
+const allocationAmounts = reactive<Record<string, string>>({})
+const localToday = new Date()
+const receivedOn = ref(`${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, '0')}-${String(localToday.getDate()).padStart(2, '0')}`)
+const reference = ref('')
+const localError = ref('')
+const fileError = ref('')
+const locked = computed(() => props.busy || props.pending || props.unknown)
+const selectedInvoices = computed(() => props.invoices.filter(invoice => selectedInvoiceIds.value.includes(String(invoice.id))))
+
+function cents(value: string): bigint {
+  const [whole, fraction = '00'] = parseOfficeErpMoney(value).split('.')
+  return BigInt(`${whole}${fraction}`)
+}
+
+function moneyFromCents(value: bigint): string {
+  const digits = value.toString().padStart(3, '0')
+  return `${digits.slice(0, -2)}.${digits.slice(-2)}`
+}
+
+function cancel() {
+  emit('update:open', false)
+  emit('cancel')
+}
+
+function onOpenUpdate(open: boolean) {
+  if (!open) cancel()
+  else emit('update:open', true)
+}
+
+function selectProof(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  fileError.value = ''
+  if (!file) return
+  const supportedMimeTypes = ['application/pdf', 'image/png', 'image/jpeg']
+  if (!supportedMimeTypes.includes(file.type)) {
+    fileError.value = 'Envie um arquivo PDF, PNG ou JPEG.'
+    input.value = ''
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    fileError.value = 'A evidência deve ter no máximo 5 MiB.'
+    input.value = ''
+    return
+  }
+  emit('uploadProof', file)
+}
+
+function submit() {
+  localError.value = ''
+  if (locked.value) return
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(receivedOn.value)) {
+    localError.value = 'Informe a data do recebimento.'
+    return
+  }
+  if (selectedInvoices.value.length === 0) {
+    localError.value = 'Selecione ao menos uma fatura para alocar o recebimento.'
+    return
+  }
+
+  const allocations: ReceiptAllocation[] = []
+  try {
+    for (const invoice of selectedInvoices.value) {
+      const rawAmount = allocationAmounts[String(invoice.id)]?.trim() ?? ''
+      if (!rawAmount) {
+        localError.value = `Informe o valor alocado para ${invoice.label}.`
+        return
+      }
+      const amountCents = cents(rawAmount)
+      if (amountCents <= 0n) {
+        localError.value = 'Cada alocação deve ser maior que zero.'
+        return
+      }
+      if (amountCents > cents(invoice.outstanding)) {
+        localError.value = `A alocação para ${invoice.label} excede o saldo em aberto.`
+        return
+      }
+      allocations.push({ invoice_id: invoice.id, amount: moneyFromCents(amountCents) })
+    }
+    const amountCents = allocations.reduce((total, allocation) => total + cents(allocation.amount), 0n)
+    const amount = parseOfficeErpMoney(moneyFromCents(amountCents))
+    const payload: ReceiptPayload = {
+      amount,
+      received_on: receivedOn.value,
+      allocations
+    }
+    if (reference.value.trim()) payload.reference = reference.value.trim()
+    if (props.proofId) payload.proof_id = props.proofId
+    emit('submit', payload)
+  } catch {
+    localError.value = 'Revise os valores alocados; use até duas casas decimais.'
+  }
+}
+</script>
+
+<template>
+  <UModal
+    :open="open"
+    title="Registrar recebimento"
+    description="Registre um recebimento manual e distribua o valor entre as faturas."
+    @update:open="onOpenUpdate"
+  >
+    <template #body>
+      <UAlert
+        v-if="error"
+        color="error"
+        variant="subtle"
+        :title="error"
+      />
+      <UAlert
+        v-if="localError"
+        color="error"
+        variant="subtle"
+        :title="localError"
+      />
+      <UAlert
+        v-if="unknown"
+        color="warning"
+        variant="subtle"
+        title="Confirmação pendente"
+      >
+        Consulte a operação para atualizar o estado antes de tentar novamente.
+      </UAlert>
+      <div v-if="unknown" class="mt-4 flex justify-end">
+        <UButton
+          v-if="recoveryKey"
+          type="button"
+          variant="outline"
+          label="Consultar operação"
+          @click="emit('recover', recoveryKey!)"
+        />
+      </div>
+      <UForm
+        v-else
+        :state="{ receivedOn, reference, allocationAmounts }"
+        class="space-y-4"
+        @submit.prevent="submit"
+      >
+        <UFormField
+          label="Faturas"
+          name="allocations"
+          required
+          :error="props.errors.allocations?.[0]"
+        >
+          <UCheckboxGroup v-model="selectedInvoiceIds" :items="invoices.map(invoice => ({ label: `${invoice.label} · em aberto ${formatOfficeErpMoney(invoice.outstanding)}`, value: String(invoice.id) }))" :disabled="locked" />
+        </UFormField>
+        <div v-for="invoice in selectedInvoices" :key="invoice.id">
+          <UFormField
+            :label="`Alocação para fatura ${invoice.id}`"
+            :name="`allocations.${invoice.id}.amount`"
+            required
+            :error="props.errors[`allocations.${selectedInvoiceIds.indexOf(String(invoice.id))}.amount`]?.[0]"
+          >
+            <UInput
+              v-model="allocationAmounts[String(invoice.id)]"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              :aria-label="`Alocação para fatura ${invoice.id}`"
+              :disabled="locked"
+            />
+          </UFormField>
+        </div>
+        <UFormField
+          label="Data do recebimento"
+          name="received_on"
+          required
+          :error="props.errors.received_on?.[0]"
+        >
+          <UInput
+            v-model="receivedOn"
+            type="date"
+            aria-label="Data do recebimento"
+            :disabled="locked"
+          />
+        </UFormField>
+        <UFormField label="Referência" name="reference" :error="props.errors.reference?.[0]">
+          <UInput
+            v-model="reference"
+            type="text"
+            aria-label="Referência"
+            maxlength="191"
+            :disabled="locked"
+          />
+        </UFormField>
+        <UFormField label="Comprovante privado" name="proof_id" :error="props.errors.proof_id?.[0] || proofError || fileError">
+          <UInput
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+            aria-label="Selecionar comprovante"
+            :disabled="locked"
+            @change="selectProof"
+          />
+          <p class="mt-1 text-sm text-muted">
+            PDF, PNG ou JPEG, até 5 MiB. O arquivo é enviado pelo fluxo privado do escritório.
+            <span v-if="proofName"> Arquivo associado: {{ proofName }}.</span>
+          </p>
+        </UFormField>
+        <div class="flex justify-end gap-2">
+          <UButton
+            type="button"
+            color="neutral"
+            variant="outline"
+            label="Cancelar"
+            :disabled="busy"
+            @click="cancel"
+          />
+          <UButton
+            type="submit"
+            :loading="busy"
+            :disabled="locked"
+            label="Registrar recebimento"
+          />
+        </div>
+        <p class="text-sm text-muted">
+          O registro é manual. A situação das faturas muda somente após a confirmação do servidor.
+        </p>
+      </UForm>
+    </template>
+  </UModal>
+</template>
