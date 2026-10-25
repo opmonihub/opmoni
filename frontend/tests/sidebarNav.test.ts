@@ -10,13 +10,23 @@ describe('office ERP sidebar entry', () => {
     assert.equal(isOfficeErpAdmin(null), false)
   })
 
-  it('links the shipped offer and portfolio-client pages and marks either route active', () => {
+  it('links the overview and every shipped ERP page from the sidebar', () => {
     assert.deepEqual(officeErpSidebarItem('/gestao-erp/planos').children, [
+      { label: 'Visão geral', to: '/gestao-erp', exact: true, active: false },
       { label: 'Ofertas', to: '/gestao-erp/planos', exact: true, active: true },
-      { label: 'Clientes da carteira', to: '/gestao-erp/clientes', exact: true, active: false }
+      { label: 'Clientes da carteira', to: '/gestao-erp/clientes', exact: true, active: false },
+      { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: false }
     ])
-    assert.equal(officeErpSidebarItem('/gestao-erp/clientes').children[1]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp').children[0]?.active, false)
+    assert.equal(officeErpSidebarItem('/gestao-erp/clientes').children[2]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/assinaturas/123').children[3]?.active, true)
+  })
+
+  it('links directly to the overview and marks the exact root route active', () => {
+    const item = officeErpSidebarItem('/gestao-erp')
+    assert.equal(item.children[0]?.to, '/gestao-erp')
+    assert.equal(item.children[0]?.active, true)
+    assert.equal(item.active, true)
+    assert.equal(sidebarOpenGroupFromPath('/gestao-erp'), 'gestao-erp')
   })
 })
 
