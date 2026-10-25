@@ -387,7 +387,7 @@ describe('rendered invoice list controls and read states', () => {
       page: 2,
       per_page: 25,
       q: 'NF 41',
-      document_status: 'issued',
+      status: 'issued',
       from_on: '2026-10-01',
       to_on: '2026-10-31',
       due_from: '2026-11-01',
