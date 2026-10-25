@@ -36,36 +36,35 @@ final class VerifiedIntegrationCheckoutTest extends TestCase
     public function test_it_rejects_an_arbitrary_checkout_even_when_expected_matches(): void
     {
         $arbitraryCheckout = '/tmp/untrusted-checkout';
-        $sourceIdentity = VerifiedIntegrationCheckout::statIdentityFor(self::SOURCE_ROOT);
+        $actualCheckoutIdentity = self::actualCheckoutIdentity();
 
         $this->assertFalse(VerifiedIntegrationCheckout::allows(
             $arbitraryCheckout,
             $arbitraryCheckout,
             self::SOURCE_ROOT,
-            $sourceIdentity,
-            $sourceIdentity,
+            $actualCheckoutIdentity,
+            $actualCheckoutIdentity,
         ));
     }
 
     public function test_it_rejects_the_container_alias_without_exact_source_metadata(): void
     {
-        $verifiedIdentity = VerifiedIntegrationCheckout::statIdentityFor(self::SOURCE_ROOT);
-        self::assertNotNull($verifiedIdentity);
+        $actualCheckoutIdentity = self::actualCheckoutIdentity();
 
         foreach ([
-            [null, $verifiedIdentity],
-            ['/home/obsidian/dev/opmoni', $verifiedIdentity],
+            [null, $actualCheckoutIdentity],
+            ['/home/obsidian/dev/opmoni', $actualCheckoutIdentity],
             [self::SOURCE_ROOT, null],
             [self::SOURCE_ROOT, ''],
             [self::SOURCE_ROOT, 'not-a-device-inode'],
-            [self::SOURCE_ROOT, $verifiedIdentity.'0'],
+            [self::SOURCE_ROOT, $actualCheckoutIdentity.'0'],
         ] as [$sourceCheckout, $sourceIdentity]) {
             $this->assertFalse(VerifiedIntegrationCheckout::allows(
                 '/workspace',
                 '/workspace',
                 $sourceCheckout,
                 $sourceIdentity,
-                $verifiedIdentity,
+                $actualCheckoutIdentity,
             ));
         }
 
@@ -73,22 +72,32 @@ final class VerifiedIntegrationCheckoutTest extends TestCase
             '/workspace',
             '/tmp/another-checkout',
             self::SOURCE_ROOT,
-            $verifiedIdentity,
-            $verifiedIdentity,
+            $actualCheckoutIdentity,
+            $actualCheckoutIdentity,
         ));
     }
 
-    public function test_it_accepts_the_verified_container_alias_identity_pair(): void
+    public function test_it_accepts_the_container_alias_when_stat_identity_matches(): void
     {
-        $verifiedIdentity = VerifiedIntegrationCheckout::statIdentityFor(self::SOURCE_ROOT);
-        self::assertNotNull($verifiedIdentity);
+        $actualCheckoutIdentity = self::actualCheckoutIdentity();
 
         $this->assertTrue(VerifiedIntegrationCheckout::allows(
             '/workspace',
             '/workspace',
             self::SOURCE_ROOT,
-            $verifiedIdentity,
-            $verifiedIdentity,
+            $actualCheckoutIdentity,
+            $actualCheckoutIdentity,
         ));
+    }
+
+    private static function actualCheckoutIdentity(): string
+    {
+        $checkout = realpath(dirname(__DIR__, 3));
+        self::assertIsString($checkout);
+
+        $identity = VerifiedIntegrationCheckout::statIdentityFor($checkout);
+        self::assertNotNull($identity);
+
+        return $identity;
     }
 }
