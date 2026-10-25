@@ -3,13 +3,22 @@
 namespace Tests\Integration;
 
 use App\Erp\Commercial\OfficeErpAdmission;
+use App\Erp\Commercial\OfficeErpReceipts;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Erp\Commercial\OfficeErpAuditEvent;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
+use App\Models\Erp\Commercial\OfficeErpInvoiceAdjustment;
 use App\Models\Erp\Commercial\OfficeErpInvoiceCounter;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
+use App\Models\Erp\Commercial\OfficeErpReceipt;
+use App\Models\Erp\Commercial\OfficeErpReceiptAllocation;
+use App\Models\Erp\Commercial\OfficeErpReceiptProof;
+use App\Models\Erp\Commercial\OfficeErpReceiptReversal;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestCase
 {
@@ -190,6 +199,190 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
             ->where('year', $fixture['invoice_year']);
         self::assertSame(1, (clone $counter)->count());
         self::assertSame(3, $counter->value('next_number'));
+    }
+
+    public function test_credit_and_receipt_contention_keeps_invoice_balance_nonnegative(): void
+    {
+        $fixture = $this->effectiveInvoiceFixture();
+        $invoice = $this->issueRaceInvoice($fixture, $fixture['contracts'][0]);
+        $first = $this->worker('adjust', $this->financialPayload($fixture, [
+            'invoice_id' => (int) $invoice->id,
+            'adjustment' => ['direction' => 'credit', 'amount' => '70.00', 'reason' => 'Race credit'],
+            'idempotency_key' => 'race-credit-first',
+            'hold_invoice_lock' => true,
+        ]));
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldLock($first, 'office_erp_invoices');
+        $second = $this->worker('receipt', $this->financialPayload($fixture, [
+            'receipt' => $this->receiptInput($invoice, '40.00'),
+            'idempotency_key' => 'race-credit-receipt-second',
+        ]));
+        $this->assertWaitingOnAccountLock($second);
+        $this->release($first);
+        $firstResult = $this->workerResult($first);
+        $secondResult = $this->workerResult($second);
+
+        self::assertSame(201, $firstResult['status']);
+        self::assertSame(409, $secondResult['status']);
+        self::assertSame(0, $firstResult['transaction_level']);
+        self::assertSame(0, $secondResult['transaction_level']);
+        $this->assertInvoiceLedger($fixture, (int) $invoice->id, '30.00', '0.00', '30.00');
+        self::assertSame(1, OfficeErpInvoiceAdjustment::query()->where('invoice_id', $invoice->id)->count());
+        self::assertSame(0, OfficeErpReceipt::query()->where('account_id', $fixture['account_id'])->count());
+        self::assertSame(1, OfficeErpCommercialOperation::query()->where('account_id', $fixture['account_id'])->whereIn('idempotency_key', ['race-credit-first', 'race-credit-receipt-second'])->count());
+        $this->assertAuditedOperations($fixture, ['race-credit-first'], 1);
+    }
+
+    public function test_concurrent_receipts_do_not_overallocate_one_invoice(): void
+    {
+        $fixture = $this->effectiveInvoiceFixture();
+        $invoice = $this->issueRaceInvoice($fixture, $fixture['contracts'][0]);
+        $first = $this->worker('receipt', $this->financialPayload($fixture, [
+            'receipt' => $this->receiptInput($invoice, '70.00'),
+            'idempotency_key' => 'race-allocation-first',
+            'hold_invoice_lock' => true,
+        ]));
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldLock($first, 'office_erp_invoices');
+        $second = $this->worker('receipt', $this->financialPayload($fixture, [
+            'receipt' => $this->receiptInput($invoice, '70.00'),
+            'idempotency_key' => 'race-allocation-second',
+        ]));
+        $this->assertWaitingOnAccountLock($second);
+        $this->release($first);
+        $firstResult = $this->workerResult($first);
+        $secondResult = $this->workerResult($second);
+
+        self::assertSame(201, $firstResult['status']);
+        self::assertSame(409, $secondResult['status']);
+        $this->assertInvoiceLedger($fixture, (int) $invoice->id, '100.00', '70.00', '30.00');
+        self::assertSame(1, OfficeErpReceipt::query()->where('account_id', $fixture['account_id'])->count());
+        self::assertSame(1, OfficeErpReceiptAllocation::query()->where('invoice_id', $invoice->id)->count());
+        self::assertSame(1, OfficeErpCommercialOperation::query()->where('account_id', $fixture['account_id'])->where('idempotency_key', 'race-allocation-first')->count());
+        self::assertSame(0, OfficeErpCommercialOperation::query()->where('account_id', $fixture['account_id'])->where('idempotency_key', 'race-allocation-second')->count());
+        $this->assertAuditedOperations($fixture, ['race-allocation-first'], 1);
+    }
+
+    public function test_receipt_reversal_and_new_allocation_preserve_one_effective_payment(): void
+    {
+        $fixture = $this->effectiveInvoiceFixture();
+        $invoice = $this->issueRaceInvoice($fixture, $fixture['contracts'][0]);
+        $original = $this->officeAdmin($fixture, fn () => $fixture['context']->run(
+            fn () => app(OfficeErpReceipts::class)->post($fixture['context'], $this->receiptInput($invoice, '100.00'), 'race-reversal-original'),
+        ));
+        $first = $this->worker('reverse', $this->financialPayload($fixture, [
+            'receipt_id' => (int) $original->id,
+            'reason' => 'Correct original receipt',
+            'idempotency_key' => 'race-reversal-first',
+            'hold_invoice_lock' => true,
+        ]));
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldLock($first, 'office_erp_invoices');
+        $second = $this->worker('receipt', $this->financialPayload($fixture, [
+            'receipt' => $this->receiptInput($invoice, '100.00'),
+            'idempotency_key' => 'race-reversal-receipt-second',
+        ]));
+        $this->assertWaitingOnAccountLock($second);
+        $this->release($first);
+        $firstResult = $this->workerResult($first);
+        $secondResult = $this->workerResult($second);
+
+        self::assertSame(201, $firstResult['status']);
+        self::assertSame(201, $secondResult['status']);
+        self::assertSame(1, OfficeErpReceiptReversal::query()->where('receipt_id', $original->id)->count());
+        self::assertSame(2, OfficeErpReceipt::query()->where('account_id', $fixture['account_id'])->count());
+        self::assertSame(2, OfficeErpReceiptAllocation::query()->where('invoice_id', $invoice->id)->count());
+        $this->assertInvoiceLedger($fixture, (int) $invoice->id, '100.00', '100.00', '0.00');
+        self::assertSame(0, $firstResult['transaction_level']);
+        self::assertSame(0, $secondResult['transaction_level']);
+        $this->assertAuditedOperations($fixture, ['race-reversal-original', 'race-reversal-first', 'race-reversal-receipt-second'], 3);
+    }
+
+    public function test_staged_proof_can_be_claimed_by_only_one_receipt_operation(): void
+    {
+        $fixture = $this->effectiveInvoiceFixture();
+        [$firstInvoice, $secondInvoice] = [
+            $this->issueRaceInvoice($fixture, $fixture['contracts'][0]),
+            $this->issueRaceInvoice($fixture, $fixture['contracts'][1]),
+        ];
+        $proof = $this->stageRaceProof($fixture);
+        $first = $this->worker('receipt', $this->financialPayload($fixture, [
+            'receipt' => [...$this->receiptInput($firstInvoice, '25.00'), 'proof_id' => $proof['id']],
+            'idempotency_key' => 'race-proof-first',
+            'hold_proof_lock' => true,
+        ]));
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldLock($first, 'office_erp_receipt_proofs');
+        $second = $this->worker('receipt', $this->financialPayload($fixture, [
+            'receipt' => [...$this->receiptInput($secondInvoice, '25.00'), 'proof_id' => $proof['id']],
+            'idempotency_key' => 'race-proof-second',
+        ]));
+        $this->assertWaitingOnAccountLock($second);
+        $this->release($first);
+        $results = [$this->workerResult($first), $this->workerResult($second)];
+
+        self::assertSame(201, $results[0]['status']);
+        self::assertSame(422, $results[1]['status']);
+        $stored = OfficeErpReceiptProof::query()->findOrFail($proof['id']);
+        self::assertNotNull($stored->receipt_id);
+        self::assertNotNull($stored->claimed_at);
+        self::assertSame(1, OfficeErpReceipt::query()->where('account_id', $fixture['account_id'])->count());
+        self::assertSame(1, OfficeErpReceiptAllocation::query()->where('account_id', $fixture['account_id'])->count());
+        self::assertSame(1, OfficeErpCommercialOperation::query()->where('account_id', $fixture['account_id'])->whereIn('idempotency_key', ['race-proof-first', 'race-proof-second'])->count());
+        Storage::disk('local')->assertExists($stored->path);
+        self::assertSame(0, $results[0]['transaction_level']);
+        self::assertSame(0, $results[1]['transaction_level']);
+        $this->assertAuditedOperations($fixture, ['race-proof-first'], 1);
+    }
+
+    public function test_claimed_proof_survives_expired_cleanup_waiting_on_its_row_lock(): void
+    {
+        $fixture = $this->effectiveInvoiceFixture();
+        $invoice = $this->issueRaceInvoice($fixture, $fixture['contracts'][0]);
+        $proof = $this->stageRaceProof($fixture);
+        $expiresAt = CarbonImmutable::now()->addSeconds(5);
+        DB::table('office_erp_receipt_proofs')->where('id', $proof['id'])->update(['expires_at' => $expiresAt]);
+        $first = $this->worker('receipt', $this->financialPayload($fixture, [
+            'receipt' => [...$this->receiptInput($invoice, '25.00'), 'proof_id' => $proof['id']],
+            'idempotency_key' => 'race-proof-cleanup-claim',
+            'hold_after_proof_claim' => true,
+        ]));
+        $this->waitFor($first, 'held');
+        $held = $this->signalData($first, 'held');
+        self::assertSame($this->signalData($first, 'ready')['database_pid'], $held['database_pid']);
+        self::assertGreaterThan(0, $held['transaction_level']);
+        self::assertStringContainsString('insert into "office_erp_receipt_allocations"', strtolower($held['lock_query']));
+        while (CarbonImmutable::now()->lessThanOrEqualTo($expiresAt)) {
+            usleep(20000);
+        }
+        $second = $this->worker('proof_cleanup', $this->financialPayload($fixture, [
+            'now' => CarbonImmutable::now()->toIso8601String(),
+            'contract_id' => (int) $fixture['contracts'][0]->id,
+        ]));
+        $this->assertWaitingOnProofLock($second);
+        $this->release($first);
+        $claim = $this->workerResult($first);
+        $cleanup = $this->workerResult($second);
+
+        self::assertSame(201, $claim['status']);
+        self::assertSame(0, $cleanup['deleted']);
+        $stored = OfficeErpReceiptProof::query()->findOrFail($proof['id']);
+        self::assertNotNull($stored->receipt_id);
+        Storage::disk('local')->assertExists($stored->path);
+        self::assertSame(0, $claim['transaction_level']);
+        self::assertSame(0, $cleanup['transaction_level']);
+        $this->assertAuditedOperations($fixture, ['race-proof-cleanup-claim'], 1);
+    }
+
+    /** @param list<string> $keys */
+    private function assertAuditedOperations(array $fixture, array $keys, int $expected): void
+    {
+        $operationIds = OfficeErpCommercialOperation::query()
+            ->where('account_id', $fixture['account_id'])
+            ->whereIn('idempotency_key', $keys)
+            ->pluck('id');
+        self::assertCount($expected, $operationIds);
+        self::assertSame($expected, OfficeErpAuditEvent::query()->whereIn('operation_id', $operationIds)->count());
     }
 
     /** @param array<string, mixed> $fixture

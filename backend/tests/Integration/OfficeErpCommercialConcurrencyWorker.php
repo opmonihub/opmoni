@@ -5,20 +5,26 @@ namespace Tests\Integration;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpLicenceAllocator;
+use App\Erp\Commercial\OfficeErpReceiptProofs;
+use App\Erp\Commercial\OfficeErpReceipts;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
+use App\Models\Erp\Commercial\OfficeErpInvoice;
+use App\Models\Erp\Commercial\OfficeErpReceipt;
 use App\Models\User;
 use App\Support\CurrentAccount;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -48,19 +54,26 @@ final class OfficeErpCommercialConcurrencyWorker
         $request->attributes->set(CurrentAccount::class, new CurrentAccount($account, $membership));
         $context = OfficeErpExecutionContext::officeAdmin($account, $actor, 'commercial-race-worker:'.$input['contract_id']);
 
-        if (! in_array($input['action'], ['reserve', 'issue_period'], true)) {
-            throw new RuntimeException('Unsupported action in the accepted invoice race subset: '.$input['action']);
+        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup'], true)) {
+            throw new RuntimeException('Unsupported action in the accepted commercial race subset: '.$input['action']);
         }
 
-        if ($input['hold_account_lock'] ?? false) {
+        if (($input['hold_account_lock'] ?? false) || ($input['hold_invoice_lock'] ?? false) || ($input['hold_proof_lock'] ?? false) || ($input['hold_after_proof_claim'] ?? false)) {
             $paused = false;
-            DB::listen(function (QueryExecuted $query) use ($base, &$paused): void {
+            DB::listen(function (QueryExecuted $query) use ($base, &$paused, $input): void {
                 $sql = strtolower($query->sql);
-                if ($paused || ! str_contains($sql, 'from "accounts"') || ! str_contains($sql, 'for update')) {
+                $target = ($input['hold_proof_lock'] ?? false)
+                    ? str_contains($sql, 'from "office_erp_receipt_proofs"')
+                    : (($input['hold_after_proof_claim'] ?? false)
+                        ? str_contains($sql, 'insert into "office_erp_receipt_allocations"')
+                        : (($input['hold_invoice_lock'] ?? false)
+                            ? str_contains($sql, 'from "office_erp_invoices"')
+                            : str_contains($sql, 'from "accounts"')));
+                if ($paused || ! $target || ! str_contains($sql, 'for update')) {
                     return;
                 }
                 if (DB::transactionLevel() < 1) {
-                    throw new RuntimeException('Account lock barrier must remain inside the allocator transaction.');
+                    throw new RuntimeException('Commercial row-lock barrier must remain inside its transaction.');
                 }
                 $paused = true;
                 self::signal($base.'.held', [
@@ -83,7 +96,7 @@ final class OfficeErpCommercialConcurrencyWorker
                     CarbonImmutable::parse($input['expires_at']),
                 ));
                 $result = ['status' => 201, 'allocation_id' => (int) $allocation->id];
-            } else {
+            } elseif ($input['action'] === 'issue_period') {
                 $revision = OfficeErpRecords::query($context, OfficeErpContractRevision::class)
                     ->where('contract_id', $contract->id)
                     ->whereKey($input['revision_id'])
@@ -106,9 +119,27 @@ final class OfficeErpCommercialConcurrencyWorker
                     'operation_id' => (int) $operation->id,
                     'operation_outcome' => $operation->outcome,
                 ];
+            } elseif ($input['action'] === 'adjust') {
+                $invoice = OfficeErpRecords::query($context, OfficeErpInvoice::class)->whereKey($input['invoice_id'])->firstOrFail();
+                $adjustment = $context->run(fn () => app(OfficeErpInvoices::class)->adjust($context, $invoice, $input['adjustment'], $input['idempotency_key']));
+                $result = ['status' => 201, 'adjustment_id' => (int) $adjustment->id];
+            } elseif ($input['action'] === 'receipt') {
+                $receipt = $context->run(fn () => app(OfficeErpReceipts::class)->post($context, $input['receipt'], $input['idempotency_key']));
+                $result = ['status' => 201, 'receipt_id' => (int) $receipt->id];
+            } elseif ($input['action'] === 'reverse') {
+                $receipt = OfficeErpRecords::query($context, OfficeErpReceipt::class)->whereKey($input['receipt_id'])->firstOrFail();
+                $reversal = $context->run(fn () => app(OfficeErpReceipts::class)->reverse($context, $receipt, $input['reason'], $input['idempotency_key']));
+                $result = ['status' => 201, 'reversal_id' => (int) $reversal->id];
+            } else {
+                $deleted = app(OfficeErpReceiptProofs::class)->cleanExpired(CarbonImmutable::parse($input['now']));
+                $result = ['status' => 200, 'deleted' => $deleted];
             }
         } catch (HttpExceptionInterface $exception) {
             $result = ['status' => $exception->getStatusCode()];
+        } catch (HttpResponseException $exception) {
+            $result = ['status' => $exception->getResponse()->getStatusCode()];
+        } catch (ValidationException $exception) {
+            $result = ['status' => $exception->status];
         }
 
         echo json_encode([

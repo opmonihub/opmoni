@@ -2,12 +2,18 @@
 
 namespace Tests\Integration;
 
+use App\Erp\Commercial\OfficeErpBalances;
 use App\Erp\Commercial\OfficeErpExecutionContext;
+use App\Erp\Commercial\OfficeErpInvoices;
+use App\Erp\Commercial\OfficeErpMoney;
+use App\Erp\Commercial\OfficeErpReceiptProofs;
+use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
+use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
@@ -20,6 +26,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Support\CurrentAccount;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
@@ -36,14 +43,20 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'office_erp_sales_plans', 'office_erp_sales_plan_revisions', 'office_erp_contracts',
         'office_erp_contract_revisions', 'office_erp_licence_allocations', 'office_erp_invoices',
         'office_erp_invoice_counters', 'office_erp_commercial_operations', 'office_erp_audit_events',
+        'office_erp_receipts', 'office_erp_receipt_allocations', 'office_erp_receipt_reversals', 'office_erp_receipt_proofs',
     ];
 
     private const SOURCES = [
         'composer.lock',
         'app/Erp/Commercial/OfficeErpAdmission.php',
+        'app/Erp/Commercial/OfficeErpBalances.php',
+        'app/Erp/Commercial/OfficeErpDelinquency.php',
         'app/Erp/Commercial/OfficeErpExecutionContext.php',
         'app/Erp/Commercial/OfficeErpLicenceAllocator.php',
+        'app/Erp/Commercial/OfficeErpMoney.php',
         'app/Erp/Commercial/OfficeErpInvoices.php',
+        'app/Erp/Commercial/OfficeErpReceipts.php',
+        'app/Erp/Commercial/OfficeErpReceiptProofs.php',
         'app/Erp/Commercial/OfficeErpOperations.php',
         'app/Erp/Commercial/OfficeErpRecords.php',
         'app/Models/Erp/Commercial/OfficeErpContract.php',
@@ -51,7 +64,14 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Models/Erp/Commercial/OfficeErpInvoice.php',
         'app/Models/Erp/Commercial/OfficeErpInvoiceCounter.php',
         'app/Models/Erp/Commercial/OfficeErpCommercialOperation.php',
+        'app/Models/Erp/Commercial/OfficeErpCommercialSetting.php',
         'app/Models/Erp/Commercial/OfficeErpAuditEvent.php',
+        'app/Models/Erp/Commercial/OfficeErpInvoiceAdjustment.php',
+        'app/Models/Erp/Commercial/OfficeErpReceipt.php',
+        'app/Models/Erp/Commercial/OfficeErpReceiptAllocation.php',
+        'app/Models/Erp/Commercial/OfficeErpReceiptProof.php',
+        'app/Models/Erp/Commercial/OfficeErpReceiptReversal.php',
+        'app/Jobs/CleanExpiredOfficeErpProofs.php',
         'app/Models/Erp/ErpCompany.php',
         'app/Models/Erp/ErpCompanyMembership.php',
         'app/Models/Erp/ErpPlan.php',
@@ -68,7 +88,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     /** @var array<int, array{process: Process, base: string, identity: array<string, mixed>}> */
     private array $workers = [];
 
-    /** @var array<string, array{ids: list<int>, hash: string}> */
+    /** @var array<string, array{ids: list<int|string>, hash: string}> */
     private array $retainedRows = [];
 
     /** @var array{pid: int, database_pid: int, checkout: string, source_hashes: array<string, string>} */
@@ -87,7 +107,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         foreach (self::PRESERVED_TABLES as $table) {
             $rows = DB::table($table)->orderBy('id')->get();
             $this->retainedRows[$table] = [
-                'ids' => array_map('intval', $rows->pluck('id')->all()),
+                'ids' => $rows->pluck('id')->map(static fn ($id): int|string => is_int($id) ? $id : (string) $id)->all(),
                 'hash' => hash('sha256', $rows->toJson()),
             ];
         }
@@ -233,6 +253,57 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         return $this->selectOffice($account, $membership, $callback);
     }
 
+    /** @param array<string, mixed> $fixture */
+    protected function issueRaceInvoice(array $fixture, OfficeErpContract $contract): OfficeErpInvoice
+    {
+        $revision = OfficeErpRecords::query($fixture['context'], OfficeErpContractRevision::class)
+            ->whereKey($contract->current_revision_id)
+            ->firstOrFail();
+
+        return $this->officeAdmin($fixture, fn () => $fixture['context']->run(
+            fn () => app(OfficeErpInvoices::class)->issuePeriod(
+                $fixture['context'],
+                $contract,
+                $revision,
+                $fixture['invoice_period'],
+                'race-financial-issue-'.bin2hex(random_bytes(8)),
+            ),
+        ));
+    }
+
+    /** @param array<string, mixed> $fixture @return array<string, mixed> */
+    protected function financialPayload(array $fixture, array $payload): array
+    {
+        return [
+            'account_id' => $fixture['account_id'],
+            'actor_id' => $fixture['actor_id'],
+            'membership_id' => $fixture['membership_id'],
+            'contract_id' => (int) $fixture['contracts'][0]->id,
+            ...$payload,
+        ];
+    }
+
+    /** @param array<string, mixed> $fixture @return array{id:string,expires_at:string} */
+    protected function stageRaceProof(array $fixture): array
+    {
+        return $this->officeAdmin($fixture, fn () => $fixture['context']->run(
+            fn () => app(OfficeErpReceiptProofs::class)->stage(
+                $fixture['context'],
+                UploadedFile::fake()->createWithContent('race-proof.pdf', "%PDF-1.4\nPrivate race proof\n%%EOF\n"),
+            ),
+        ));
+    }
+
+    /** @return array{amount:string,received_on:string,allocations:list<array{invoice_id:int,amount:string}>} */
+    protected function receiptInput(OfficeErpInvoice $invoice, string $amount): array
+    {
+        return [
+            'amount' => $amount,
+            'received_on' => now('America/Sao_Paulo')->toDateString(),
+            'allocations' => [['invoice_id' => (int) $invoice->id, 'amount' => $amount]],
+        ];
+    }
+
     /** @param array<string, mixed> $payload */
     protected function worker(string $action, array $payload): Process
     {
@@ -313,6 +384,53 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL Account row lock wait observed.');
             usleep(10000);
         } while (true);
+    }
+
+    protected function assertWorkerHeldLock(Process $process, string $table): void
+    {
+        $ready = $this->signalData($process, 'ready');
+        $held = $this->signalData($process, 'held');
+        self::assertSame($ready['database_pid'], $held['database_pid']);
+        self::assertGreaterThan(0, $held['transaction_level']);
+        self::assertStringContainsString('from "'.$table.'"', strtolower($held['lock_query']));
+        self::assertStringContainsString('for update', strtolower($held['lock_query']));
+    }
+
+    protected function assertWaitingOnProofLock(Process $process): void
+    {
+        $identity = $this->workers[spl_object_id($process)]['identity'];
+        $deadline = microtime(true) + 10;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $activity = DB::selectOne(
+                'select wait_event_type, query from pg_stat_activity where pid = ?',
+                [$identity['database_pid']],
+            );
+            if ($activity?->wait_event_type === 'Lock') {
+                self::assertStringContainsString('office_erp_receipt_proofs', strtolower($activity->query));
+                self::assertStringContainsString('for update', strtolower($activity->query));
+
+                return;
+            }
+            self::assertTrue($process->isRunning(), 'Proof cleanup exited before waiting for the proof row lock.');
+            self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL proof row lock wait observed.');
+            usleep(10000);
+        } while (true);
+    }
+
+    protected function assertInvoiceLedger(array $fixture, int $invoiceId, string $charge, string $received, string $outstanding): void
+    {
+        $balance = $this->officeAdmin($fixture, fn () => $fixture['context']->run(function () use ($fixture, $invoiceId): array {
+            $invoice = OfficeErpRecords::query($fixture['context'], OfficeErpInvoice::class)
+                ->whereKey($invoiceId)
+                ->firstOrFail();
+
+            return OfficeErpBalances::forInvoice($invoice);
+        }));
+        self::assertSame($charge, $balance['adjusted_charge']);
+        self::assertSame($received, $balance['effective_received']);
+        self::assertSame($outstanding, $balance['outstanding']);
+        self::assertGreaterThanOrEqual(0, OfficeErpMoney::compare($balance['outstanding'], '0.00'));
     }
 
     /** @return array<string, mixed> */
