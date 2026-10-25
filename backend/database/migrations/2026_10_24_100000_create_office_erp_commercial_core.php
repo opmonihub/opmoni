@@ -44,6 +44,7 @@ return new class extends Migration
 
             $table->foreign(['account_id', 'sales_plan_id'], 'office_erp_plan_revisions_plan_account_fk')
                 ->references(['account_id', 'id'])->on('office_erp_sales_plans')->restrictOnDelete();
+            $table->unique(['account_id', 'id'], 'office_erp_plan_revisions_account_id_id_unique');
             $table->unique(['account_id', 'sales_plan_id', 'id'], 'office_erp_plan_revisions_account_plan_id_unique');
             $table->unique(['sales_plan_id', 'revision_number'], 'office_erp_plan_revisions_number_unique');
         });
@@ -90,6 +91,7 @@ return new class extends Migration
             $table->foreignId('account_id')->constrained()->cascadeOnDelete();
             $table->unsignedBigInteger('contract_id');
             $table->unsignedInteger('revision_number');
+            $table->unsignedBigInteger('sales_plan_revision_id')->nullable();
             $table->decimal('price', 20, 2);
             $table->char('currency', 3)->default('BRL');
             $table->unsignedSmallInteger('interval_months');
@@ -103,6 +105,8 @@ return new class extends Migration
 
             $table->foreign(['account_id', 'contract_id'], 'office_erp_contract_revisions_contract_fk')
                 ->references(['account_id', 'id'])->on('office_erp_contracts')->restrictOnDelete();
+            $table->foreign(['account_id', 'sales_plan_revision_id'], 'office_erp_contract_revisions_plan_revision_fk')
+                ->references(['account_id', 'id'])->on('office_erp_sales_plan_revisions')->restrictOnDelete();
             $table->unique(['account_id', 'contract_id', 'id'], 'office_erp_contract_revisions_scope_unique');
             $table->unique(['contract_id', 'revision_number'], 'office_erp_contract_revisions_number_unique');
         });
@@ -127,6 +131,7 @@ return new class extends Migration
             $table->foreign(['account_id', 'contract_id'], 'office_erp_allocations_contract_fk')
                 ->references(['account_id', 'id'])->on('office_erp_contracts')->restrictOnDelete();
             $table->foreign('erp_company_id')->references('id')->on('erp_companies')->restrictOnDelete();
+            $table->unique('contract_id', 'office_erp_allocations_one_per_contract_unique');
             $table->index(['account_id', 'state', 'expires_at']);
         });
 
@@ -138,6 +143,7 @@ return new class extends Migration
             $table->string('idempotency_key', 191);
             $table->string('action', 100);
             $table->char('payload_hash', 64);
+            $table->json('payload');
             $table->json('outcome')->nullable();
             $table->timestamps();
 
@@ -173,14 +179,12 @@ return new class extends Migration
             $table->index('office_erp_contract_id');
         });
 
-        DB::statement("CREATE UNIQUE INDEX office_erp_allocations_one_current_per_contract ON office_erp_licence_allocations (contract_id) WHERE state IN ('reserved', 'occupied')");
         DB::statement("CREATE UNIQUE INDEX office_erp_allocations_one_current_per_company ON office_erp_licence_allocations (erp_company_id) WHERE erp_company_id IS NOT NULL AND state IN ('reserved', 'occupied')");
     }
 
     public function down(): void
     {
         DB::statement('DROP INDEX IF EXISTS office_erp_allocations_one_current_per_company');
-        DB::statement('DROP INDEX IF EXISTS office_erp_allocations_one_current_per_contract');
 
         Schema::table('erp_subscriptions', function (Blueprint $table): void {
             $table->dropForeign('erp_subscriptions_office_contract_company_fk');

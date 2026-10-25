@@ -15,7 +15,7 @@ class OfficeErpContractRevision extends Model
     use HasFactory;
 
     protected $fillable = [
-        'account_id', 'contract_id', 'revision_number', 'price', 'currency', 'interval_months', 'due_in_days',
+        'account_id', 'contract_id', 'revision_number', 'sales_plan_revision_id', 'price', 'currency', 'interval_months', 'due_in_days',
         'module_keys', 'service_period_start', 'service_period_end', 'reason', 'created_by_user_id',
     ];
 
@@ -52,5 +52,10 @@ class OfficeErpContractRevision extends Model
     public function contract(): BelongsTo
     {
         return $this->belongsTo(OfficeErpContract::class, 'contract_id');
+    }
+
+    public function salesPlanRevision(): BelongsTo
+    {
+        return $this->belongsTo(OfficeErpSalesPlanRevision::class, 'sales_plan_revision_id');
     }
 }

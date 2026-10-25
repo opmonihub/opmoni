@@ -15,12 +15,12 @@ class OfficeErpCommercialOperation extends Model
     use HasFactory;
 
     protected $fillable = [
-        'account_id', 'actor_kind', 'actor_identity', 'idempotency_key', 'action', 'payload_hash', 'outcome',
+        'account_id', 'actor_kind', 'actor_identity', 'idempotency_key', 'action', 'payload_hash', 'payload', 'outcome',
     ];
 
     protected function casts(): array
     {
-        return ['outcome' => 'array'];
+        return ['payload' => 'array', 'outcome' => 'array'];
     }
 
     protected static function newFactory(): OfficeErpCommercialOperationFactory

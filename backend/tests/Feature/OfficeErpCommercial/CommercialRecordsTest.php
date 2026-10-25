@@ -4,6 +4,7 @@ namespace Tests\Feature\OfficeErpCommercial;
 
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Client;
+use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
@@ -163,6 +164,15 @@ class CommercialRecordsTest extends OfficeErpCommercialTestCase
         }));
 
         $first->forceFill(['state' => 'released', 'released_at' => now()])->save();
+        self::assertTrue($this->databaseRejected(function () use ($ctx, $firstContract, $otherCompany): void {
+            OfficeErpLicenceAllocation::factory()->create([
+                'account_id' => $ctx->accountId,
+                'contract_id' => $firstContract->id,
+                'erp_company_id' => $otherCompany->id,
+                'state' => 'reserved',
+            ]);
+        }));
+
         $replacement = OfficeErpLicenceAllocation::factory()->create([
             'account_id' => $ctx->accountId,
             'contract_id' => $secondContract->id,
@@ -217,6 +227,20 @@ class CommercialRecordsTest extends OfficeErpCommercialTestCase
             $plan->forceFill(['current_revision_id' => $foreignRevision->id])->save();
         }));
         self::assertNull($plan->refresh()->current_revision_id);
+    }
+
+    public function test_commercial_operation_keeps_the_canonical_payload_for_recovery(): void
+    {
+        $ctx = $this->officeContext();
+        $payload = ['plan_id' => 41, 'price' => '9007199254740993.01', 'module_keys' => ['erp.sales']];
+
+        $operation = OfficeErpCommercialOperation::factory()->create([
+            'account_id' => $ctx->accountId,
+            'payload' => $payload,
+        ]);
+
+        self::assertSame($payload, $operation->refresh()->payload);
+        self::assertSame($payload, OfficeErpCommercialOperation::query()->findOrFail($operation->id)->payload);
     }
 
     private function databaseRejected(callable $callback): bool

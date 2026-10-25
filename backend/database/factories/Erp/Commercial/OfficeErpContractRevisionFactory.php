@@ -17,6 +17,7 @@ class OfficeErpContractRevisionFactory extends Factory
             'contract_id' => OfficeErpContract::factory(),
             'account_id' => fn (array $attributes): int => (int) OfficeErpContract::query()->findOrFail($attributes['contract_id'])->account_id,
             'revision_number' => 1,
+            'sales_plan_revision_id' => null,
             'price' => '100.00',
             'currency' => 'BRL',
             'interval_months' => 1,

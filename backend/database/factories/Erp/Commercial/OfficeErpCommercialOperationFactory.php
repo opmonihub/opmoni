@@ -20,6 +20,7 @@ class OfficeErpCommercialOperationFactory extends Factory
             'idempotency_key' => (string) fake()->uuid(),
             'action' => 'plan.create',
             'payload_hash' => hash('sha256', '{}'),
+            'payload' => [],
             'outcome' => [],
         ];
     }

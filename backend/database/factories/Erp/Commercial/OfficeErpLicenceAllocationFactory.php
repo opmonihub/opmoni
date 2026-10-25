@@ -18,7 +18,7 @@ class OfficeErpLicenceAllocationFactory extends Factory
             'account_id' => fn (array $attributes): int => (int) OfficeErpContract::query()->findOrFail($attributes['contract_id'])->account_id,
             'erp_company_id' => null,
             'state' => 'reserved',
-            'expires_at' => now()->addDays(7),
+            'expires_at' => fn (array $attributes): ?\Illuminate\Support\Carbon => $attributes['state'] === 'occupied' ? null : now()->addDays(7),
             'released_at' => null,
         ];
     }
