@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
-import { apiErrorMessage } from '~/composables/useApiError'
+import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
 
 definePageMeta({ middleware: 'auth' })
@@ -36,20 +36,35 @@ const lastPage = ref(1)
 const loading = ref(false)
 const loadError = ref('')
 const confirmedEmpty = ref(false)
+const confirmedQueryKey = ref<string | null>(null)
 let generation = 0
 const identity = computed(() => JSON.stringify([user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null, context.capabilities.value?.capability_key ?? null]))
+const queryKey = computed(() => JSON.stringify([identity.value, query.value.trim(), status.value, from.value, to.value, dueFrom.value, dueTo.value, page.value, perPage.value]))
+const hasConfirmedResults = computed(() => confirmedQueryKey.value !== null && confirmedQueryKey.value === queryKey.value)
 const columns: TableColumn<InvoiceRow>[] = [{ accessorKey: 'number', header: 'Fatura' }, { id: 'client', header: 'Cliente' }, { accessorKey: 'document_status', header: 'Situação' }, { accessorKey: 'due_on', header: 'Vencimento' }, { id: 'total', header: 'Cobrança ajustada' }, { id: 'balance', header: 'Em aberto' }, { id: 'actions', header: '' }]
+
+function clearConfirmedResults() {
+  confirmedQueryKey.value = null
+  rows.value = []
+  total.value = 0
+  lastPage.value = 1
+  confirmedEmpty.value = false
+}
 
 async function loadInvoices() {
   const request = ++generation
   const stamp = identity.value
+  const requestedQueryKey = queryKey.value
+  if (confirmedQueryKey.value !== requestedQueryKey) clearConfirmedResults()
   loading.value = true
   loadError.value = ''
-  confirmedEmpty.value = false
   try {
     await context.refresh()
     if (request !== generation || stamp !== identity.value) return
-    if (!context.capabilities.value?.can_read) throw new Error('A conta selecionada não tem permissão para consultar faturas.')
+    if (!context.capabilities.value?.can_read) {
+      clearConfirmedResults()
+      throw new Error('A conta selecionada não tem permissão para consultar faturas.')
+    }
     const token = context.capture()
     const params: Record<string, string | number> = { page: page.value, per_page: perPage.value }
     if (query.value.trim()) params.q = query.value.trim()
@@ -66,8 +81,12 @@ async function loadInvoices() {
     lastPage.value = Math.max(1, response.meta.last_page)
     page.value = response.meta.current_page
     confirmedEmpty.value = response.meta.total === 0
+    confirmedQueryKey.value = requestedQueryKey
   } catch (error) {
-    if (request === generation && stamp === identity.value) loadError.value = apiErrorMessage(error) ?? (error instanceof Error ? error.message : 'Não foi possível consultar faturas.')
+    if (request === generation && stamp === identity.value) {
+      if ([401, 403].includes(apiStatus(error) ?? 0)) clearConfirmedResults()
+      loadError.value = apiErrorMessage(error) ?? (error instanceof Error ? error.message : 'Não foi possível consultar faturas.')
+    }
   } finally {
     if (request === generation && stamp === identity.value) loading.value = false
   }
@@ -80,9 +99,7 @@ watch([query, status, from, to, dueFrom, dueTo, perPage], () => {
 })
 watch(identity, () => {
   generation++
-  rows.value = []
-  total.value = 0
-  confirmedEmpty.value = false
+  clearConfirmedResults()
   loadError.value = ''
   void loadInvoices()
 }, { flush: 'sync' })
@@ -92,9 +109,21 @@ watch(identity, () => {
   <div class="flex min-h-0 flex-col gap-4">
     <DataTablePanelList title="Faturas" description="Documentos internos do escritório, com ajustes e saldos confirmados pelo servidor.">
       <template #action>
-        <UButton to="/gestao-erp/faturas/nova" icon="i-lucide-plus">
-          Nova fatura
-        </UButton>
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-refresh-cw"
+            :loading="loading"
+            :disabled="loading"
+            @click="loadInvoices"
+          >
+            Atualizar
+          </UButton>
+          <UButton to="/gestao-erp/faturas/nova" icon="i-lucide-plus">
+            Nova fatura
+          </UButton>
+        </div>
       </template>
       <template #toolbar>
         <UFormField label="Buscar fatura" class="w-full max-w-sm">
@@ -120,12 +149,18 @@ watch(identity, () => {
         <UAlert
           v-if="loadError"
           color="error"
-          title="Não foi possível carregar as faturas"
+          :title="hasConfirmedResults ? 'Não foi possível atualizar as faturas' : 'Não foi possível carregar as faturas'"
           :description="loadError"
         >
           <template #description>
-            <div class="flex justify-between gap-3">
-              <span>{{ loadError }}</span><UButton
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="space-y-1">
+                <p>{{ loadError }}</p>
+                <p v-if="hasConfirmedResults" class="text-sm text-muted">
+                  Os resultados abaixo são da última consulta confirmada.
+                </p>
+              </div>
+              <UButton
                 color="neutral"
                 variant="outline"
                 size="sm"
@@ -137,12 +172,12 @@ watch(identity, () => {
           </template>
         </UAlert>
         <UAlert
-          v-else-if="confirmedEmpty"
+          v-if="confirmedEmpty"
           color="neutral"
-          title="Nenhuma fatura encontrada"
-          description="Altere os filtros ou crie um novo rascunho."
+          :title="loadError ? 'Nenhuma fatura na última consulta confirmada' : 'Nenhuma fatura encontrada'"
+          :description="loadError ? 'A atualização falhou; este resultado vazio pertence à última consulta confirmada.' : 'Altere os filtros ou crie um novo rascunho.'"
         />
-        <div v-else class="overflow-x-auto">
+        <div v-if="!confirmedEmpty && (!loadError || hasConfirmedResults)" class="overflow-x-auto">
           <UTable
             :data="rows"
             :columns="columns"
@@ -175,7 +210,7 @@ watch(identity, () => {
             </template>
           </UTable>
         </div>
-        <div v-if="!loadError && !confirmedEmpty && total > 0" :class="panelFooterClass">
+        <div v-if="hasConfirmedResults && !confirmedEmpty && total > 0" :class="panelFooterClass">
           <span :class="panelFooterCountClass">{{ total }} faturas · página {{ page }} de {{ lastPage }}</span><UPagination
             v-model:page="page"
             :total="total"

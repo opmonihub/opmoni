@@ -353,6 +353,90 @@ for (const caller of callers) {
 }
 
 describe('rendered invoice list controls and read states', () => {
+  it('keeps same-query confirmed invoices visible and labeled when refresh fails', async (t) => {
+    let reads = 0
+    const page = mountCaller('pages/gestao-erp/faturas/index.vue', {
+      initialRead: async () => {
+        reads++
+        if (reads === 2) throw new Error('Invoice refresh unavailable')
+        return {
+          data: [invoice(reads === 1 ? 'Last Confirmed Invoice' : 'Recovered Invoice')],
+          meta: { current_page: 1, last_page: 2, per_page: 25, total: 26 }
+        }
+      },
+      currentRead: async () => ({ data: [invoice('Other Authority Invoice')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } })
+    })
+    t.after(page.stop)
+    await settle()
+    assert.match(text(page.root), /Last Confirmed Invoice/)
+
+    const refresh = find(page.root, node => node.tag === 'button' && text(node).includes('Atualizar'))
+    assert.ok(refresh, 'the rendered invoice list exposes a same-filter refresh action')
+    ;(refresh.props.onClick as () => void)()
+    await settle()
+
+    assert.equal(reads, 2)
+    assert.match(text(page.root), /Invoice refresh unavailable/)
+    assert.match(text(page.root), /Last Confirmed Invoice/)
+    assert.match(text(page.root), /última consulta confirmada/i)
+    assert.match(text(page.root), /26 faturas/)
+    const retry = find(page.root, node => node.tag === 'button' && text(node).includes('Tentar novamente'))
+    assert.ok(retry)
+    ;(retry.props.onClick as () => void)()
+    await settle()
+    assert.match(text(page.root), /Recovered Invoice/)
+    assert.doesNotMatch(text(page.root), /Invoice refresh unavailable|Last Confirmed Invoice|última consulta confirmada/i)
+  })
+
+  it('does not present invoices from an older filter as results for a failed search', async (t) => {
+    let reads = 0
+    const page = mountCaller('pages/gestao-erp/faturas/index.vue', {
+      initialRead: async () => {
+        reads++
+        if (reads > 1) throw new Error('Filtered invoice search unavailable')
+        return { data: [invoice('Previous Filter Invoice')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }
+      },
+      currentRead: async () => ({ data: [invoice('Other Authority Invoice')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } })
+    })
+    t.after(page.stop)
+    await settle()
+    assert.match(text(page.root), /Previous Filter Invoice/)
+
+    const search = find(page.root, node => node.tag === 'input' && node.props['aria-label'] === 'Buscar fatura')
+    assert.ok(search)
+    ;(search.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'new filter' } })
+    await settle()
+
+    assert.match(text(page.root), /Filtered invoice search unavailable/)
+    assert.doesNotMatch(text(page.root), /Previous Filter Invoice|última consulta confirmada/i)
+    assert.equal(find(page.root, node => node.tag === 'article' && text(node).includes('Previous Filter Invoice')), undefined)
+  })
+
+  for (const statusCode of [401, 403]) {
+    it(`discards confirmed invoice content after a ${statusCode} context denial`, async (t) => {
+      let reads = 0
+      const page = mountCaller('pages/gestao-erp/faturas/index.vue', {
+        initialRead: async () => {
+          reads++
+          if (reads > 1) throw Object.assign(new Error(`Invoice denied ${statusCode}`), { statusCode })
+          return { data: [invoice('Protected Invoice')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }
+        },
+        currentRead: async () => ({ data: [invoice('Other Authority Invoice')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } })
+      })
+      t.after(page.stop)
+      await settle()
+      assert.match(text(page.root), /Protected Invoice/)
+
+      const refresh = find(page.root, node => node.tag === 'button' && text(node).includes('Atualizar'))
+      assert.ok(refresh)
+      ;(refresh.props.onClick as () => void)()
+      await settle()
+
+      assert.match(text(page.root), new RegExp(`Invoice denied ${statusCode}`))
+      assert.doesNotMatch(text(page.root), /Protected Invoice|última consulta confirmada/i)
+    })
+  }
+
   it('sends the actual search, status, date and pagination controls as server filters', async (t) => {
     const page = mountCaller('pages/gestao-erp/faturas/index.vue', {
       initialRead: async request => ({ data: [invoice('Current Invoice')], meta: { current_page: Number(request?.options?.params?.page ?? 1), last_page: 3, per_page: 25, total: 51 } }),
