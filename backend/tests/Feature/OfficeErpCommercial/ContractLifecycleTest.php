@@ -107,6 +107,66 @@ class ContractLifecycleTest extends OfficeErpCommercialTestCase
         self::assertSame('125.00', (string) $priceRevision->price);
     }
 
+    public function test_platform_module_removal_preserves_grants_and_blocks_new_forbidden_module(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases', 'stock_transfers']]);
+        [$contract, $company, $subscription] = $this->acceptedOccupiedContract($ctx, 'effective', ['module_keys' => ['purchases']]);
+        $subscription->forceFill(['office_erp_contract_id' => $contract->id])->save();
+        $revisionId = (int) $contract->current_revision_id;
+        $revisionCount = DB::table('office_erp_contract_revisions')->where('contract_id', $contract->id)->count();
+        $plan = $ctx->account->subscription->plan;
+        $allowance = $plan->erp_commercial;
+        $allowance['module_keys'] = ['purchases'];
+        $plan->forceFill(['erp_commercial' => $allowance])->save();
+
+        $this->withoutExceptionHandling();
+        try {
+            $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+                $ctx,
+                $contract,
+                ['module_keys' => ['purchases', 'stock_transfers']],
+                'module-removed-from-platform-plan',
+            ));
+            self::fail('A module removed from the current platform allowance cannot be added to an existing contract.');
+        } catch (HttpException $exception) {
+            self::assertSame(403, $exception->getStatusCode());
+        }
+
+        self::assertSame($revisionId, (int) $contract->fresh()->current_revision_id);
+        self::assertSame($revisionCount, DB::table('office_erp_contract_revisions')->where('contract_id', $contract->id)->count());
+        self::assertSame(['purchases'], $contract->fresh()->currentRevision->module_keys);
+        self::assertSame('active', $subscription->fresh()->status);
+        self::assertSame((int) $contract->id, (int) $subscription->fresh()->office_erp_contract_id);
+        self::assertSame((int) $company->id, (int) $contract->fresh()->erp_company_id);
+        self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $contract->id)->value('state'));
+    }
+
+    public function test_suspended_account_cannot_use_real_contract_maintenance_route(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases']]);
+        [$contract] = $this->acceptedOccupiedContract($ctx, 'effective');
+        $this->selectBusinessAccount($ctx->actor, $ctx->accountId);
+        $this->actingAs($ctx->actor);
+        $before = [
+            'contract' => $contract->fresh()->getAttributes(),
+            'revisions' => DB::table('office_erp_contract_revisions')->where('contract_id', $contract->id)->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all(),
+            'operations' => DB::table('office_erp_commercial_operations')->where('account_id', $ctx->accountId)->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all(),
+            'audits' => DB::table('office_erp_audit_events')->where('account_id', $ctx->accountId)->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all(),
+            'invoices' => DB::table('office_erp_invoices')->where('contract_id', $contract->id)->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all(),
+        ];
+        DB::table('accounts')->where('id', $ctx->accountId)->update(['status' => 'suspended']);
+
+        $this->patchJson('/api/v1/erp-commercial/contracts/'.$contract->id.'/terms', ['price' => '125.00'], [
+            'Idempotency-Key' => 'suspended-account-contract-amendment',
+        ])->assertForbidden();
+
+        self::assertSame($before['contract'], $contract->fresh()->getAttributes());
+        self::assertSame($before['revisions'], DB::table('office_erp_contract_revisions')->where('contract_id', $contract->id)->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all());
+        self::assertSame($before['operations'], DB::table('office_erp_commercial_operations')->where('account_id', $ctx->accountId)->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all());
+        self::assertSame($before['audits'], DB::table('office_erp_audit_events')->where('account_id', $ctx->accountId)->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all());
+        self::assertSame($before['invoices'], DB::table('office_erp_invoices')->where('contract_id', $contract->id)->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all());
+    }
+
     public function test_period_end_cancel_keeps_invoices_and_manual_hold_cause(): void
     {
         $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases']]);

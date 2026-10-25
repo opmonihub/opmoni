@@ -51,8 +51,12 @@ class RecurringInvoiceTest extends OfficeErpCommercialTestCase
         $tenant = app(CurrentTenant::class);
         $tenant->accountId = 987654;
 
-        OfficeErpInvoice::creating(static function (): never {
-            throw new \RuntimeException('recurring invoice failure');
+        $attempts = 0;
+        OfficeErpInvoice::creating(static function () use (&$attempts): void {
+            $attempts++;
+            if ($attempts === 1) {
+                throw new \RuntimeException('recurring invoice failure');
+            }
         });
 
         try {
@@ -65,6 +69,14 @@ class RecurringInvoiceTest extends OfficeErpCommercialTestCase
         self::assertSame($beforeCursor, (int) $contract->fresh()->next_period_index);
         self::assertSame(987654, $tenant->accountId);
         self::assertSame(0, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+
+        $retry = app(OfficeErpRecurringBilling::class)->generate((int) $contract->id, CarbonImmutable::now('America/Sao_Paulo'));
+        self::assertSame(1, count($retry['generated']));
+        self::assertFalse($retry['pending']);
+        self::assertSame($beforeCursor + 1, (int) $contract->fresh()->next_period_index);
+        self::assertSame(1, OfficeErpInvoice::query()->where('contract_id', $contract->id)->where('kind', 'recurring')->count());
+        self::assertSame('2026-02-28', OfficeErpInvoice::query()->where('contract_id', $contract->id)->firstOrFail()->period_start->toDateString());
+        self::assertSame(987654, $tenant->accountId);
     }
 
     public function test_bounded_catch_up_repeats_with_stable_period_identities(): void
@@ -155,6 +167,44 @@ class RecurringInvoiceTest extends OfficeErpCommercialTestCase
         self::assertSame('released', OfficeErpLicenceAllocation::query()->where('contract_id', $contract->id)->value('state'));
         self::assertSame('canceled', $subscription->fresh()->status);
         self::assertSame(0, OfficeErpInvoice::query()->where('contract_id', $contract->id)->whereDate('period_start', '2026-02-28')->count());
+    }
+
+    public function test_effective_cancellation_keeps_prior_invoice_readable_and_company_history_intact(): void
+    {
+        CarbonImmutable::setTestNow('2026-01-31 13:00:00');
+        $ctx = $this->officeContext();
+        [$contract, $company, $subscription] = $this->effectiveContract($ctx, '2026-01-31', 1, 1);
+        $this->issueInitialPeriod($ctx, $contract, $company, $subscription);
+        $invoice = OfficeErpInvoice::query()->where('contract_id', $contract->id)->where('kind', 'recurring')->firstOrFail();
+        $companyBefore = $company->fresh()->getAttributes();
+        $contractBefore = $contract->fresh()->getAttributes();
+
+        $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->cancel(
+            $ctx,
+            $contract,
+            'period_end',
+            'Customer requested cancellation',
+            'cancel-at-period-end-with-unpaid-invoice',
+        ));
+        $this->selectBusinessAccount($ctx->actor, $ctx->accountId);
+        $this->actingAs($ctx->actor);
+        $this->getJson('/api/v1/erp-commercial/invoices/'.$invoice->id)
+            ->assertOk()
+            ->assertJsonPath('data.id', (int) $invoice->id)
+            ->assertJsonPath('data.document_status', 'issued');
+
+        CarbonImmutable::setTestNow('2026-02-28 13:00:00');
+        app(OfficeErpRecurringBilling::class)->generate((int) $contract->id, CarbonImmutable::now('America/Sao_Paulo'));
+
+        self::assertSame('canceled', $contract->fresh()->agreement_status);
+        self::assertSame('released', OfficeErpLicenceAllocation::query()->where('contract_id', $contract->id)->value('state'));
+        self::assertSame('canceled', $subscription->fresh()->status);
+        self::assertSame($companyBefore, $company->fresh()->getAttributes());
+        self::assertSame((int) $company->id, (int) $contract->fresh()->erp_company_id);
+        self::assertSame((int) $contractBefore['current_revision_id'], (int) $contract->fresh()->current_revision_id);
+        self::assertSame(1, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+        self::assertSame('issued', $invoice->fresh()->document_status);
+        self::assertSame('100.00', (string) $invoice->fresh()->original_total);
     }
 
     public function test_scheduled_tick_applies_grace_and_period_end_cancellation_without_new_period(): void
