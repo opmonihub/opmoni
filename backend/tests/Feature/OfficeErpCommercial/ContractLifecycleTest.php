@@ -229,6 +229,61 @@ class ContractLifecycleTest extends OfficeErpCommercialTestCase
         self::assertNull($this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->show($ctx, (int) $previous->id)['data']['licence_status']));
     }
 
+    public function test_foreign_contract_routes_hide_details_and_reject_activation_without_side_effects(): void
+    {
+        $selectedOffice = $this->officeContext();
+        $foreignOffice = $this->officeContext();
+        [$foreignContract, $foreignCompany, $foreignSubscription] = $this->withOfficeAccount(
+            $foreignOffice,
+            fn (): array => $this->acceptedOccupiedContract($foreignOffice),
+        );
+        $this->withOfficeAccount($foreignOffice, function () use ($foreignContract, $foreignCompany): void {
+            $foreignContract->client()->update(['name' => 'FOREIGN-CONTRACT-CLIENT-SECRET']);
+            $foreignCompany->forceFill(['name' => 'FOREIGN-CONTRACT-COMPANY-SECRET'])->save();
+            $foreignContract->currentRevision()->update(['price' => '9876.54']);
+        });
+
+        $this->selectBusinessAccount($selectedOffice->actor, $selectedOffice->accountId);
+        $this->actingAs($selectedOffice->actor);
+
+        $foreignClientId = (int) $foreignContract->client_id;
+        $before = $this->foreignContractState($foreignOffice->accountId, (int) $foreignCompany->id, $foreignClientId);
+        $detail = $this->getJson('/api/v1/erp-commercial/contracts/'.$foreignContract->id)->assertNotFound();
+        foreach (['FOREIGN-CONTRACT-CLIENT-SECRET', 'FOREIGN-CONTRACT-COMPANY-SECRET', '9876.54'] as $privateValue) {
+            self::assertStringNotContainsString($privateValue, $detail->getContent());
+        }
+        self::assertSame($before, $this->foreignContractState($foreignOffice->accountId, (int) $foreignCompany->id, $foreignClientId));
+
+        $key = 'foreign-contract-activation-must-not-exist';
+        $activation = $this->postJson('/api/v1/erp-commercial/contracts/'.$foreignContract->id.'/activate', [], ['Idempotency-Key' => $key])
+            ->assertNotFound();
+        foreach (['FOREIGN-CONTRACT-CLIENT-SECRET', 'FOREIGN-CONTRACT-COMPANY-SECRET', '9876.54'] as $privateValue) {
+            self::assertStringNotContainsString($privateValue, $activation->getContent());
+        }
+
+        self::assertSame($before, $this->foreignContractState($foreignOffice->accountId, (int) $foreignCompany->id, $foreignClientId));
+        self::assertSame('accepted', $foreignContract->fresh()->agreement_status);
+        self::assertNull($foreignSubscription->fresh()->office_erp_contract_id);
+        self::assertSame(0, DB::table('office_erp_commercial_operations')->where('idempotency_key', $key)->count());
+    }
+
+    /** @return array<string, array<int, array<string, mixed>>> */
+    private function foreignContractState(int $accountId, int $companyId, int $clientId): array
+    {
+        $state = [];
+        $state['clients'] = DB::table('clients')->where('account_id', $accountId)->where('id', $clientId)->get()->map(fn ($row): array => (array) $row)->all();
+        foreach ([
+            'office_erp_contracts', 'office_erp_contract_revisions', 'office_erp_licence_allocations',
+            'office_erp_invoices', 'office_erp_invoice_adjustments', 'office_erp_commercial_operations', 'office_erp_audit_events',
+        ] as $table) {
+            $state[$table] = DB::table($table)->where('account_id', $accountId)->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all();
+        }
+        $state['erp_companies'] = DB::table('erp_companies')->where('id', $companyId)->get()->map(fn ($row): array => (array) $row)->all();
+        $state['erp_subscriptions'] = DB::table('erp_subscriptions')->where('erp_company_id', $companyId)->orderBy('id')->get()->map(fn ($row): array => (array) $row)->all();
+
+        return $state;
+    }
+
     /** @return array{OfficeErpContract, ErpCompany, ErpSubscription} */
     private function acceptedOccupiedContract($ctx, string $status = 'pending', array $terms = []): array
     {
