@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContextController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContractController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvitationController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvoiceController;
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvoicePrintController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpOperationController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpReceiptController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpReceiptProofController;
@@ -39,6 +40,7 @@ Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->
     Route::post('/invitations/{invitation}/reissue', [OfficeErpInvitationController::class, 'reissue'])->whereNumber('invitation')->name('office-erp-commercial.invitations.reissue');
     Route::get('/invoices', [OfficeErpInvoiceController::class, 'index'])->name('office-erp-commercial.invoices.index');
     Route::post('/invoices', [OfficeErpInvoiceController::class, 'store'])->name('office-erp-commercial.invoices.store');
+    Route::get('/invoices/{invoice}/print', OfficeErpInvoicePrintController::class)->whereNumber('invoice')->name('office-erp-commercial.invoices.print');
     Route::get('/invoices/{invoice}', [OfficeErpInvoiceController::class, 'show'])->whereNumber('invoice')->name('office-erp-commercial.invoices.show');
     Route::patch('/invoices/{invoice}', [OfficeErpInvoiceController::class, 'update'])->whereNumber('invoice')->name('office-erp-commercial.invoices.update');
     Route::post('/invoices/{invoice}/issue', [OfficeErpInvoiceController::class, 'issue'])->whereNumber('invoice')->name('office-erp-commercial.invoices.issue');
