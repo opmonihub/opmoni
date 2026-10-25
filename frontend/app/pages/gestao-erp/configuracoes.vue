@@ -478,6 +478,8 @@ onMounted(loadSettings)
               :data="previewRows"
               :loading="previewLoading"
               :ui="panelTableUi"
+              tabindex="0"
+              aria-label="Tabela de contratos afetados"
             >
               <template #resulting_status-cell="{ row }">
                 {{ row.original.resulting_status === 'past_due' ? 'Suspenso por atraso' : row.original.resulting_status }}

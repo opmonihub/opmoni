@@ -55,7 +55,10 @@ function mount(component: Vue.Component) {
     USelect: { props: ['modelValue', 'items', 'disabled'], setup: (props, context) => () => Vue.h('select', { ...context.attrs, 'modelValue': props.modelValue, 'disabled': props.disabled, 'onUpdate:modelValue': context.emit.bind(null, 'update:modelValue') }) },
     USwitch: { props: ['modelValue', 'disabled'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, 'role': 'switch', 'aria-checked': String(props.modelValue), 'disabled': props.disabled, 'onUpdate:modelValue': context.emit.bind(null, 'update:modelValue') }) },
     USkeleton: { setup: () => () => Vue.h('div', { 'aria-label': 'Carregando' }) },
-    UTable: { props: ['data', 'columns'], setup: props => () => Vue.h('table', {}, (props.data as Array<Record<string, unknown>>).map((row, index) => Vue.h('tr', { key: index }, Object.values(row).map(value => Vue.h('td', {}, String(value)))))) },
+    UTable: {
+      props: ['data', 'columns'],
+      setup: (props, context) => () => Vue.h('div', { ...context.attrs }, [Vue.h('table', {}, (props.data as Array<Record<string, unknown>>).map((row, index) => Vue.h('tr', { key: index }, Object.values(row).map(value => Vue.h('td', {}, String(value))))))])
+    },
     UPagination: { props: ['page', 'total'], setup: (props, context) => () => Vue.h('nav', { 'data-total': props.total, 'data-page': props.page, 'onUpdate:page': context.emit.bind(null, 'update:page') }) }
   }
   for (const [name, component] of Object.entries(components)) app.component(name, component)
@@ -378,6 +381,9 @@ describe('Office ERP policy settings page', () => {
     assert.deepEqual(previewCall?.options?.body, { mode: 'automatic', grace_days: 0, billing_timezone: 'America/Sao_Paulo', page: 1 })
     assert.match(renderText(view.root), /2 contratos afetados/)
     assert.match(renderText(view.root), /Comercial A/)
+    const scrollRegion = find(view.root, node => node.tag === 'div' && node.props['tabindex'] === '0')[0]
+    assert.ok(scrollRegion, 'the preview table scroll region should be keyboard focusable')
+    assert.equal(scrollRegion.props['aria-label'], 'Tabela de contratos afetados')
     assert.equal(view.executeCalls.length, 0)
     view.app.unmount()
   })
