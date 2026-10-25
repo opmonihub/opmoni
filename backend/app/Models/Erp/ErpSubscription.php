@@ -15,7 +15,7 @@ class ErpSubscription extends Model
     /** @use HasFactory<ErpSubscriptionFactory> */
     use HasFactory;
 
-    protected $fillable = ['erp_company_id', 'erp_plan_id', 'status'];
+    protected $fillable = ['erp_company_id', 'erp_plan_id', 'status', 'office_erp_contract_id'];
 
     protected static function newFactory(): ErpSubscriptionFactory
     {
@@ -30,6 +30,11 @@ class ErpSubscription extends Model
     public function plan(): BelongsTo
     {
         return $this->belongsTo(ErpPlan::class, 'erp_plan_id');
+    }
+
+    public function officeErpContract(): BelongsTo
+    {
+        return $this->belongsTo(Commercial\OfficeErpContract::class, 'office_erp_contract_id');
     }
 
     public function statusEnum(): ErpSubscriptionStatus
