@@ -157,7 +157,7 @@ return new class extends Migration
 
         if ($driver === 'pgsql') {
             DB::unprepared(<<<'SQL'
-                CREATE FUNCTION office_erp_billing_reject_mutation() RETURNS trigger
+                CREATE OR REPLACE FUNCTION office_erp_billing_reject_mutation() RETURNS trigger
                 LANGUAGE plpgsql AS $$
                 BEGIN
                     RAISE EXCEPTION 'Billing adjustment and reversal records are append-only';
