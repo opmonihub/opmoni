@@ -12,6 +12,7 @@ use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\Commercial\OfficeErpReceipt;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\User;
+use App\Support\LiteralSearch;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -108,9 +109,11 @@ final class OfficeErpQueries
         $filters = $this->filters($ctx, 'clients', $filters);
         $query = Client::query()->where('account_id', $ctx->accountId)->withTrashed(false);
         if (($search = trim((string) ($filters['search'] ?? ''))) !== '') {
-            $query->where(fn (Builder $builder) => $builder->where('name', 'like', "%{$search}%")
-                ->orWhere('trade_name', 'like', "%{$search}%")
-                ->orWhere('tax_id', 'like', "%{$search}%"));
+            $query->where(function (Builder $builder) use ($search): void {
+                $builder->where(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'name', $search))
+                    ->orWhere(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'trade_name', $search))
+                    ->orWhere(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'tax_id', $search));
+            });
         }
 
         return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query->orderBy('name'), $filters));
@@ -122,7 +125,7 @@ final class OfficeErpQueries
         $filters = $this->filters($ctx, 'plans', $filters);
         $query = OfficeErpRecords::query($ctx, OfficeErpSalesPlan::class)->with('currentRevision');
         if (isset($filters['search']) && $filters['search'] !== '') {
-            $query->where('name', 'like', '%'.$filters['search'].'%');
+            LiteralSearch::whereContains($query, 'name', $filters['search']);
         }
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
@@ -141,8 +144,9 @@ final class OfficeErpQueries
         }
         if (isset($filters['search']) && $filters['search'] !== '') {
             $search = $filters['search'];
-            $query->whereHas('client', fn (Builder $client) => $client->where('name', 'like', "%{$search}%")
-                ->orWhere('trade_name', 'like', "%{$search}%"));
+            $query->whereHas('client', fn (Builder $client) => $client
+                ->where(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'name', $search))
+                ->orWhere(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'trade_name', $search)));
         }
 
         return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query->orderByDesc('id'), $filters));
@@ -160,9 +164,10 @@ final class OfficeErpQueries
         if (isset($filters['search']) && $filters['search'] !== '') {
             $search = $filters['search'];
             $query->where(function (Builder $builder) use ($search): void {
-                $builder->where('number', 'like', "%{$search}%")
-                    ->orWhereHas('contract.client', fn (Builder $client) => $client->where('name', 'like', "%{$search}%")
-                        ->orWhere('trade_name', 'like', "%{$search}%"));
+                $builder->where(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'number', $search))
+                    ->orWhereHas('contract.client', fn (Builder $client) => $client
+                        ->where(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'name', $search))
+                        ->orWhere(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'trade_name', $search)));
             });
         }
         $this->applyDateFilters($query, $filters, 'issued_at', $this->timezone($ctx));
@@ -187,8 +192,7 @@ final class OfficeErpQueries
                 : $query->whereDoesntHave('reversal');
         }
         if (isset($filters['search']) && $filters['search'] !== '') {
-            $search = $filters['search'];
-            $query->where('reference', 'like', "%{$search}%");
+            LiteralSearch::whereContains($query, 'reference', $filters['search']);
         }
         if (isset($filters['from_on'])) {
             $query->whereDate('received_on', '>=', $filters['from_on']);
