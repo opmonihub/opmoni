@@ -52,7 +52,7 @@ function parentRemove(node: Node) {
 function passThrough(): Vue.Component {
   return { setup: (_props, ctx) => () => Vue.h('section', {}, [ctx.slots.default?.(), ctx.slots.body?.(), ctx.slots.footer?.(), ctx.slots.description?.(), ctx.slots['empty']?.()]) }
 }
-function harness(path: string, recordData = detail, initialRecoveryKey: string | null = null) {
+function harness(path: string, recordData = detail, initialRecoveryKey: string | null = null, listRows: unknown[] = [recordData]) {
   const user = Vue.ref({ id: 5 })
   const account = Vue.ref({ id: 8, status: 'active', role: 'admin' })
   const calls: Array<{ path: string, body?: Record<string, unknown> }> = []
@@ -67,7 +67,7 @@ function harness(path: string, recordData = detail, initialRecoveryKey: string |
     ref: Vue.ref, computed: Vue.computed, watch: Vue.watch,
     useAccessApi: () => ({ api: async (url: string, options?: { params?: unknown, body?: Record<string, unknown> }) => {
       calls.push({ path: url, body: options?.body })
-      return url.endsWith('/12') ? { data: recordData } : { data: [recordData], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }
+      return url.endsWith('/12') ? { data: recordData } : { data: listRows, meta: { current_page: 1, last_page: 1, per_page: 25, total: listRows.length } }
     } }),
     useAuth: () => ({ user, currentAccount: account }), useState: () => Vue.ref(1), useOfficeErpContext: () => context,
     useOfficeErpCommand: () => ({
@@ -128,6 +128,27 @@ test('renders the contracts list SFC and keeps agreement and licence statuses di
     assert.match(text(page.root), /Vigente/)
     assert.match(text(page.root), /Ativa/)
     assert.ok(page.calls.some(call => call.path === '/erp-commercial/contracts'))
+  } finally {
+    page.app.unmount()
+  }
+})
+
+test('labels every canonical agreement state and never describes unknown states as canceled', async () => {
+  const rows = ['draft', 'awaiting_owner', 'accepted', 'effective', 'canceled', 'future_state'].map((agreement_status, index) => ({
+    ...detail,
+    id: 20 + index,
+    agreement_status
+  }))
+  const page = harness('pages/gestao-erp/assinaturas/index.vue', detail, null, rows)
+  try {
+    await settle()
+    const rendered = text(page.root)
+    assert.match(rendered, /Rascunho/)
+    assert.match(rendered, /Aguardando confirmação do responsável/)
+    assert.match(rendered, /Aceito · aguardando ativação/)
+    assert.match(rendered, /Vigente/)
+    assert.match(rendered, /Cancelado/)
+    assert.match(rendered, /Situação não reconhecida/)
   } finally {
     page.app.unmount()
   }

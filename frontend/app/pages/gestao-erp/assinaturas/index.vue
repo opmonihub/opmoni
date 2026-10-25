@@ -47,6 +47,13 @@ const columns: TableColumn<OfficeErpContractRow>[] = [
   { id: 'licence', header: 'Licença' },
   { id: 'actions', header: '' }
 ]
+const agreementStatusLabels: Record<string, string> = {
+  draft: 'Rascunho',
+  awaiting_owner: 'Aguardando confirmação do responsável',
+  accepted: 'Aceito · aguardando ativação',
+  effective: 'Vigente',
+  canceled: 'Cancelado'
+}
 
 async function loadContracts() {
   const request = ++requestGeneration
@@ -163,7 +170,7 @@ watch(identityStamp, () => {
             </template>
             <template #agreement-cell="{ row }">
               <UBadge :color="row.original.agreement_status === 'effective' ? 'success' : 'neutral'" variant="subtle">
-                {{ row.original.agreement_status === 'effective' ? 'Vigente' : row.original.agreement_status === 'accepted' ? 'Aceito · aguardando ativação' : 'Cancelado' }}
+                {{ agreementStatusLabels[row.original.agreement_status] ?? 'Situação não reconhecida' }}
               </UBadge>
             </template>
             <template #licence-cell="{ row }">
