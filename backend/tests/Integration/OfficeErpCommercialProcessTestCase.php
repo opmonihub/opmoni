@@ -3,6 +3,7 @@
 namespace Tests\Integration;
 
 use App\Erp\Commercial\OfficeErpBalances;
+use App\Erp\Commercial\OfficeErpCalendar;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpMoney;
@@ -62,6 +63,9 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Erp/Commercial/OfficeErpReceiptProofs.php',
         'app/Erp/Commercial/OfficeErpOperations.php',
         'app/Erp/Commercial/OfficeErpOwnerAcceptance.php',
+        'app/Erp/Commercial/OfficeErpContracts.php',
+        'app/Erp/Commercial/OfficeErpRecurringBilling.php',
+        'app/Erp/Commercial/OfficeErpCalendar.php',
         'app/Erp/Commercial/OfficeErpOwnerInvitations.php',
         'app/Erp/Commercial/OfficeErpInvitationContinuation.php',
         'app/Erp/Commercial/OfficeErpRecords.php',
@@ -79,6 +83,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Models/Erp/Commercial/OfficeErpReceiptProof.php',
         'app/Models/Erp/Commercial/OfficeErpReceiptReversal.php',
         'app/Jobs/CleanExpiredOfficeErpProofs.php',
+        'app/Jobs/GenerateOfficeErpInvoices.php',
         'app/Models/Erp/ErpCompany.php',
         'app/Models/Erp/ErpEstablishment.php',
         'app/Models/Erp/ErpCompanyMembership.php',
@@ -97,6 +102,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Http/Middleware/SerializedAccessSession.php',
         'app/Http/Controllers/Api/V1/Admin/PlanController.php',
         'app/Http/Requests/Admin/UpdatePlanRequest.php',
+        'app/Tenant/CurrentTenant.php',
         'database/factories/Erp/ErpCompanyFactory.php',
         'database/factories/Erp/ErpCompanyMembershipFactory.php',
         'database/factories/Erp/ErpPlanFactory.php',
@@ -261,6 +267,35 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     }
 
     /** @return array<string, mixed> */
+    protected function recurringRaceFixture(): array
+    {
+        $fixture = $this->effectiveInvoiceFixture();
+        $contract = $fixture['contracts'][0];
+        $initialInvoice = $this->issueRaceInvoice($fixture, $contract);
+        $revision = $contract->currentRevision()->firstOrFail();
+        $period = app(OfficeErpCalendar::class)->periodAtMonthOffset(
+            $contract->service_anchor_on->toDateString(),
+            (int) $revision->interval_months,
+            (int) $revision->interval_months,
+            $contract->billing_timezone,
+            (int) $revision->due_in_days,
+        );
+        $contract->forceFill([
+            'next_period_index' => 2,
+            'next_period_month_offset' => (int) $revision->interval_months,
+        ])->save();
+        $fixture['contracts'][0] = $contract->fresh();
+        $fixture['recurring_period'] = $period;
+        $fixture['recurring_now'] = CarbonImmutable::parse($period['start'].' 12:00:00', $contract->billing_timezone)->toIso8601String();
+        $fixture['recurring_invoice_year'] = (int) CarbonImmutable::parse($fixture['recurring_now'])->format('Y');
+        $fixture['recurring_invoice_sequence'] = (int) $initialInvoice->issued_at->format('Y') === $fixture['recurring_invoice_year'] ? 2 : 1;
+        $fixture['initial_invoice_id'] = (int) $initialInvoice->id;
+        $fixture['initial_invoice_snapshot'] = $initialInvoice->getAttributes();
+
+        return $fixture;
+    }
+
+    /** @return array<string, mixed> */
     protected function ownerInvitationFixture(array $office, User $owner, ?string $cnpj = null): array
     {
         $context = $office['context'];
@@ -347,6 +382,34 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             'membership_id' => $fixture['membership_id'],
             'contract_id' => (int) $fixture['contracts'][0]->id,
             ...$payload,
+        ];
+    }
+
+    /** @param array<string, mixed> $fixture @return array<string, mixed> */
+    protected function cancellationPayload(array $fixture, OfficeErpContract $contract, string $key, bool $holdAccountLock = false): array
+    {
+        return [
+            'account_id' => $fixture['account_id'],
+            'actor_id' => $fixture['actor_id'],
+            'membership_id' => $fixture['membership_id'],
+            'contract_id' => (int) $contract->id,
+            'mode' => 'immediate',
+            'reason' => 'Concurrent recurring cancellation',
+            'idempotency_key' => $key,
+            'frozen_now' => $fixture['recurring_now'],
+            'hold_account_lock' => $holdAccountLock,
+        ];
+    }
+
+    /** @param array<string, mixed> $fixture @return array<string, mixed> */
+    protected function recurringPayload(array $fixture, OfficeErpContract $contract, bool $holdAccountLock = false): array
+    {
+        return [
+            'contract_id' => (int) $contract->id,
+            'now' => $fixture['recurring_now'],
+            'frozen_now' => $fixture['recurring_now'],
+            'batch_size' => 1,
+            'hold_account_lock' => $holdAccountLock,
         ];
     }
 

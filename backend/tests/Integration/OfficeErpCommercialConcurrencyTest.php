@@ -28,6 +28,102 @@ use Illuminate\Support\Facades\Storage;
 
 class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestCase
 {
+    public function test_cancellation_winning_account_lock_stops_the_next_recurring_period(): void
+    {
+        $fixture = $this->recurringRaceFixture();
+        $contract = $fixture['contracts'][0];
+        $cancelKey = 'race-cancel-wins-'.bin2hex(random_bytes(6));
+        $cancellation = $this->worker('cancel_contract', $this->cancellationPayload($fixture, $contract, $cancelKey, true));
+        $this->waitFor($cancellation, 'held');
+        $this->assertWorkerHeldLock($cancellation, 'accounts');
+        $generation = $this->worker('generate_recurring', $this->recurringPayload($fixture, $contract));
+        $this->assertWaitingOnAccountLock($generation);
+        $this->release($cancellation);
+        $cancelResult = $this->workerResult($cancellation);
+        $generationResult = $this->workerResult($generation);
+
+        self::assertSame(201, $cancelResult['status']);
+        self::assertSame('canceled', $cancelResult['agreement_status']);
+        self::assertSame($fixture['recurring_period']['start'], $cancelResult['cancel_effective_on']);
+        self::assertSame(200, $generationResult['status']);
+        self::assertSame([], $generationResult['generated']);
+        self::assertFalse($generationResult['pending']);
+        self::assertSame(2, (int) DB::table('office_erp_contracts')->where('id', $contract->id)->value('next_period_index'));
+        self::assertSame(1, (int) DB::table('office_erp_contracts')->where('id', $contract->id)->value('next_period_month_offset'));
+        self::assertSame('released', DB::table('office_erp_licence_allocations')->where('contract_id', $contract->id)->value('state'));
+        self::assertSame('canceled', ErpSubscription::query()->where('erp_company_id', $contract->erp_company_id)->value('status'));
+        self::assertSame(1, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+        self::assertSame($fixture['initial_invoice_snapshot'], OfficeErpInvoice::query()->findOrFail($fixture['initial_invoice_id'])->getAttributes());
+        self::assertSame(0, OfficeErpInvoice::query()->where('contract_id', $contract->id)->whereDate('period_start', $fixture['recurring_period']['start'])->count());
+        self::assertSame(1, DB::table('office_erp_commercial_operations')->where('action', 'contract.cancel')->where('idempotency_key', $cancelKey)->count());
+        self::assertNull($generationResult['tenant_account_id']);
+    }
+
+    public function test_generation_winning_account_lock_issues_period_before_cancellation(): void
+    {
+        $fixture = $this->recurringRaceFixture();
+        $contract = $fixture['contracts'][0];
+        $cancelKey = 'race-generate-wins-'.bin2hex(random_bytes(6));
+        $generation = $this->worker('generate_recurring', $this->recurringPayload($fixture, $contract, true));
+        $this->waitFor($generation, 'held');
+        $this->assertWorkerHeldLock($generation, 'accounts');
+        $cancellation = $this->worker('cancel_contract', $this->cancellationPayload($fixture, $contract, $cancelKey));
+        $this->assertWaitingOnAccountLock($cancellation);
+        $this->release($generation);
+        $generationResult = $this->workerResult($generation);
+        $cancelResult = $this->workerResult($cancellation);
+
+        self::assertSame(200, $generationResult['status']);
+        self::assertCount(1, $generationResult['generated']);
+        self::assertFalse($generationResult['pending']);
+        self::assertSame(3, $generationResult['next_period_index']);
+        self::assertSame(2, $generationResult['next_period_month_offset']);
+        self::assertSame(201, $cancelResult['status']);
+        self::assertSame('canceled', $cancelResult['agreement_status']);
+        self::assertSame('canceled', DB::table('office_erp_contracts')->where('id', $contract->id)->value('agreement_status'));
+        self::assertSame('released', DB::table('office_erp_licence_allocations')->where('contract_id', $contract->id)->value('state'));
+        self::assertSame('canceled', ErpSubscription::query()->where('erp_company_id', $contract->erp_company_id)->value('status'));
+        self::assertSame($fixture['initial_invoice_snapshot'], OfficeErpInvoice::query()->findOrFail($fixture['initial_invoice_id'])->getAttributes());
+        $generatedInvoice = OfficeErpInvoice::query()->where('contract_id', $contract->id)->whereDate('period_start', $fixture['recurring_period']['start'])->firstOrFail();
+        self::assertSame($generationResult['generated'][0], (int) $generatedInvoice->id);
+        self::assertSame('issued', $generatedInvoice->document_status);
+        self::assertSame(2, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+        self::assertSame(1, DB::table('office_erp_commercial_operations')->where('action', 'contract.cancel')->where('idempotency_key', $cancelKey)->count());
+        self::assertNull($generationResult['tenant_account_id']);
+    }
+
+    public function test_overlapping_recurring_generators_issue_one_period_and_advance_once(): void
+    {
+        $fixture = $this->recurringRaceFixture();
+        $contract = $fixture['contracts'][0];
+        $first = $this->worker('generate_recurring', $this->recurringPayload($fixture, $contract, true));
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldLock($first, 'accounts');
+        $second = $this->worker('generate_recurring', $this->recurringPayload($fixture, $contract));
+        $this->assertWaitingOnAccountLock($second);
+        $this->release($first);
+        $results = [$this->workerResult($first), $this->workerResult($second)];
+
+        self::assertSame(200, $results[0]['status']);
+        self::assertSame(200, $results[1]['status']);
+        self::assertCount(1, $results[0]['generated']);
+        self::assertSame([], $results[1]['generated']);
+        self::assertSame([3, 3], array_column($results, 'next_period_index'));
+        self::assertSame([2, 2], array_column($results, 'next_period_month_offset'));
+        self::assertSame([false, false], array_column($results, 'pending'));
+        self::assertSame([null, null], array_column($results, 'tenant_account_id'));
+        self::assertSame(2, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+        $issued = OfficeErpInvoice::query()->where('contract_id', $contract->id)->whereDate('period_start', $fixture['recurring_period']['start'])->get();
+        self::assertCount(1, $issued);
+        self::assertSame($results[0]['generated'][0], (int) $issued->sole()->id);
+        self::assertSame(sprintf('ERP-%d-%06d', $fixture['recurring_invoice_year'], $fixture['recurring_invoice_sequence']), $issued->sole()->number);
+        self::assertSame($fixture['initial_invoice_snapshot'], OfficeErpInvoice::query()->findOrFail($fixture['initial_invoice_id'])->getAttributes());
+        self::assertSame(1, DB::table('office_erp_commercial_operations')
+            ->where('action', 'billing.generate')
+            ->where('idempotency_key', 'recurring:'.$contract->id.':'.$fixture['recurring_period']['start'].':'.$fixture['recurring_period']['end'])
+            ->count());
+    }
+
     public function test_two_authenticated_acceptances_replay_one_invitation_result(): void
     {
         $office = $this->commercialFixture(2);

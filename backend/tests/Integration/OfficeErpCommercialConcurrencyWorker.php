@@ -2,6 +2,7 @@
 
 namespace Tests\Integration;
 
+use App\Erp\Commercial\OfficeErpContracts;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpInvitationContinuation;
 use App\Erp\Commercial\OfficeErpInvoices;
@@ -10,6 +11,7 @@ use App\Erp\Commercial\OfficeErpOwnerAcceptance;
 use App\Erp\Commercial\OfficeErpReceiptProofs;
 use App\Erp\Commercial\OfficeErpReceipts;
 use App\Erp\Commercial\OfficeErpRecords;
+use App\Erp\Commercial\OfficeErpRecurringBilling;
 use App\Http\Controllers\Api\V1\Admin\PlanController;
 use App\Http\Requests\Admin\UpdatePlanRequest;
 use App\Models\Account;
@@ -22,6 +24,7 @@ use App\Models\Erp\Commercial\OfficeErpReceipt;
 use App\Models\Plan;
 use App\Models\User;
 use App\Support\CurrentAccount;
+use App\Tenant\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\Events\QueryExecuted;
@@ -52,11 +55,11 @@ final class OfficeErpCommercialConcurrencyWorker
 
         $request = Request::create('http://localhost:3000');
         app()->instance('request', $request);
-        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'remove_allowance'], true)) {
+        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'remove_allowance', 'cancel_contract', 'generate_recurring'], true)) {
             throw new RuntimeException('Unsupported action in the accepted commercial race subset: '.$input['action']);
         }
         $context = null;
-        if (! in_array($input['action'], ['owner_accept', 'remove_allowance'], true)) {
+        if (! in_array($input['action'], ['owner_accept', 'remove_allowance', 'generate_recurring'], true)) {
             $account = Account::query()->findOrFail($input['account_id']);
             $actor = User::query()->findOrFail($input['actor_id']);
             $membership = AccountMembership::query()
@@ -108,7 +111,7 @@ final class OfficeErpCommercialConcurrencyWorker
                 Carbon::setTestNow($frozenNow);
             }
             $contract = null;
-            if (! in_array($input['action'], ['owner_accept', 'remove_allowance'], true)) {
+            if (! in_array($input['action'], ['owner_accept', 'remove_allowance', 'generate_recurring'], true)) {
                 $contract = OfficeErpRecords::query($context, OfficeErpContract::class)
                     ->whereKey($input['contract_id'])
                     ->firstOrFail();
@@ -168,6 +171,35 @@ final class OfficeErpCommercialConcurrencyWorker
                     'contract_id' => (int) $contract->id,
                     'company_id' => (int) $contract->erp_company_id,
                     'agreement_status' => (string) $contract->agreement_status,
+                ];
+            } elseif ($input['action'] === 'cancel_contract') {
+                app(OfficeErpContracts::class)->cancel(
+                    $context,
+                    $contract,
+                    (string) $input['mode'],
+                    (string) $input['reason'],
+                    (string) $input['idempotency_key'],
+                );
+                $storedContract = DB::table('office_erp_contracts')->where('id', $contract->id)->first();
+                $result = [
+                    'status' => 201,
+                    'agreement_status' => $storedContract->agreement_status,
+                    'cancel_effective_on' => $storedContract->cancel_effective_on,
+                ];
+            } elseif ($input['action'] === 'generate_recurring') {
+                $billingResult = app(OfficeErpRecurringBilling::class)->generate(
+                    (int) $input['contract_id'],
+                    CarbonImmutable::parse($input['now']),
+                    (int) ($input['batch_size'] ?? 50),
+                );
+                $storedContract = DB::table('office_erp_contracts')->where('id', $input['contract_id'])->first();
+                $result = [
+                    'status' => 200,
+                    'generated' => $billingResult['generated'],
+                    'pending' => $billingResult['pending'],
+                    'next_period_index' => $storedContract->next_period_index === null ? null : (int) $storedContract->next_period_index,
+                    'next_period_month_offset' => $storedContract->next_period_month_offset === null ? null : (int) $storedContract->next_period_month_offset,
+                    'tenant_account_id' => app(CurrentTenant::class)->accountId,
                 ];
             } else {
                 $admin = User::query()->findOrFail($input['admin_id']);
