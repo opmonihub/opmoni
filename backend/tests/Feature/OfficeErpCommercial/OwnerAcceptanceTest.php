@@ -4,6 +4,7 @@ namespace Tests\Feature\OfficeErpCommercial;
 
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpOwnerInvitations;
+use App\Erp\ErpCompanyProvisioning;
 use App\Models\AccountMembership;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpAuditEvent;
@@ -15,10 +16,12 @@ use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpSubscription;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Closure;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Testing\TestResponse;
 use Tests\OfficeErpCommercialTestCase;
 
@@ -109,6 +112,45 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
         self::assertSame('accepted', OfficeErpContract::query()->findOrFail($issued['contract_id'])->agreement_status);
         self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $issued['contract_id'])->value('state'));
         self::assertSame(1, ErpCompany::query()->whereKey($companyId)->count());
+    }
+
+    public function test_committed_acceptance_replays_after_contract_becomes_effective_without_new_writes(): void
+    {
+        $issued = $this->issueInvitation();
+        $this->resolve($issued['token']);
+        $key = $this->operationKey();
+        $first = $this->accept($key, ['password' => 'new-owner-secret'])->assertCreated();
+        $companyId = (int) $first->json('data.company.id');
+        $owner = User::query()->where('email', 'owner@example.test')->firstOrFail();
+        $this->login($owner, 'new-owner-secret');
+
+        OfficeErpContract::query()->findOrFail($issued['contract_id'])
+            ->forceFill(['agreement_status' => 'effective'])
+            ->save();
+        $contractBefore = OfficeErpContract::query()->findOrFail($issued['contract_id'])->getAttributes();
+        $invitationBefore = OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id'])->getAttributes();
+        $allocationBefore = OfficeErpLicenceAllocation::query()->where('contract_id', $issued['contract_id'])->firstOrFail()->getAttributes();
+        $before = [
+            ErpCompany::query()->count(),
+            ErpCompanyMembership::query()->count(),
+            ErpSubscription::query()->count(),
+            OfficeErpCommercialOperation::query()->count(),
+            OfficeErpAuditEvent::query()->count(),
+        ];
+
+        $this->accept($key)->assertOk()->assertJsonPath('data.company.id', $companyId);
+
+        self::assertSame($before, [
+            ErpCompany::query()->count(),
+            ErpCompanyMembership::query()->count(),
+            ErpSubscription::query()->count(),
+            OfficeErpCommercialOperation::query()->count(),
+            OfficeErpAuditEvent::query()->count(),
+        ]);
+        self::assertSame('effective', OfficeErpContract::query()->findOrFail($issued['contract_id'])->agreement_status);
+        self::assertSame($contractBefore, OfficeErpContract::query()->findOrFail($issued['contract_id'])->getAttributes());
+        self::assertSame($invitationBefore, OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id'])->getAttributes());
+        self::assertSame($allocationBefore, OfficeErpLicenceAllocation::query()->where('contract_id', $issued['contract_id'])->firstOrFail()->getAttributes());
     }
 
     public function test_existing_identity_keeps_password_and_office_memberships(): void
@@ -207,19 +249,61 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
     public function test_cnpj_match_never_adopts_an_existing_company_without_explicit_owner_choice(): void
     {
         $issued = $this->issueInvitation();
-        $owner = User::factory()->create(['email' => 'owner@example.test']);
         $company = ErpCompany::factory()->create(['cnpj' => $issued['client']->tax_id]);
-        ErpCompanyMembership::factory()->create(['erp_company_id' => $company->id, 'user_id' => $owner->id, 'role' => 'owner']);
         $this->resolve($issued['token']);
-        $this->login($owner);
+        $countsBefore = [
+            User::query()->count(),
+            ErpCompany::query()->count(),
+            ErpCompanyMembership::query()->count(),
+            ErpEstablishment::query()->count(),
+            ErpSubscription::query()->count(),
+            OfficeErpCommercialOperation::query()->count(),
+            OfficeErpAuditEvent::query()->count(),
+        ];
 
-        $this->accept($this->operationKey())
-            ->assertStatus(503);
+        $this->accept($this->operationKey(), ['password' => 'new-owner-secret'])
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'cnpj_company_conflict');
 
+        self::assertSame($countsBefore, [
+            User::query()->count(),
+            ErpCompany::query()->count(),
+            ErpCompanyMembership::query()->count(),
+            ErpEstablishment::query()->count(),
+            ErpSubscription::query()->count(),
+            OfficeErpCommercialOperation::query()->count(),
+            OfficeErpAuditEvent::query()->count(),
+        ]);
         self::assertSame(1, ErpCompany::query()->where('cnpj', $issued['client']->tax_id)->count());
+        self::assertDatabaseMissing('users', ['email' => 'owner@example.test']);
         self::assertNull(OfficeErpContract::query()->findOrFail($issued['contract_id'])->erp_company_id);
         self::assertSame('reserved', OfficeErpLicenceAllocation::query()->where('contract_id', $issued['contract_id'])->value('state'));
         self::assertSame('pending', OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id'])->status);
+    }
+
+    public function test_unrelated_company_provisioning_unique_violation_is_propagated(): void
+    {
+        $issued = $this->issueInvitation();
+        $this->resolve($issued['token']);
+        $pdoException = new \PDOException('Unrelated membership unique violation');
+        $pdoException->errorInfo = [
+            '23000',
+            19,
+            'UNIQUE constraint failed: erp_company_memberships.erp_company_id, erp_company_memberships.user_id',
+        ];
+        $exception = new UniqueConstraintViolationException('sqlite', 'insert into erp_company_memberships', [], $pdoException);
+        $this->mock(ErpCompanyProvisioning::class)
+            ->shouldReceive('createCompanyForOwner')
+            ->once()
+            ->andThrow($exception);
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->accept($this->operationKey(), ['password' => 'new-owner-secret']);
+            self::fail('An unrelated unique constraint violation must propagate.');
+        } catch (UniqueConstraintViolationException $caught) {
+            self::assertSame($exception, $caught);
+        }
     }
 
     public function test_explicit_adoption_rejects_a_directly_owned_company_with_a_different_cnpj(): void

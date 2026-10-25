@@ -16,7 +16,9 @@ use App\Models\User;
 use App\Services\BrazilianTaxId;
 use App\Support\AccessSession;
 use App\Support\ErpSession;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -123,10 +125,21 @@ final class OfficeErpOwnerAcceptance
                             ->first();
                         abort_unless($membership, 403, 'direct_company_owner_required');
                     } else {
-                        $company = $this->provisioning->createCompanyForOwner($owner, [
-                            'name' => $client->name,
-                            'cnpj' => $this->taxId->normalize((string) $client->tax_id),
-                        ]);
+                        try {
+                            $company = $this->provisioning->createCompanyForOwner($owner, [
+                                'name' => $client->name,
+                                'cnpj' => $this->taxId->normalize((string) $client->tax_id),
+                            ]);
+                        } catch (UniqueConstraintViolationException $exception) {
+                            if (! $this->isCompanyCnpjConflict($exception)) {
+                                throw $exception;
+                            }
+
+                            abort(response()->json([
+                                'code' => 'cnpj_company_conflict',
+                                'message' => 'Já existe uma empresa cadastrada com este CNPJ. Escolha explicitamente uma empresa da qual você seja proprietário.',
+                            ], 409));
+                        }
                     }
 
                     $this->allocator->occupy($context, $contract, $company);
@@ -185,7 +198,7 @@ final class OfficeErpOwnerAcceptance
             ->firstOrFail();
         [$account, $subscription, , $allowance] = $this->admission->lockCommercialAggregate($context);
         abort_unless($account->status === 'active', 403, 'resale_disabled');
-        $companyIdToLock = $targetCompanyId ?? ($candidate->agreement_status === 'accepted' ? $candidate->erp_company_id : null);
+        $companyIdToLock = $targetCompanyId ?? (in_array($candidate->agreement_status, ['accepted', 'effective'], true) ? $candidate->erp_company_id : null);
         $company = $companyIdToLock === null
             ? null
             : ErpCompany::query()->whereKey($companyIdToLock)->lockForUpdate()->firstOrFail();
@@ -227,7 +240,7 @@ final class OfficeErpOwnerAcceptance
         }
 
         if ($invitation->status === 'consumed') {
-            abort_unless($contract->agreement_status === 'accepted'
+            abort_unless(in_array($contract->agreement_status, ['accepted', 'effective'], true)
                 && $contract->erp_company_id !== null
                 && ($targetCompanyId === null || (int) $contract->erp_company_id === (int) $targetCompanyId)
                 && $allocation?->state === 'occupied'
@@ -259,5 +272,21 @@ final class OfficeErpOwnerAcceptance
             abort_unless($this->taxId->normalize((string) $company->cnpj) === $this->taxId->normalize((string) $client->tax_id), 422, 'company_cnpj_mismatch');
             abort_unless($owner !== null, 403, 'direct_company_owner_required');
         }
+    }
+
+    private function isCompanyCnpjConflict(UniqueConstraintViolationException $exception): bool
+    {
+        $diagnostic = (string) ($exception->errorInfo[2] ?? '');
+
+        return match (DB::getDriverName()) {
+            'pgsql' => ($exception->errorInfo[0] ?? null) === '23505'
+                && preg_match('/unique constraint "erp_companies_cnpj_unique"/', $diagnostic) === 1,
+            'sqlite' => ($exception->errorInfo[0] ?? null) === '23000'
+                && $diagnostic === 'UNIQUE constraint failed: erp_companies.cnpj',
+            'mysql' => ($exception->errorInfo[0] ?? null) === '23000'
+                && (int) ($exception->errorInfo[1] ?? 0) === 1062
+                && preg_match('/for key [\'`]erp_companies_cnpj_unique[\'`]/', $diagnostic) === 1,
+            default => false,
+        };
     }
 }
