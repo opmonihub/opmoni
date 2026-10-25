@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpAdmission;
+use App\Erp\Commercial\OfficeErpDelinquency;
 use App\Erp\Commercial\OfficeErpOperations;
 use App\Erp\Commercial\OfficeErpSalesPlans;
 use App\Erp\ErpOperationJournal;
@@ -13,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 
 final class OfficeErpOperationController extends Controller
 {
-    public function __invoke(Request $request, string $key, OfficeErpAdmission $admission, OfficeErpOperations $operations, ErpOperationJournal $journal, OfficeErpSalesPlans $plans): JsonResponse
+    public function __invoke(Request $request, string $key, OfficeErpAdmission $admission, OfficeErpOperations $operations, ErpOperationJournal $journal, OfficeErpSalesPlans $plans, OfficeErpDelinquency $delinquency): JsonResponse
     {
         $routeKey = $key;
         $headerKey = $request->header('Idempotency-Key');
@@ -29,7 +30,13 @@ final class OfficeErpOperationController extends Controller
         $outcome = $operations->lookup(
             $ctx,
             $validatedKey,
-            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey): void {
+            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey, $delinquency): void {
+                if ($action === 'policy.configure') {
+                    $delinquency->authorizeOperation($ctx, $action, $payload);
+
+                    return;
+                }
+
                 $planId = $payload['sales_plan_id'] ?? null;
                 abort_unless($planId === null || is_int($planId), 409);
                 $plans->authorizeOperation($ctx, $admission, $action, $payload, $planId, $validatedKey);
