@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import subprocess
 
+from listener import verify_listener_owner
+
 if not __debug__:
     raise RuntimeError('Runtime verification requires active Python assertions')
 
@@ -54,8 +56,9 @@ proc = Path('/proc', str(identity['pid']))
 assert (proc / 'cwd').resolve() == Path(root, 'frontend'), "Unexpected frontend process directory"
 command = (proc / 'cmdline').read_bytes().split(b'\0')
 assert b'node_modules/nuxt/bin/nuxt.mjs' in command and b'127.0.0.1' in command and b'3346' in command
+verify_listener_owner(identity['pid'], '127.0.0.1', 3346)
 # Compare only the expected private values; never output the process environment.
 environment = dict(entry.split(b'=', 1) for entry in (proc / 'environ').read_bytes().split(b'\0') if b'=' in entry)
 assert environment[b'NUXT_BACKEND_URL'] == b'http://127.0.0.1:18860'
 assert environment[b'NUXT_INGRESS_KEY']
-print("PASS: task ownership, whole-worktree mount/source contents, host frontend PID/cwd/loopback command, private dependencies, aliases, independent volumes, no workers/scheduler")
+print("PASS: task ownership, whole-worktree mount/source contents, host frontend PID/cwd and owned loopback listener, private dependencies, aliases, independent volumes, no workers/scheduler")
