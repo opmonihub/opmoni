@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import * as Vue from 'vue'
-import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import { compileVueComponent, evaluateVueBindings, vueSource } from './helpers/compileVueComponent.ts'
 import { formatOfficeErpMoney } from '../shared/utils/officeErpCommercial.ts'
 
 type HostNode = { tag?: string, text?: string, props: Record<string, unknown>, children: HostNode[], parent?: HostNode | null }
@@ -18,6 +18,30 @@ const report = {
   due_from: null,
   due_to: null
 }
+
+test('commercial shell tabs include all shipped pages and keep invoice descendants active', () => {
+  const tabsAt = (path: string) => evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { route: { path } }).pageTabs as Array<Array<{ label: string, to: string, active: boolean }>>
+  const expectedDestinations = [
+    ['Visão geral', '/gestao-erp'],
+    ['Ofertas', '/gestao-erp/planos'],
+    ['Clientes da carteira', '/gestao-erp/clientes'],
+    ['Assinaturas', '/gestao-erp/assinaturas'],
+    ['Faturas', '/gestao-erp/faturas'],
+    ['Recebimentos', '/gestao-erp/recebimentos'],
+    ['Configurações', '/gestao-erp/configuracoes']
+  ]
+  const overview = tabsAt('/gestao-erp').flat()
+  assert.deepEqual(overview.map(({ label, to }) => [label, to]), expectedDestinations)
+  assert.deepEqual(overview.filter(item => item.active).map(item => item.label), ['Visão geral'])
+
+  for (const path of ['/gestao-erp/faturas', '/gestao-erp/faturas/123', '/gestao-erp/faturas/123/imprimir']) {
+    const activeTabs = tabsAt(path).flat().filter(item => item.active).map(item => item.label)
+    assert.deepEqual(activeTabs, ['Faturas'], path)
+  }
+  assert.deepEqual(tabsAt('/gestao-erp/faturas-antigas').flat().filter(item => item.active).map(item => item.label), [])
+  assert.deepEqual(tabsAt('/gestao-erp/recebimentos').flat().filter(item => item.active).map(item => item.label), ['Recebimentos'])
+  assert.deepEqual(tabsAt('/gestao-erp/configuracoes').flat().filter(item => item.active).map(item => item.label), ['Configurações'])
+})
 
 function mountOverview(api: () => Promise<unknown>) {
   const root: HostNode = { props: {}, children: [] }

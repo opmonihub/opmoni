@@ -7,18 +7,28 @@ describe('office ERP sidebar entry', () => {
     assert.equal(isOfficeErpAdmin({ status: 'active', role: 'admin' }), true)
     assert.equal(isOfficeErpAdmin({ status: 'suspended', role: 'admin' }), false)
     assert.equal(isOfficeErpAdmin({ status: 'active', role: 'operador' }), false)
+    assert.equal(isOfficeErpAdmin({ status: 'active', role: 'super_admin' }), false)
     assert.equal(isOfficeErpAdmin(null), false)
   })
 
-  it('links the overview and every shipped ERP page from the sidebar', () => {
+  it('links every shipped commercial destination from the sidebar', () => {
     assert.deepEqual(officeErpSidebarItem('/gestao-erp/planos').children, [
       { label: 'Visão geral', to: '/gestao-erp', exact: true, active: false },
       { label: 'Ofertas', to: '/gestao-erp/planos', exact: true, active: true },
       { label: 'Clientes da carteira', to: '/gestao-erp/clientes', exact: true, active: false },
-      { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: false }
+      { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: false },
+      { label: 'Faturas', to: '/gestao-erp/faturas', exact: false, active: false },
+      { label: 'Recebimentos', to: '/gestao-erp/recebimentos', exact: true, active: false },
+      { label: 'Configurações', to: '/gestao-erp/configuracoes', exact: true, active: false }
     ])
     assert.equal(officeErpSidebarItem('/gestao-erp/clientes').children[2]?.active, true)
     assert.equal(officeErpSidebarItem('/gestao-erp/assinaturas/123').children[3]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/faturas').children[4]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/faturas/123/imprimir').children[4]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/recebimentos').children[5]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/configuracoes').children[6]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/faturas-antigas').children[4]?.active, false)
+    assert.equal(officeErpSidebarItem('/gestao-erp/faturas/123/imprimir').children[0]?.active, false)
   })
 
   it('links directly to the overview and marks the exact root route active', () => {
@@ -27,6 +37,7 @@ describe('office ERP sidebar entry', () => {
     assert.equal(item.children[0]?.active, true)
     assert.equal(item.active, true)
     assert.equal(sidebarOpenGroupFromPath('/gestao-erp'), 'gestao-erp')
+    assert.equal(officeErpSidebarItem('/gestao-erp/faturas/123/imprimir').children[0]?.active, false)
   })
 })
 

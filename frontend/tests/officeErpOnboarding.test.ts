@@ -563,7 +563,10 @@ describe('Office ERP seller navigation', () => {
       { label: 'Visão geral', to: '/gestao-erp', exact: true, active: false },
       { label: 'Ofertas', to: '/gestao-erp/planos', exact: true, active: false },
       { label: 'Clientes da carteira', to: '/gestao-erp/clientes', exact: true, active: true },
-      { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: false }
+      { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: false },
+      { label: 'Faturas', to: '/gestao-erp/faturas', exact: false, active: false },
+      { label: 'Recebimentos', to: '/gestao-erp/recebimentos', exact: true, active: false },
+      { label: 'Configurações', to: '/gestao-erp/configuracoes', exact: true, active: false }
     ])
   })
 })

@@ -25,6 +25,21 @@ const pageTabs: NavigationMenuItem[][] = [[{
   icon: 'i-lucide-file-key',
   to: '/gestao-erp/assinaturas',
   active: route.path.startsWith('/gestao-erp/assinaturas')
+}, {
+  label: 'Faturas',
+  icon: 'i-lucide-receipt',
+  to: '/gestao-erp/faturas',
+  active: route.path === '/gestao-erp/faturas' || route.path.startsWith('/gestao-erp/faturas/')
+}, {
+  label: 'Recebimentos',
+  icon: 'i-lucide-banknote',
+  to: '/gestao-erp/recebimentos',
+  active: route.path === '/gestao-erp/recebimentos'
+}, {
+  label: 'Configurações',
+  icon: 'i-lucide-settings',
+  to: '/gestao-erp/configuracoes',
+  active: route.path === '/gestao-erp/configuracoes'
 }]]
 </script>
 
