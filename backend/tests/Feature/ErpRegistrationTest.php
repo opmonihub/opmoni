@@ -14,6 +14,7 @@ use Database\Seeders\PlanSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 class ErpRegistrationTest extends TestCase
@@ -212,6 +213,60 @@ class ErpRegistrationTest extends TestCase
                 'cnpj' => self::VALID_CNPJ,
             ])
             ->assertForbidden();
+
+        $this->assertDatabaseEmpty('users');
+        $this->assertDatabaseEmpty('accounts');
+        $this->assertDatabaseEmpty('account_memberships');
+        $this->assertDatabaseEmpty('erp_companies');
+        $this->getJson('/api/v1/registration-status')
+            ->assertOk()
+            ->assertJsonPath('registration_available', true);
+    }
+
+    public function test_subscription_creation_failure_rolls_back_new_owner_identity_and_company_setup(): void
+    {
+        $email = 'rollback-owner@example.test';
+        $identityWasCreatedBeforeSubscriptionFailure = false;
+        ErpSubscription::creating(function () use ($email, &$identityWasCreatedBeforeSubscriptionFailure): never {
+            $identityWasCreatedBeforeSubscriptionFailure = User::query()->where('email', $email)->exists();
+            throw new RuntimeException('Injected ERP subscription failure');
+        });
+
+        $this->withoutExceptionHandling();
+        try {
+            $this->withHeader('X-CSRF-Token', $this->csrf())->postJson('/api/v1/erp/register', [
+                'name' => 'Rollback Owner',
+                'email' => $email,
+                'password' => 'password123',
+                'company_name' => 'Rollback Company',
+                'cnpj' => self::VALID_CNPJ,
+            ]);
+            $this->fail('The injected subscription failure should abort registration.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Injected ERP subscription failure', $exception->getMessage());
+        }
+
+        $this->assertTrue($identityWasCreatedBeforeSubscriptionFailure, 'The failure must occur after creating the new global identity.');
+        $this->assertSame(1, User::query()->count());
+        $this->assertSame(1, Account::query()->count());
+        foreach ([
+            'erp_companies',
+            'erp_company_memberships',
+            'erp_subscriptions',
+            'erp_company_setup_states',
+            'erp_establishments',
+            'erp_units',
+            'erp_contacts',
+            'erp_invoice_schemes',
+            'erp_invoice_layouts',
+            'erp_plans',
+            'erp_plan_modules',
+        ] as $table) {
+            $this->assertDatabaseEmpty($table);
+        }
+        $this->assertDatabaseMissing('users', ['email' => $email]);
+        $this->assertDatabaseMissing('erp_companies', ['cnpj' => self::VALID_CNPJ]);
+        $this->assertDatabaseEmpty('account_memberships');
     }
 
     public function test_authenticated_user_creates_company_with_pending_subscription(): void
