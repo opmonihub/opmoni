@@ -249,6 +249,55 @@ describe('Office ERP policy settings page', () => {
     view.app.unmount()
   })
 
+  it('lets a replacement preview run after draft edits and keeps its loading state when the old request rejects', async () => {
+    const pending: Array<{ body: Record<string, unknown>, reject: (error: Error) => void, resolve: (value: unknown) => void }> = []
+    const view = fixture({
+      preview: body => new Promise((resolve, reject) => {
+        pending.push({ body, reject, resolve })
+      })
+    })
+    await flush()
+
+    const previewButton = () => find(view.root, node => node.tag === 'button' && renderText(node).includes('Pré-visualizar consequências'))[0]!
+    ;(previewButton().props.onClick as () => void)()
+    await flush()
+    assert.equal(pending.length, 1)
+    assert.equal(previewButton().props.disabled, true)
+
+    const toggle = find(view.root, node => node.props.role === 'switch')[0]!
+    ;(toggle.props['onUpdate:modelValue'] as (value: boolean) => void)(true)
+    await flush()
+    const graceDays = find(view.root, node => node.tag === 'input' && node.props.type === 'number')[0]!
+    ;(graceDays.props['onUpdate:modelValue'] as (value: number) => void)(5)
+    await flush()
+    const timezone = find(view.root, node => node.tag === 'input' && node.props.type !== 'number')[0]!
+    ;(timezone.props['onUpdate:modelValue'] as (value: string) => void)('America/Manaus')
+    await flush()
+
+    assert.equal(previewButton().props.disabled, false)
+    ;(previewButton().props.onClick as () => void)()
+    await flush()
+    assert.equal(pending.length, 2)
+    assert.deepEqual(pending[1]?.body, { mode: 'automatic', grace_days: 5, billing_timezone: 'America/Manaus', page: 1 })
+
+    pending[0]?.reject(new Error('Prévia antiga indisponível'))
+    await flush()
+    assert.equal(previewButton().props.disabled, true)
+    assert.doesNotMatch(renderText(view.root), /Prévia antiga indisponível/)
+
+    pending[1]?.resolve({ data: [{ contract_id: 9, client_name: 'Cliente atual', company_name: 'Empresa atual', current_status: 'active', resulting_status: 'past_due', outstanding: '30.00', overdue: true }], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 }, affected_count: 1 })
+    await flush()
+    assert.match(renderText(view.root), /Cliente atual/)
+
+    const save = find(view.root, node => node.tag === 'button' && renderText(node).includes('Salvar configuração'))[0]!
+    ;(save.props.onClick as () => void)()
+    await flush()
+    const confirm = find(view.root, node => node.tag === 'button' && renderText(node).includes('Confirmar ativação automática'))[0]
+    assert.ok(confirm)
+    assert.equal(confirm.props.disabled, false)
+    view.app.unmount()
+  })
+
   it('discards delayed preview callbacks after session or capability identity changes', async () => {
     for (const change of [
       () => { sessionGeneration.value++ },

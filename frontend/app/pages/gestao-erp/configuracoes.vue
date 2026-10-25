@@ -115,6 +115,7 @@ function clearProtectedState() {
 
 function invalidatePreview() {
   previewGeneration++
+  previewLoading.value = false
   preview.value = null
   previewError.value = ''
   page.value = 1
