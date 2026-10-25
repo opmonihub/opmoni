@@ -80,6 +80,29 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
         self::assertSame(1, ErpCompanyMembership::query()->where('erp_company_id', $companyId)->where('user_id', $owner->id)->count());
     }
 
+    public function test_committed_acceptance_replays_after_seller_loses_resale_rights(): void
+    {
+        $issued = $this->issueInvitation();
+        $this->resolve($issued['token']);
+        $key = $this->operationKey();
+        $first = $this->accept($key, ['password' => 'new-owner-secret'])->assertCreated();
+        $companyId = (int) $first->json('data.company.id');
+        $owner = User::query()->where('email', 'owner@example.test')->firstOrFail();
+        $this->login($owner, 'new-owner-secret');
+
+        $subscription = $issued['context']->account->subscription()->firstOrFail();
+        $plan = $subscription->plan()->firstOrFail();
+        $allowance = $plan->erp_commercial;
+        $allowance['enabled'] = false;
+        $plan->forceFill(['erp_commercial' => $allowance])->save();
+
+        $this->accept($key)->assertOk()->assertJsonPath('data.company.id', $companyId);
+
+        self::assertSame('accepted', OfficeErpContract::query()->findOrFail($issued['contract_id'])->agreement_status);
+        self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $issued['contract_id'])->value('state'));
+        self::assertSame(1, ErpCompany::query()->whereKey($companyId)->count());
+    }
+
     public function test_existing_identity_keeps_password_and_office_memberships(): void
     {
         $issued = $this->issueInvitation();

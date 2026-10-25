@@ -18,14 +18,19 @@ type ContinuationResponse = {
   operation_key?: string
   data?: InvitationData
 }
+type PendingAcceptance = { invitation_id: number, owner_email: string, expires_at: number }
+
+const pendingAcceptanceStorageKey = 'office-erp.owner-acceptance.pending'
+const pendingAcceptanceTtl = 15 * 60 * 1000
 
 definePageMeta({ layout: 'access' })
 useHead({ meta: [{ name: 'referrer', content: 'no-referrer' }] })
 
 const { api } = useAccessApi()
 const { user, refresh, logout } = useAuth()
-const state = ref<ContinuationResponse['state'] | 'loading' | 'retryable'>('loading')
+const state = ref<ContinuationResponse['state'] | 'loading' | 'retryable' | 'recovering' | 'recovery_required'>('loading')
 const invitation = ref<InvitationData | null>(null)
+const pendingAcceptance = ref<PendingAcceptance | null>(null)
 const operationKey = ref('')
 const selectedCompanyId = ref<number | null>(null)
 const busy = ref(false)
@@ -60,8 +65,60 @@ function applyContinuation(response: ContinuationResponse) {
   state.value = response.state
   operationKey.value = response.operation_key ?? ''
   invitation.value = response.data ?? null
+  const pending = pendingAcceptance.value
+  if (pending) {
+    const responseInvitation = response.data?.invitation
+    const identityMatches = responseInvitation
+      ? responseInvitation.id === pending.invitation_id && responseInvitation.owner_email.toLowerCase() === pending.owner_email
+      : ['missing', 'login_required'].includes(response.state)
+    if (!identityMatches || ['accepted', 'expired', 'invalid'].includes(response.state)) {
+      clearPendingAcceptance()
+    } else if (['valid', 'ready', 'missing'].includes(response.state)) {
+      state.value = 'recovery_required'
+    }
+  }
   if (response.state !== 'ready' && response.state !== 'accepted')
     selectedCompanyId.value = null
+}
+
+function clearPendingAcceptance() {
+  pendingAcceptance.value = null
+  try {
+    window.sessionStorage.removeItem(pendingAcceptanceStorageKey)
+  } catch { /* Session storage can be unavailable in restricted browsers. */ }
+}
+
+function restorePendingAcceptance() {
+  try {
+    const stored = window.sessionStorage.getItem(pendingAcceptanceStorageKey)
+    if (!stored)
+      return
+    const pending = JSON.parse(stored) as PendingAcceptance
+    if (Number.isInteger(pending.invitation_id)
+      && typeof pending.owner_email === 'string'
+      && Number.isFinite(pending.expires_at)
+      && pending.expires_at > Date.now()
+      && pending.expires_at <= Date.now() + pendingAcceptanceTtl) {
+      pendingAcceptance.value = pending
+      return
+    }
+  } catch { /* Invalid or unavailable storage is ignored. */ }
+  clearPendingAcceptance()
+}
+
+function rememberPendingAcceptance() {
+  const pending = invitation.value?.invitation
+  if (!pending)
+    return
+  const identity: PendingAcceptance = {
+    invitation_id: pending.id,
+    owner_email: pending.owner_email.toLowerCase(),
+    expires_at: Date.now() + pendingAcceptanceTtl
+  }
+  pendingAcceptance.value = identity
+  try {
+    window.sessionStorage.setItem(pendingAcceptanceStorageKey, JSON.stringify(identity))
+  } catch { /* In-memory recovery still prevents another password submission this page visit. */ }
 }
 
 function stripSecretFromAddress() {
@@ -100,10 +157,13 @@ async function loadCurrent() {
     applyContinuation(response)
   } catch (caught) {
     setRequestError(caught)
+    if (pendingAcceptance.value)
+      state.value = 'recovery_required'
   }
 }
 
 async function start() {
+  restorePendingAcceptance()
   const fragment = window.location.hash
   const token = new URLSearchParams(fragment.slice(1)).get('token')
   if (fragment)
@@ -133,6 +193,11 @@ async function retry() {
 async function accept(password?: string) {
   if (busy.value || !operationKey.value)
     return
+  const isNewOwner = !user.value
+  if (isNewOwner) {
+    rememberPendingAcceptance()
+    state.value = 'recovering'
+  }
   busy.value = true
   error.value = ''
   try {
@@ -146,11 +211,21 @@ async function accept(password?: string) {
       headers: { 'Idempotency-Key': operationKey.value },
       body
     })
-    if (!user.value)
+    if (isNewOwner)
       await refresh()
     await loadCurrent()
   } catch (caught) {
     error.value = apiFailure(caught).message
+    if (isNewOwner) {
+      try {
+        await refresh()
+      } catch { /* Reconcile through the session continuation even if identity refresh is unavailable. */ }
+      await loadCurrent()
+      if (pendingAcceptance.value && !['accepted', 'login_required', 'identity_mismatch'].includes(state.value)) {
+        state.value = 'recovery_required'
+        error.value = 'A aceitação ainda não foi confirmada. Não envie a senha novamente; verifique o status ou entre com a conta do responsável.'
+      }
+    }
   } finally {
     busy.value = false
   }
@@ -185,6 +260,32 @@ onBeforeUnmount(() => {
         <USkeleton class="h-24 w-full" />
         <span class="sr-only">Validando convite…</span>
       </div>
+
+      <div v-else-if="state === 'recovering'" role="status" class="space-y-3">
+        <p class="text-sm text-muted">
+          Confirmando a criação da conta e o resultado do convite…
+        </p>
+      </div>
+
+      <UAlert
+        v-else-if="state === 'recovery_required'"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-refresh-cw"
+        title="Confirme o resultado antes de continuar"
+        :description="error || 'Não foi possível confirmar o resultado do envio. Não envie a senha novamente; verifique o status ou entre com a conta do responsável.'"
+      >
+        <template #actions>
+          <UButton label="Verificar novamente" :loading="busy" @click="retry" />
+          <UButton
+            v-if="!user"
+            to="/login"
+            label="Entrar com a conta do responsável"
+            color="neutral"
+            variant="outline"
+          />
+        </template>
+      </UAlert>
 
       <UAlert
         v-else-if="state === 'retryable'"

@@ -33,6 +33,12 @@ function text(node: Node): string {
 function nodes(node: Node, predicate: (candidate: Node) => boolean): Node[] {
   return [...(predicate(node) ? [node] : []), ...node.children.flatMap(child => nodes(child, predicate))]
 }
+async function flushPage() {
+  for (let index = 0; index < 5; index++) {
+    await new Promise(done => setImmediate(done))
+    await Vue.nextTick()
+  }
+}
 function mount(component: Vue.Component, registered: Record<string, Vue.Component>) {
   const root: Node = { props: {}, children: [] }
   const renderer = Vue.createRenderer({
@@ -63,14 +69,22 @@ function mount(component: Vue.Component, registered: Record<string, Vue.Componen
   return { app, root }
 }
 
-function harness(options: { hash?: string, user?: unknown, api: (path: string, config?: Record<string, unknown>) => Promise<unknown> }) {
+function harness(options: { hash?: string, user?: unknown, storage?: Map<string, string>, refresh?: () => Promise<unknown>, api: (path: string, config?: Record<string, unknown>) => Promise<unknown> }) {
   const calls: Array<{ path: string, config?: Record<string, unknown> }> = []
-  const storage = new Map<string, string>()
+  const storage = options.storage ?? new Map<string, string>()
   const originalWindow = globalThis.window
   const originalSessionStorage = globalThis.sessionStorage
   const url = new URL(`http://localhost:3000/erp/ativar${options.hash ?? ''}`)
+  const browserStorage = {
+    setItem(key: string, value: string) { storage.set(key, value) },
+    getItem: (key: string) => storage.get(key) ?? null,
+    removeItem(key: string) { storage.delete(key) }
+  }
+  const authUser = Vue.ref(options.user ?? null)
+  let restored = false
   const win = {
     location: url,
+    sessionStorage: browserStorage,
     history: {
       state: null,
       replaceState(_state: unknown, _title: string, next: string) {
@@ -80,7 +94,7 @@ function harness(options: { hash?: string, user?: unknown, api: (path: string, c
   }
   Object.assign(globalThis, {
     window: win,
-    sessionStorage: { setItem(key: string, value: string) { storage.set(key, value) }, getItem: (key: string) => storage.get(key) ?? null },
+    sessionStorage: browserStorage,
     definePageMeta() {}, useHead() {},
     useAccessApi: () => ({
       api: async (path: string, config?: Record<string, unknown>) => {
@@ -88,7 +102,16 @@ function harness(options: { hash?: string, user?: unknown, api: (path: string, c
         return options.api(path, config)
       }
     }),
-    useAuth: () => ({ user: Vue.ref(options.user ?? null), refresh: async () => {}, logout: async () => {} }),
+    useAuth: () => ({
+      user: authUser,
+      refresh: async () => {
+        const identity = await options.refresh?.()
+        if (identity !== undefined)
+          authUser.value = identity
+        return authUser.value
+      },
+      logout: async () => {}
+    }),
     defineNuxtLink: undefined
   })
   const component = compileVueComponent('pages/erp/ativar.vue', {
@@ -113,7 +136,11 @@ function harness(options: { hash?: string, user?: unknown, api: (path: string, c
     calls,
     storage,
     url,
+    user: authUser,
     restore() {
+      if (restored)
+        return
+      restored = true
       rendered.app.unmount()
       globalThis.window = originalWindow
       globalThis.sessionStorage = originalSessionStorage
@@ -194,6 +221,103 @@ test('invalid, expired, and retryable service failures produce distinct recovery
   }
 })
 
+test('new-owner lost response reconciles the authenticated session and accepted continuation without resubmitting password', async () => {
+  let accepted = false
+  const pageOwner = { id: 91, name: 'Ana Owner', email: 'ana@example.test', is_super_admin: false, accounts: [], current_account: null, companies: [], current_company: null }
+  const page = harness({
+    api: async (path, config) => {
+      if (path === '/erp-invitations/current')
+        return accepted ? { state: 'accepted', operation_key: 'stable-key', data: { ...valid.data, accepted_company: { id: 83, name: 'Loja Um' } } } : valid
+      if (path === '/erp-invitations/accept') {
+        accepted = true
+        assert.deepEqual(config?.body, { password: 'safe-password-123' })
+        throw new Error('Connection closed after commit')
+      }
+      throw new Error(`Unexpected request: ${path}`)
+    },
+    refresh: async () => pageOwner
+  })
+  try {
+    await flushPage()
+    const submit = nodes(page.root, node => node.tag === 'button' && String(node.text).includes('Aceitar convite e criar empresa'))[0]
+    assert.ok(submit, 'the anonymous owner initially receives the password form')
+    submit.props.onClick?.()
+    const pendingStorageAtDispatch = page.storage.get('office-erp.owner-acceptance.pending')
+    await flushPage()
+
+    assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+    assert.equal((page.user.value as { email: string }).email, pageOwner.email)
+    assert.ok(page.calls.some(call => call.path === '/erp-invitations/current'), 'the server continuation is reloaded after the ambiguous POST')
+    assert.match(text(page.root), /Convite aceito/)
+    assert.equal(nodes(page.root, node => node.tag === 'form').length, 0)
+    assert.equal(JSON.stringify(pendingStorageAtDispatch).includes('safe-password-123'), false)
+    assert.equal(JSON.stringify(pendingStorageAtDispatch).includes(secret), false)
+    assert.equal(JSON.stringify(pendingStorageAtDispatch).includes('stable-key'), false)
+    assert.deepEqual([...page.storage], [])
+  } finally { page.restore() }
+})
+
+test('unresolved new-owner acceptance persists bounded nonsecret identity and recovery never repeats the password POST', async () => {
+  let currentCalls = 0
+  const page = harness({
+    api: async (path) => {
+      if (path === '/erp-invitations/accept')
+        throw new Error('Connection closed after dispatch')
+      if (path === '/erp-invitations/current') {
+        currentCalls++
+        if (currentCalls === 1) return valid
+        if (currentCalls === 2) throw Object.assign(new Error('Temporary read failure'), { status: 503 })
+        return valid
+      }
+      throw new Error(`Unexpected request: ${path}`)
+    },
+    refresh: async () => { throw Object.assign(new Error('Still anonymous'), { status: 401 }) }
+  })
+  try {
+    await flushPage()
+    const submit = nodes(page.root, node => node.tag === 'button' && String(node.text).includes('Aceitar convite e criar empresa'))[0]
+    assert.ok(submit)
+    submit.props.onClick?.()
+    await flushPage()
+
+    assert.match(text(page.root), /Confirme o resultado antes de continuar/)
+    assert.match(text(page.root), /Não envie a senha novamente/)
+    assert.equal(nodes(page.root, node => node.tag === 'form').length, 0)
+    const stored = JSON.parse(page.storage.get('office-erp.owner-acceptance.pending') ?? '{}') as Record<string, unknown>
+    assert.equal(stored.invitation_id, valid.data.invitation.id)
+    assert.equal(stored.owner_email, 'ana@example.test')
+    assert.equal(typeof stored.expires_at, 'number')
+    assert.ok(Number(stored.expires_at) > Date.now() && Number(stored.expires_at) <= Date.now() + 15 * 60 * 1000)
+    assert.equal(JSON.stringify(stored).includes('safe-password-123'), false)
+    assert.equal(JSON.stringify(stored).includes(secret), false)
+    assert.equal(JSON.stringify(stored).includes('stable-key'), false)
+
+    const verify = nodes(page.root, node => node.tag === 'button' && String(node.text).includes('Verificar novamente'))[0]
+    assert.ok(verify)
+    verify.props.onClick?.()
+    await flushPage()
+    assert.match(text(page.root), /Confirme o resultado antes de continuar/)
+    assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+
+    const persistedStorage = page.storage
+    page.restore()
+    const resumed = harness({
+      storage: persistedStorage,
+      api: async (path) => {
+        if (path === '/erp-invitations/current')
+          return { state: 'accepted', operation_key: 'stable-key', data: { ...valid.data, accepted_company: { id: 83, name: 'Loja Um' } } }
+        throw new Error(`Unexpected request after reload: ${path}`)
+      }
+    })
+    try {
+      await flushPage()
+      assert.match(text(resumed.root), /Convite aceito/)
+      assert.equal(resumed.calls.filter(call => call.path === '/erp-invitations/accept').length, 0)
+      assert.equal(resumed.storage.has('office-erp.owner-acceptance.pending'), false)
+    } finally { resumed.restore() }
+  } finally { page.restore() }
+})
+
 test('login resumes the server-verified owner continuation at the activation route', async () => {
   const states = new Map<string, Vue.Ref<unknown>>()
   const calls: string[] = []
@@ -223,4 +347,34 @@ test('login resumes the server-verified owner continuation at the activation rou
   assert.equal(result, '/erp/ativar')
   assert.deepEqual(redirects, ['/erp/ativar'])
   assert.deepEqual(calls, ['/login', '/erp-invitations/current'])
+})
+
+test('the real global middleware admits owner activation for anonymous and authenticated visitors', async () => {
+  let activeUser: unknown = null
+  const authUser = Vue.ref<unknown>(null)
+  const resolved = Vue.ref(true)
+  let refreshCalls = 0
+  Object.assign(globalThis, {
+    defineNuxtRouteMiddleware: (handler: unknown) => handler,
+    useAuth: () => ({
+      user: authUser,
+      resolved,
+      refresh: async () => {
+        refreshCalls++
+        authUser.value = activeUser
+        resolved.value = true
+        return activeUser
+      }
+    }),
+    useAccessApi: () => ({ api: async () => ({ registration_available: false }) }),
+    navigateTo: (path: string) => path
+  })
+  const middleware = (await import('../app/middleware/access.global.ts')).default as (to: { path: string }) => Promise<unknown>
+  assert.equal(await middleware({ path: '/erp/ativar' }), undefined)
+  assert.equal(await middleware({ path: '/settings' }), '/login', 'ordinary anonymous routes retain the login guard')
+  resolved.value = false
+  activeUser = { id: 9, name: 'Ana', email: 'ana@example.test', is_super_admin: false, accounts: [], current_account: null, companies: [], current_company: null }
+  assert.equal(await middleware({ path: '/erp/ativar' }), undefined)
+  assert.equal(refreshCalls, 1, 'unresolved identity is refreshed before allowing activation')
+  assert.notEqual(await middleware({ path: '/settings' }), undefined, 'ordinary authenticated routes retain destination guards')
 })

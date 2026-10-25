@@ -15,6 +15,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
       return
     }
   }
+  if (ownerActivationPage)
+    return
   if (!user.value) {
     if (to.path === '/primeiro-acesso' || to.path === '/erp/cadastro')
       return
@@ -31,8 +33,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
   if (to.path === '/admin' || to.path.startsWith('/admin/'))
     return user.value.is_super_admin ? undefined : navigateTo(accessDestination(user.value))
-  if (ownerActivationPage)
-    return
   const destination = accessDestination(user.value)
   const erpDestination = destination === '/erp'
   const officeErpPath = to.path === '/gestao-erp' || to.path.startsWith('/gestao-erp/')

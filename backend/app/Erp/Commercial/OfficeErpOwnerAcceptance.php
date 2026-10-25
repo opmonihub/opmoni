@@ -184,7 +184,7 @@ final class OfficeErpOwnerAcceptance
             ->whereKey($continuation['contract_id'])
             ->firstOrFail();
         [$account, $subscription, , $allowance] = $this->admission->lockCommercialAggregate($context);
-        abort_unless($account->status === 'active' && $subscription?->status === 'active' && $allowance['enabled'], 403, 'resale_disabled');
+        abort_unless($account->status === 'active', 403, 'resale_disabled');
         $companyIdToLock = $targetCompanyId ?? ($candidate->agreement_status === 'accepted' ? $candidate->erp_company_id : null);
         $company = $companyIdToLock === null
             ? null
@@ -236,6 +236,7 @@ final class OfficeErpOwnerAcceptance
             return;
         }
 
+        abort_unless($subscription?->status === 'active' && $allowance['enabled'], 403, 'resale_disabled');
         abort_unless($invitation->status === 'pending'
             && $invitation->expires_at !== null
             && $invitation->expires_at->isFuture(), 410, 'invitation_expired');
