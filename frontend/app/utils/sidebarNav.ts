@@ -61,6 +61,9 @@ export function foldedSidebarChildren<T>(
 
 /** Grupo expansível da sidebar principal aberto para o path da rota atual. */
 export function sidebarOpenGroupFromPath(path: string): string {
+  if (sidebarParentActive('/gestao-erp', path)) {
+    return 'gestao-erp'
+  }
   if (sidebarParentActive('/customers', path)) {
     return 'clientes'
   }
@@ -83,4 +86,22 @@ export function sidebarOpenGroupFromPath(path: string): string {
     return 'admin'
   }
   return ''
+}
+
+export function isOfficeErpAdmin(account: { status?: unknown, role?: unknown } | null | undefined): boolean {
+  return account?.status === 'active' && account.role === 'admin'
+}
+
+export function officeErpSidebarItem(path: string) {
+  const active = sidebarParentActive('/gestao-erp', path)
+  return {
+    label: 'Gestão ERP',
+    icon: 'i-lucide-briefcase-business',
+    to: '/gestao-erp',
+    type: 'trigger' as const,
+    value: 'gestao-erp',
+    active,
+    defaultOpen: active,
+    children: [{ label: 'Ofertas', to: '/gestao-erp/planos', exact: true, active: path === '/gestao-erp/planos' }]
+  }
 }

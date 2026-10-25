@@ -4,7 +4,7 @@ import { adminSidebarItem } from '~/utils/adminNav'
 import { clientsSidebarItem } from '~/utils/clientsNav'
 import { settingsSidebarChildren } from '~/utils/settingsNav'
 import { fiscalSidebarChildren } from '~/utils/fiscalNav'
-import { foldedSidebarChildren, sidebarOpenGroupFromPath, sidebarParentActive } from '~/utils/sidebarNav'
+import { foldedSidebarChildren, isOfficeErpAdmin, officeErpSidebarItem, sidebarOpenGroupFromPath, sidebarParentActive } from '~/utils/sidebarNav'
 import { workSidebarChildren } from '~/utils/workNav'
 import { equipeSidebarChildren } from '~/utils/equipeNav'
 import { monitoringSidebarChildren } from '~/utils/monitoringNav'
@@ -16,6 +16,9 @@ const open = ref(false)
 const routeGroup = computed(() => sidebarOpenGroupFromPath(route.path))
 const sidebarOpenGroup = ref<string | undefined>(routeGroup.value || undefined)
 const groupFolded = ref(false)
+const officeErpLinks = computed(() => isOfficeErpAdmin(currentAccount.value)
+  ? [{ ...officeErpSidebarItem(route.path), children: officeErpSidebarItem(route.path).children.map(child => ({ ...child, onSelect: () => { open.value = false } })) }]
+  : [])
 
 // Only a module change resets a manual fold, not navigation within the module.
 watch(routeGroup, (group) => {
@@ -57,7 +60,7 @@ const links = computed(() => [[{
   active: sidebarParentActive(item.to, route.path),
   defaultOpen: route.path === item.to || route.path.startsWith(`${item.to}/`),
   children: item.children.map(child => ({ ...child, onSelect: () => { open.value = false } }))
-}))
+})), ...officeErpLinks.value
 ], [{
   label: 'Feedback',
   icon: 'i-lucide-message-circle',

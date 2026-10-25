@@ -43,3 +43,42 @@ export type OfficeErpCommandResult<T>
     | { status: 'unknown', key: string }
     | { status: 'failed', failure: OfficeErpFailure }
     | { status: 'stale' }
+
+export interface OfficeErpOfferRevision {
+  id: number
+  revision_number: number
+  name: string
+  description: string | null
+  price: string
+  currency: 'BRL'
+  interval_months: 1 | 3 | 6 | 12
+  due_in_days: number
+  module_keys: string[]
+  published_at: string | null
+  published: boolean
+}
+
+export interface OfficeErpOffer {
+  id: number
+  name: string
+  description: string | null
+  status: 'active' | 'archived'
+  archived_at: string | null
+  current_revision: OfficeErpOfferRevision | null
+}
+
+export interface OfficeErpOfferTerms {
+  name: string
+  description: string
+  price: string
+  currency: 'BRL'
+  interval_months: 1 | 3 | 6 | 12
+  due_in_days: number
+  module_keys: string[]
+  published: boolean
+}
+
+export interface OfficeErpOfferListResponse {
+  data: OfficeErpOffer[]
+  meta: { current_page: number, last_page: number, per_page: 25 | 50 | 100, total: number }
+}

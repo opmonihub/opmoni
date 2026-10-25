@@ -1,65 +1,66 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-import { panelBodyClass, panelTableUi } from '~/components/data-table/panel'
-
 definePageMeta({ middleware: ['auth', 'super-admin'] })
 
-interface ErpPlan {
-  id: number
-  slug: string
-  name: string
-  modules: Array<{ module_key: string, quota: number | null }>
+const { user, currentAccount } = useAuth()
+const sessionGeneration = useState('access-session-generation', () => 0)
+const context = useOfficeErpContext()
+const checking = ref(true)
+const message = ref('')
+
+function identityStamp() {
+  return JSON.stringify([user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null])
 }
 
-const { $api } = useNuxtApp()
-const plans = ref<ErpPlan[]>([])
-const loading = ref(false)
-const loadError = ref<unknown>(null)
-
-const columns: TableColumn<ErpPlan>[] = [
-  { accessorKey: 'name', header: 'Plano' },
-  { accessorKey: 'slug', header: 'Slug' },
-  { id: 'modules', header: 'Módulos' }
-]
-
-async function load() {
-  loading.value = true
-  loadError.value = null
-  try {
-    const response = await $api<{ data: ErpPlan[] }>('/admin/erp/plans')
-    plans.value = response.data
-  } catch (err) {
-    loadError.value = err
-  } finally {
-    loading.value = false
+onMounted(async () => {
+  const originalIdentity = identityStamp()
+  if (currentAccount.value?.status !== 'active' || currentAccount.value.role !== 'admin') {
+    message.value = 'Para administrar ofertas, selecione manualmente um escritório ativo em que sua conta tenha perfil administrador.'
+    checking.value = false
+    return
   }
-}
-
-onMounted(load)
+  try {
+    await context.refresh()
+    if (originalIdentity !== identityStamp()) return
+    if (context.capabilities.value?.can_read) {
+      await navigateTo({ path: '/gestao-erp/planos', query: { origem: 'admin-erp' } }, { replace: true })
+      return
+    }
+    message.value = 'O escritório selecionado não autorizou a consulta comercial. A rota global não concede acesso nem altera o escritório atual.'
+  } catch {
+    if (originalIdentity === identityStamp())
+      message.value = 'Não foi possível confirmar a autorização do escritório selecionado. Tente novamente pela área do escritório.'
+  } finally {
+    if (originalIdentity === identityStamp()) checking.value = false
+  }
+})
 </script>
 
 <template>
-  <div :class="panelBodyClass">
-    <UAlert v-if="loadError" color="error" title="Não foi possível carregar os planos ERP">
+  <div class="p-4 sm:p-6">
+    <UAlert
+      v-if="checking"
+      color="neutral"
+      title="Confirmando o escritório selecionado"
+      description="A área global não escolhe um escritório em seu nome."
+    />
+    <UAlert
+      v-else
+      color="warning"
+      title="Ofertas ERP são gerenciadas pelo escritório"
+    >
       <template #description>
-        <UButton variant="link" @click="load">
-          Tentar novamente
-        </UButton>
+        <div class="flex flex-col gap-3">
+          <p>{{ message }}</p>
+          <UButton
+            to="/selecionar-escritorio"
+            color="neutral"
+            variant="outline"
+            class="w-fit"
+          >
+            Escolher escritório
+          </UButton>
+        </div>
       </template>
     </UAlert>
-    <UTable
-      v-else
-      :columns="columns"
-      :data="plans"
-      :loading="loading"
-      :ui="panelTableUi"
-    >
-      <template #modules-cell="{ row }">
-        <span class="text-muted text-xs">{{ row.original.modules.map(m => m.module_key).join(', ') }}</span>
-      </template>
-      <template #empty>
-        Nenhum plano ERP cadastrado.
-      </template>
-    </UTable>
   </div>
 </template>

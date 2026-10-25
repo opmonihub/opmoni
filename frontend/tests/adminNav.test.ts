@@ -19,7 +19,8 @@ describe('the collapsible Admin menu', () => {
     assert.equal(item.to, '/admin')
     assert.ok(item.icon)
     assert.deepEqual(item.children?.map(child => child.to), adminPages.map(page => page.to))
-    assert.equal(item.children?.length, 9)
+    assert.equal(item.children?.length, 7)
+    assert.equal(adminPages.some(page => page.label === 'Planos ERP' || page.label === 'Assinaturas ERP'), false)
   })
 
   it('projects text-only children while keeping the Admin root icon', () => {
@@ -40,8 +41,6 @@ describe('the collapsible Admin menu', () => {
       'i-lucide-building-2',
       'i-lucide-layers',
       'i-lucide-receipt',
-      'i-lucide-box',
-      'i-lucide-badge-check',
       'i-lucide-users',
       'i-lucide-life-buoy',
       'i-lucide-plug'

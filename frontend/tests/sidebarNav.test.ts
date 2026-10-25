@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { collapsedSidebarItems, foldedSidebarChildren, sidebarOpenGroupFromPath } from '../app/utils/sidebarNav.ts'
+import { collapsedSidebarItems, foldedSidebarChildren, isOfficeErpAdmin, officeErpSidebarItem, sidebarOpenGroupFromPath } from '../app/utils/sidebarNav.ts'
+
+describe('office ERP sidebar entry', () => {
+  it('is available only to an active selected office administrator', () => {
+    assert.equal(isOfficeErpAdmin({ status: 'active', role: 'admin' }), true)
+    assert.equal(isOfficeErpAdmin({ status: 'suspended', role: 'admin' }), false)
+    assert.equal(isOfficeErpAdmin({ status: 'active', role: 'operador' }), false)
+    assert.equal(isOfficeErpAdmin(null), false)
+  })
+
+  it('points only to the shipped offers child and marks it on the matching route', () => {
+    assert.deepEqual(officeErpSidebarItem('/gestao-erp/planos').children, [
+      { label: 'Ofertas', to: '/gestao-erp/planos', exact: true, active: true }
+    ])
+    assert.equal(officeErpSidebarItem('/gestao-erp').children[0]?.active, false)
+  })
+})
 
 describe('sidebarOpenGroupFromPath', () => {
   it('mapeia prefixos de módulo para o value do accordion', () => {
@@ -11,12 +27,14 @@ describe('sidebarOpenGroupFromPath', () => {
     assert.equal(sidebarOpenGroupFromPath('/work/calendario'), 'work')
     assert.equal(sidebarOpenGroupFromPath('/settings/security'), 'configuracoes')
     assert.equal(sidebarOpenGroupFromPath('/admin/serpro'), 'admin')
+    assert.equal(sidebarOpenGroupFromPath('/gestao-erp'), 'gestao-erp')
+    assert.equal(sidebarOpenGroupFromPath('/gestao-erp/planos'), 'gestao-erp')
   })
 
   it('exige igualdade ou prefixo delimitado por barra em todos os módulos', () => {
     for (const [path, value] of [
       ['/customers', 'clientes'], ['/equipe', 'equipe'], ['/monitoring', 'monitoramento'],
-      ['/fiscal', 'fiscal'], ['/work', 'work'], ['/settings', 'configuracoes'], ['/admin', 'admin']
+      ['/fiscal', 'fiscal'], ['/work', 'work'], ['/settings', 'configuracoes'], ['/admin', 'admin'], ['/gestao-erp', 'gestao-erp']
     ]) {
       assert.equal(sidebarOpenGroupFromPath(path!), value)
       assert.equal(sidebarOpenGroupFromPath(`${path}/detalhe`), value)

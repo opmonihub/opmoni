@@ -1,4 +1,5 @@
 import { accessDestination } from '#shared/utils/access'
+import { isOfficeErpAdmin } from '~/utils/sidebarNav'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   const { user, resolved, refresh } = useAuth()
@@ -31,13 +32,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return user.value.is_super_admin ? undefined : navigateTo(accessDestination(user.value))
   const destination = accessDestination(user.value)
   const erpDestination = destination === '/erp'
+  const officeErpPath = to.path === '/gestao-erp' || to.path.startsWith('/gestao-erp/')
+  const officeErpAdmin = isOfficeErpAdmin(user.value.current_account)
   if (publicPage || (to.path !== destination && (
     (destination !== '/' && !erpDestination)
     || (destination === '/' && ['/selecionar-escritorio', '/acesso-indisponivel'].includes(to.path))
     || (erpDestination && to.path !== '/erp' && !to.path.startsWith('/erp/'))
   )))
     return navigateTo(destination)
-  const dashboardPage = to.path === '/' || ['/inbox', '/customers', '/settings', '/fiscal', '/monitoring', '/work', '/equipe'].some(path => to.path === path || to.path.startsWith(`${path}/`))
+  const dashboardPage = to.path === '/' || (officeErpPath && officeErpAdmin) || ['/inbox', '/customers', '/settings', '/fiscal', '/monitoring', '/work', '/equipe'].some(path => to.path === path || to.path.startsWith(`${path}/`))
   const erpPage = to.path === '/erp' || to.path.startsWith('/erp/')
   if (!dashboardPage && !erpPage && !['/selecionar-escritorio', '/acesso-indisponivel'].includes(to.path))
     return navigateTo(destination)

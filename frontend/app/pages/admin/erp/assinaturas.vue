@@ -1,104 +1,66 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-import { adminListParams, readPaginatedMeta } from '~/utils/adminListFilters'
-import { panelBodyClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
-
 definePageMeta({ middleware: ['auth', 'super-admin'] })
 
-interface ErpSubscriptionRow {
-  id: number
-  status: string
-  company?: { id: number, name: string } | null
-  plan?: { id: number, name: string } | null
+const { user, currentAccount } = useAuth()
+const sessionGeneration = useState('access-session-generation', () => 0)
+const context = useOfficeErpContext()
+const checking = ref(true)
+const message = ref('')
+
+function identityStamp() {
+  return JSON.stringify([user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null])
 }
 
-const { $api } = useNuxtApp()
-const toast = useToast()
-const rows = ref<ErpSubscriptionRow[]>([])
-const page = ref(1)
-const total = ref(0)
-const loading = ref(false)
-const q = ref('')
-const debouncedQ = refDebounced(q, 300)
-const statusFilter = ref<'all' | string>('all')
-
-const columns: TableColumn<ErpSubscriptionRow>[] = [
-  { accessorKey: 'id', header: 'ID' },
-  { id: 'company', header: 'Empresa' },
-  { id: 'plan', header: 'Plano' },
-  { accessorKey: 'status', header: 'Status' },
-  { id: 'actions' }
-]
-
-async function load() {
-  loading.value = true
+onMounted(async () => {
+  const originalIdentity = identityStamp()
+  if (currentAccount.value?.status !== 'active' || currentAccount.value.role !== 'admin') {
+    message.value = 'Selecione manualmente um escritório ativo em que sua conta tenha perfil administrador para acessar a gestão comercial.'
+    checking.value = false
+    return
+  }
   try {
-    const response = await $api<{ data: ErpSubscriptionRow[], meta: { total: number, last_page: number } }>('/admin/erp/subscriptions', {
-      params: adminListParams(page.value, debouncedQ.value, 'status', statusFilter.value)
-    })
-    rows.value = response.data
-    total.value = readPaginatedMeta(response).total
+    await context.refresh()
+    if (originalIdentity !== identityStamp()) return
+    if (context.capabilities.value?.can_read) {
+      await navigateTo({ path: '/gestao-erp/planos', query: { origem: 'admin-erp' } }, { replace: true })
+      return
+    }
+    message.value = 'O escritório selecionado não autorizou a consulta comercial. Nenhum escritório foi selecionado automaticamente.'
   } catch {
-    toast.add({ title: 'Não foi possível carregar assinaturas ERP', color: 'error' })
+    if (originalIdentity === identityStamp())
+      message.value = 'Não foi possível confirmar o escritório selecionado. Tente novamente pela área do escritório.'
   } finally {
-    loading.value = false
+    if (originalIdentity === identityStamp()) checking.value = false
   }
-}
-
-async function activate(row: ErpSubscriptionRow) {
-  try {
-    await $api(`/admin/erp/subscriptions/${row.id}`, { method: 'PATCH', body: { status: 'active' } })
-    toast.add({ title: 'Contrato habilitado', color: 'success' })
-    await load()
-  } catch {
-    toast.add({ title: 'Falha ao atualizar assinatura', color: 'error' })
-  }
-}
-
-watch([page, debouncedQ, statusFilter], load, { immediate: true })
+})
 </script>
 
 <template>
-  <div :class="panelBodyClass" class="space-y-4">
-    <div class="flex flex-wrap gap-2">
-      <UInput v-model="q" placeholder="Buscar empresa ou plano" class="min-w-48" />
-      <USelect
-        v-model="statusFilter"
-        :items="[
-          { label: 'Todos', value: 'all' },
-          { label: 'Pendente', value: 'pending' },
-          { label: 'Ativo', value: 'active' },
-          { label: 'Inadimplente', value: 'past_due' },
-          { label: 'Cancelado', value: 'canceled' }
-        ]"
-        class="min-w-40"
-      />
-    </div>
-    <UTable
-      :columns="columns"
-      :data="rows"
-      :loading="loading"
-      :ui="panelTableUi"
+  <div class="p-4 sm:p-6">
+    <UAlert
+      v-if="checking"
+      color="neutral"
+      title="Confirmando o escritório selecionado"
+      description="A área global não escolhe um escritório em seu nome."
+    />
+    <UAlert
+      v-else
+      color="warning"
+      title="Assinaturas ERP foram movidas para o contexto do escritório"
     >
-      <template #company-cell="{ row }">
-        {{ row.original.company?.name ?? '—' }}
+      <template #description>
+        <div class="flex flex-col gap-3">
+          <p>{{ message }}</p>
+          <UButton
+            to="/selecionar-escritorio"
+            color="neutral"
+            variant="outline"
+            class="w-fit"
+          >
+            Escolher escritório
+          </UButton>
+        </div>
       </template>
-      <template #plan-cell="{ row }">
-        {{ row.original.plan?.name ?? '—' }}
-      </template>
-      <template #actions-cell="{ row }">
-        <UButton
-          v-if="row.original.status === 'pending'"
-          size="xs"
-          variant="soft"
-          @click="activate(row.original)"
-        >
-          Habilitar
-        </UButton>
-      </template>
-    </UTable>
-    <div :class="panelPaginationClass">
-      <UPagination v-model:page="page" :total="total" :items-per-page="15" />
-    </div>
+    </UAlert>
   </div>
 </template>
