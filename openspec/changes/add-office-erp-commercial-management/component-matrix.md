@@ -1,0 +1,57 @@
+# Nuxt UI component validation matrix
+
+## Validation contract
+
+Reference version: installed `@nuxt/ui 4.11.3`, Nuxt `4.6.0`. The pre-creation specialist consulted official MCP `get-component-metadata` and `get-component` usage documentation for rows 1-31, their installed declarations and 13 complete examples. The coordinator additionally validated rows 32-33 through those MCP tools and installed declarations after creation. Every row has an official usage/example source; no proposed component remains unvalidated.
+
+`L` below is `/home/obsidian/dev/opmoni/frontend/node_modules/@nuxt/ui/dist/runtime/components`. `G` is `frontend/.nuxt/ui` in that same checkout. New worktrees do not contain node_modules. The listed subset, not every API in current online metadata, is approved for implementation. Transitive components already owned by the unchanged shell are not new application primitives.
+
+| # | Component / official documentation | Intended use and verified API subset | Official example inspected | Installed compatibility |
+|---|---|---|---|---|
+| 1 | [UApp](https://ui.nuxt.com/docs/components/app) | Existing providers; `locale`, `toaster`, `tooltip`; default slot | Usage | `L/App.vue.d.ts:5`; retain existing pt-BR wrapper |
+| 2 | [UDashboardGroup](https://ui.nuxt.com/docs/components/dashboard-group) | Existing shell; `unit`, `storage`, `storageKey`, `persistent`; default | Usage; `DashboardSidebarModeExample` | `L/DashboardGroup.vue.d.ts:3`; existing `unit=rem` |
+| 3 | [UDashboardSidebar](https://ui.nuxt.com/docs/components/dashboard-sidebar) | Existing sidebar; `id`, `collapsible`, `resizable`, `open`, `collapsed`, `mode`; header/default/footer; `update:open`, `update:collapsed` | `DashboardSidebarModeExample` | `L/DashboardSidebar.vue.d.ts:14,43,75` |
+| 4 | [UDashboardSearchButton](https://ui.nuxt.com/docs/components/dashboard-search-button) | Existing search trigger; `collapsed`, `label`, `icon`; leading/default/trailing | Usage | `L/DashboardSearchButton.vue.d.ts:10,36` |
+| 5 | [UDashboardSearch](https://ui.nuxt.com/docs/components/dashboard-search) | Existing search; `groups`, `open`, `searchTerm`, `placeholder`; empty/item/footer; model updates | Usage | `L/DashboardSearch.vue.d.ts:12,72`; capability-filter groups |
+| 6 | [UNavigationMenu](https://ui.nuxt.com/docs/components/navigation-menu) | Sidebar and route links; `items`, `orientation`, `collapsed`, `tooltip`, `popover`, `highlight`, `type`, `modelValue`; item slots; model update | Usage; `DashboardToolbarExample`, `NavigationMenuCollapsedLabelExample` | `L/NavigationMenu.vue.d.ts:20,76`; retain local expansion helpers |
+| 7 | [UDashboardPanel](https://ui.nuxt.com/docs/components/dashboard-panel) | Single parent panel; `id`, `ui`; header/body/footer/default | `DashboardPanelExample` | `L/DashboardPanel.vue.d.ts:7,11` |
+| 8 | [UDashboardNavbar](https://ui.nuxt.com/docs/components/dashboard-navbar) | Section header; `title`, `toggle`, `toggleSide`; leading/right/title | `DashboardNavbarExample` | `L/DashboardNavbar.vue.d.ts:10,37`; preserve mobile toggle |
+| 9 | [UDashboardSidebarCollapse](https://ui.nuxt.com/docs/components/dashboard-sidebar-collapse) | Existing desktop collapse; `side`, `color`, `variant` | Usage; `DashboardPanelExample` | `L/DashboardSidebarCollapse.vue.d.ts:3` |
+| 10 | [UDashboardToolbar](https://ui.nuxt.com/docs/components/dashboard-toolbar) | Local navigation and actions; `ui`; default/left/right | `DashboardToolbarExample` | `L/DashboardToolbar.vue.d.ts:6,15` |
+| 11 | [UButton](https://ui.nuxt.com/docs/components/button) | Actions; `label`, `icon`, semantic `color`, `variant`, `loading`, `disabled`, `type`, `form`, `to`; leading/default/trailing; click | Usage; `FormExampleZod`; overlay footer examples | `L/Button.vue.d.ts:8,29,30,34`; explicit async loading |
+| 12 | [UIcon](https://ui.nuxt.com/docs/components/icon) | Existing Lucide icons; `name`, `size` | Usage | `L/Icon.vue.d.ts:2`; icon-only actions need accessible names |
+| 13 | [UPageGrid](https://ui.nuxt.com/docs/components/page-grid) | Overview metrics; `ui`, class; default | Usage; `PageGridExample` | `L/PageGrid.vue.d.ts:2,13` |
+| 14 | [UPageCard](https://ui.nuxt.com/docs/components/page-card) | Existing list/metric patterns; `title`, `description`, `icon`, `orientation`, `variant`, `to`, `ui`; header/body/default/footer/leading | Usage; template HomeStats composition | `L/PageCard.vue.d.ts:8,57`; naked/subtle verified in `G/page-card.ts` |
+| 15 | [UTable](https://ui.nuxt.com/docs/components/table) | Commercial lists; `data`, `columns`, `loading`, `caption`, `ui`, `getRowId`, `columnVisibility`; empty/loading and cell/header slots; visibility update | `TableFetchExample`, `TablePaginationExample`, `TableRowActionsExample` | `L/Table.vue.d.ts:43,172`; use external server pagination |
+| 16 | [UPagination](https://ui.nuxt.com/docs/components/pagination) | Server-counted lists; `page`, `total`, `itemsPerPage`, `disabled`, `siblingCount`, `showEdges`; item/prev/next; `update:page` | Usage; `TablePaginationExample` | `L/Pagination.vue.d.ts:9,79`; total is record count |
+| 17 | [UDropdownMenu](https://ui.nuxt.com/docs/components/dropdown-menu) | Existing row-action wrapper; `items`, `content`, `disabled`; item slots; item `onSelect`, disabled/color | Usage; `TableRowActionsExample` | `L/DropdownMenu.vue.d.ts:13,41,47` |
+| 18 | [UBadge](https://ui.nuxt.com/docs/components/badge) | Separate agreement/licence/invoice states; `label`, `color`, `variant`, `size`; default | Usage; `TableRowActionsExample` | `L/Badge.vue.d.ts:7,31`; state also expressed in text |
+| 19 | [UForm](https://ui.nuxt.com/docs/components/form) | Zod forms; `id`, `schema`, `state`, `disabled`, `validate`; errors/loading slot; submit/error events | `FormExampleZod`, `FormExampleOnError` | `L/Form.vue.d.ts:4,56,60`; retain values and server errors |
+| 20 | [UFormField](https://ui.nuxt.com/docs/components/form-field) | Named validation; `name`, `label`, `description`, `hint`, `error`, `required`; label/error/help/default | Usage; `FormExampleZod` | `L/FormField.vue.d.ts:6,41` |
+| 21 | [UInput](https://ui.nuxt.com/docs/components/input) | Text, dates, exact money; `modelValue`, `type`, `name`, `disabled`, `placeholder`, inherited inputmode; leading/trailing; model/blur/change | Usage; `FormExampleZod` | `L/Input.vue.d.ts:11`; money is text + inputmode=decimal; no numeric modifier |
+| 22 | [UInputNumber](https://ui.nuxt.com/docs/components/input-number) | Integer days/capacities only; `modelValue`, `min`, `max`, `step=1`, `disabled`; increment/decrement; model/blur/change | Usage | `L/InputNumber.vue.d.ts:12,16`; never use for money |
+| 23 | [USelect](https://ui.nuxt.com/docs/components/select) | Fixed status/cycle choices; `items`, `modelValue`, `valueKey`, `labelKey`, `disabled`, `loading`; item/default; model/open/change | Usage | `L/Select.vue.d.ts:39,87,115` |
+| 24 | [USelectMenu](https://ui.nuxt.com/docs/components/select-menu) | Remote client/Company/plan search; `items`, `modelValue`, `valueKey`, `labelKey`, `multiple`, `searchTerm`, `ignoreFilter`, `loading`, `disabled`; empty/item; model/search/open updates | `SelectMenuIgnoreFilterExample` | `L/SelectMenu.vue.d.ts:42,128,168,174`; remote filtering must retain selected labels |
+| 25 | [USwitch](https://ui.nuxt.com/docs/components/switch) | Resale/policy booleans; `modelValue`, `label`, `description`, `disabled`, `loading`; label/description; model/change | Usage | `L/Switch.vue.d.ts:9,48`; explicit form save |
+| 26 | [UTextarea](https://ui.nuxt.com/docs/components/textarea) | Reasons/notes; `modelValue`, `rows`, `maxrows`, `autoresize`, `disabled`; model/blur/change | Usage Rows/Autoresize | `L/Textarea.vue.d.ts:10,35,50` |
+| 27 | [UAlert](https://ui.nuxt.com/docs/components/alert) | Persistent failures and sales restrictions; `title`, `description`, `color`, `variant`, `icon`, `actions`; description/actions | Usage | `L/Alert.vue.d.ts:10,42`; reuse ErrorRetryAlert |
+| 28 | [USkeleton](https://ui.nuxt.com/docs/components/skeleton) | Unknown/loading placeholders; class, `ui` | Usage; `SkeletonExample` | `L/Skeleton.vue.d.ts:1`; no fabricated zero values |
+| 29 | [UModal](https://ui.nuxt.com/docs/components/modal) | Short receipt/reversal/confirmation; `open`, `title`, `description`, `dismissible`, `close`, `ui`; body/footer close slots; open/after-leave | `ModalFooterSlotExample` | `L/Modal.vue.d.ts:11,68,94`; form id/footer association |
+| 30 | [USlideover](https://ui.nuxt.com/docs/components/slideover) | Plan editor; `open`, `title`, `description`, `side`, `dismissible`, `close`; body/footer; open update | `SlideoverFooterSlotExample` | `L/Slideover.vue.d.ts:11,68`; preserve list and block dismiss during save |
+| 31 | [USeparator](https://ui.nuxt.com/docs/components/separator) | Form grouping; `orientation`, `label`, `decorative`; default | Usage Orientation | `L/Separator.vue.d.ts:10,41` |
+| 32 | [UCard](https://ui.nuxt.com/docs/components/card) | Preserve existing Company contract view; `title`, `description`, `variant`, `ui`; header/default/footer | Official Usage header/body/footer and variant | Coordinator checked `L/Card.vue.d.ts`, CardProps/CardSlots; no new dashboard card system |
+| 33 | [UFileUpload](https://ui.nuxt.com/docs/components/file-upload) | Optional private manual-receipt proof; File model, `accept`, `multiple=false`, `variant=button`, `disabled`; actions/file slots; model/change | Official Usage v-model, Accept and Variant | Coordinator checked `L/FileUpload.vue.d.ts`; use native File only; no custom-item or reject-event API from newer docs |
+
+## Additional API constraints
+
+- [useToast](https://ui.nuxt.com/docs/composables/use-toast) was consulted for `toast.add` after a confirmed mutation. Action-required failures stay visible in UAlert; no manually rendered toast provider is needed.
+- `L/Input.vue:78` coerces values for `type=number` or `.number`. Money must not pass through `Number`, `parseFloat`, `.number`, numeric Zod coercion or floating-point currency formatting. Existing exact display helpers can be reused.
+- Installed FileUpload documentation defaults differ from current MCP metadata in layout, and newer metadata advertises custom file items and a reject event not present in the selected installed declaration. Set selected variants explicitly; validate MIME/size server-side and use only native File model/update/change.
+- Integer inputs must explicitly validate whole values. A numeric input's step setting alone is not backend validation.
+- Do not add unlisted direct Nuxt UI components during implementation without updating this matrix with official usage/example, installed API and relevant theme evidence first. This includes any chosen replacement for a native control.
+- Reuse `DataTablePanelList`, `PanelTableEmpty`, `RowActionsMenu`, `ErrorRetryAlert`, `useRetryableLoad`, `createLatestRequestRunner` and page-shell classes; these are project wrappers, not substitutes for component/API verification.
+- Table pagination is server-side. Do not copy client-only demo totals or filtering from a template example into commercial behavior.
+
+## Runtime validation boundary
+
+All 33 selected components have planning-time documentation/type evidence. Actual application SFC compilation, payload checks, responsive rendering, light/dark behavior, focus, accessibility and browser workflows remain implementation acceptance tasks. No component has been claimed runtime-tested by this matrix.
