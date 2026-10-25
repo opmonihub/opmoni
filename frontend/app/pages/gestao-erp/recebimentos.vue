@@ -2,18 +2,24 @@
 import type { TableColumn } from '@nuxt/ui'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
-definePageMeta({ middleware: 'auth', layout: 'erp' })
+definePageMeta({ middleware: 'auth' })
 interface InvoiceChoice { id: number, number: string | null, document_status: string, balance: { outstanding: string }, bill_to_snapshot: { client?: { name?: string }, company?: { name?: string } | null } }
 interface Receipt { id: number, amount: string, received_on: string, reference: string | null, proof_id: string | null, allocations: Array<{ invoice_id: number, amount: string }>, reversal: { id: number, reason: string } | null }
 interface ListResponse<T> { data: T[], meta: { current_page: number, last_page: number, per_page: number, total: number } }
 const { api } = useAccessApi(), context = useOfficeErpContext(), command = useOfficeErpCommand()
 const { user, currentAccount } = useAuth(), sessionGeneration = useState('access-session-generation', () => 0)
 const rows = ref<Receipt[]>([]), invoices = ref<InvoiceChoice[]>([]), total = ref(0), lastPage = ref(1), page = ref(1), perPage = ref<25 | 50 | 100>(25)
-const from = ref(''), to = ref(''), loading = ref(false), loadError = ref(''), empty = ref(false), open = ref(false), busy = ref(false), pending = ref(false), unknown = ref(false), recovering = ref(false), error = ref(''), errors = ref<Record<string, string[]>>({}), proofId = ref<string | null>(null), proofName = ref(''), proofError = ref('')
+const from = ref(''), to = ref(''), loading = ref(false), loadError = ref(''), empty = ref(false), open = ref(!!command.pending.value || !!command.recoveryKey.value), busy = ref(false), pending = ref(false), unknown = ref(false), recovering = ref(false), error = ref(''), errors = ref<Record<string, string[]>>({}), proofId = ref<string | null>(null), proofName = ref(''), proofError = ref('')
+const proofUploadPending = ref(false), proofRequired = ref(false)
 const key = computed(() => command.recoveryKey.value)
+const recoverable = computed(() => !!command.pending.value || !!key.value)
 const identity = computed(() => JSON.stringify([user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null, context.capabilities.value?.capability_key ?? null]))
+watch(key, (value) => {
+  if (value) open.value = true
+})
 const reversing = ref<Receipt | null>(null)
 let generation = 0
+let proofUploadGeneration = 0
 const columns: TableColumn<Receipt>[] = [{ accessorKey: 'received_on', header: 'Data' }, { accessorKey: 'amount', header: 'Valor' }, { accessorKey: 'reference', header: 'Referência' }, { id: 'allocations', header: 'Alocações' }, { id: 'status', header: 'Situação' }, { id: 'actions', header: '' }]
 async function load() {
   const n = ++generation
@@ -49,9 +55,13 @@ async function load() {
   }
 }
 async function uploadProof(file: File) {
+  const request = ++proofUploadGeneration
+  proofRequired.value = true
+  proofUploadPending.value = true
   proofError.value = ''
   if (!['application/pdf', 'image/png', 'image/jpeg'].includes(file.type) || file.size > 5 * 1024 * 1024) {
     proofError.value = 'Envie PDF, PNG ou JPEG de até 5 MiB.'
+    proofUploadPending.value = false
     return
   }
   const token = context.capture()
@@ -59,13 +69,24 @@ async function uploadProof(file: File) {
   data.append('file', file)
   try {
     const response = await api<{ data: { id: string } }>('/erp-commercial/receipt-proofs', { method: 'POST', body: data })
-    if (!context.isCurrent(token)) return
+    if (!context.isCurrent(token) || request !== proofUploadGeneration) return
     proofId.value = response.data.id
     proofName.value = file.name
-  } catch (e) { if (context.isCurrent(token))proofError.value = e instanceof Error ? e.message : 'Não foi possível enviar a evidência privada.' }
+  } catch (e) {
+    if (context.isCurrent(token) && request === proofUploadGeneration) proofError.value = e instanceof Error ? e.message : 'Não foi possível enviar a evidência privada.'
+  } finally {
+    if (context.isCurrent(token) && request === proofUploadGeneration) proofUploadPending.value = false
+  }
 }
 async function create(payload: { amount: string, received_on: string, reference?: string, proof_id?: string, allocations: Array<{ invoice_id: number, amount: string }> }) {
-  if (busy.value || pending.value || unknown.value) return
+  if (busy.value || pending.value || unknown.value || recoverable.value || proofUploadPending.value) {
+    if (proofUploadPending.value) proofError.value = 'Aguarde o envio do comprovante privado antes de registrar o recebimento.'
+    return
+  }
+  if (proofRequired.value && !proofId.value) {
+    proofError.value = 'Envie novamente o comprovante antes de registrar o recebimento.'
+    return
+  }
   busy.value = true
   error.value = ''
   errors.value = {}
@@ -90,11 +111,11 @@ async function create(payload: { amount: string, received_on: string, reference?
     proofId.value = null
     proofName.value = ''
     await load()
-  } finally { busy.value = false }
+  } finally { if (context.isCurrent(token)) busy.value = false }
 }
 async function reverse(p: { reason: string }) {
   const receipt = reversing.value
-  if (!receipt || busy.value || unknown.value) return
+  if (!receipt || busy.value || unknown.value || recoverable.value) return
   busy.value = true
   error.value = ''
   const token = context.capture()
@@ -114,13 +135,15 @@ async function reverse(p: { reason: string }) {
     pending.value = false
     reversing.value = null
     await load()
-  } finally { busy.value = false }
+  } finally { if (context.isCurrent(token)) busy.value = false }
 }
 async function recover() {
   if (!key.value || recovering.value) return
+  const token = context.capture()
   recovering.value = true
   try {
     const r = await command.recover<unknown>(key.value)
+    if (!context.isCurrent(token)) return
     if (r.status === 'confirmed') {
       unknown.value = false
       pending.value = false
@@ -128,7 +151,7 @@ async function recover() {
       reversing.value = null
       await load()
     } else if (r.status === 'failed')error.value = r.failure.message
-  } finally { recovering.value = false }
+  } finally { if (context.isCurrent(token)) recovering.value = false }
 }
 watch([page, from, to, perPage], () => void load(), { immediate: true })
 watch([from, to], () => {
@@ -136,6 +159,7 @@ watch([from, to], () => {
 })
 watch(identity, () => {
   generation++
+  proofUploadGeneration++
   rows.value = []
   invoices.value = []
   total.value = 0
@@ -143,6 +167,17 @@ watch(identity, () => {
   loadError.value = ''
   open.value = false
   reversing.value = null
+  proofId.value = null
+  proofName.value = ''
+  proofError.value = ''
+  proofRequired.value = false
+  proofUploadPending.value = false
+  pending.value = false
+  unknown.value = false
+  recovering.value = false
+  busy.value = false
+  error.value = ''
+  errors.value = {}
   void load()
 }, { flush: 'sync' })
 </script>
@@ -210,6 +245,7 @@ watch(identity, () => {
       </div>
     </DataTablePanelList>
     <OfficeErpReceiptModal
+      :key="identity"
       v-model:open="open"
       :invoices="invoices.map(i => ({ id: i.id, label: 'Fatura '+(i.number||i.id)+' · '+(i.bill_to_snapshot.client?.name||i.bill_to_snapshot.company?.name||''), outstanding: i.balance.outstanding }))"
       :proof-id="proofId"
@@ -217,18 +253,19 @@ watch(identity, () => {
       :proof-error="proofError"
       :errors="errors"
       :error="error"
-      :busy="busy||recovering"
+      :busy="busy||recovering||proofUploadPending"
       :pending="pending"
-      :unknown="unknown"
+      :unknown="recoverable||unknown"
       :recovery-key="key"
       @submit="create"
       @upload-proof="uploadProof"
       @recover="recover"
     />
     <OfficeErpReversalModal
+      :key="identity + (reversing?.id ?? '')"
       :open="!!reversing"
       :busy="busy||recovering"
-      :unknown="unknown"
+      :unknown="recoverable||unknown"
       :recovery-key="key"
       :error="error"
       :errors="errors"

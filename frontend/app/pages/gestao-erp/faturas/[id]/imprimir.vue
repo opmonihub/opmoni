@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
-definePageMeta({ middleware: 'auth', layout: 'erp' })
+definePageMeta({ middleware: 'auth' })
 interface PrintInvoice { id: number, number: string | null, document_status: string, issued_at: string | null, period_start: string, period_end: string, due_on: string, items_snapshot: Array<{ description: string, amount: string, discount: string }>, seller_snapshot: { account?: { name?: string } }, bill_to_snapshot: { client?: { name?: string, tax_id?: string }, company?: { name?: string, cnpj?: string } | null }, balance: { original_total: string, adjusted_charge: string, effective_received: string, outstanding: string }, adjustments: Array<{ direction: string, amount: string, reason: string }> }
 const route = useRoute(), { api } = useAccessApi(), context = useOfficeErpContext()
 const { user, currentAccount } = useAuth(), sessionGeneration = useState('access-session-generation', () => 0)

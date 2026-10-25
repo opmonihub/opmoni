@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { formatOfficeErpMoney, parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
-definePageMeta({ middleware: 'auth', layout: 'erp' })
+definePageMeta({ middleware: 'auth' })
 interface Invoice { id: number, contract_id: number, kind: string, document_status: string, number: string | null, due_on: string, period_start: string, period_end: string, items_snapshot: Array<{ description: string, amount: string, discount: string }>, adjustments: Array<{ id: number, direction: string, amount: string, reason: string, corrects_adjustment_id: number | null }>, balance: { original_total: string, adjusted_charge: string, effective_received: string, outstanding: string }, seller_snapshot: { account?: { name?: string } }, bill_to_snapshot: { client?: { name?: string }, company?: { name?: string } | null } }
 const route = useRoute(), router = useRouter(), { api } = useAccessApi(), context = useOfficeErpContext(), command = useOfficeErpCommand()
 const { user, currentAccount } = useAuth(), sessionGeneration = useState('access-session-generation', () => 0)
 const record = ref<Invoice | null>(null), contracts = ref<Array<{ id: number, client: { name: string } }>>([]), loadError = ref(''), error = ref(''), errors = ref<Record<string, string[]>>({}), busy = ref(false), unknown = ref(false), recovering = ref(false), open = ref(false), reason = ref('')
-const f = reactive({ contract_id: '', description: '', amount: '', discount: '0,00', period_start: '', period_end: '', due_on: '' }), isNew = computed(() => String(route.params.id) === 'nova'), id = computed(() => String(route.params.id)), key = computed(() => command.recoveryKey.value)
+const draftItems = ref<Array<{ description: string, amount: string, discount: string }>>([{ description: '', amount: '', discount: '0,00' }])
+const f = reactive({ contract_id: '', period_start: '', period_end: '', due_on: '' }), isNew = computed(() => String(route.params.id) === 'nova'), id = computed(() => String(route.params.id)), key = computed(() => command.recoveryKey.value), recoverable = computed(() => !!command.pending.value || !!key.value)
 const identity = computed(() => JSON.stringify([user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null, context.capabilities.value?.capability_key ?? null]))
 let generation = 0
 async function load() {
@@ -30,11 +31,8 @@ async function load() {
       if (!r.data || r.data.id !== Number(id.value)) throw Error('Fatura indisponível nesta conta.')
       record.value = r.data
       if (r.data.document_status === 'draft') {
-        const i = r.data.items_snapshot[0]
         f.contract_id = String(r.data.contract_id)
-        f.description = i?.description ?? ''
-        f.amount = i?.amount ?? ''
-        f.discount = i?.discount ?? '0.00'
+        draftItems.value = r.data.items_snapshot.map(item => ({ ...item }))
         f.period_start = r.data.period_start
         f.period_end = r.data.period_end
         f.due_on = r.data.due_on
@@ -43,13 +41,18 @@ async function load() {
   } catch (e) { if (n === generation)loadError.value = e instanceof Error ? e.message : 'Não foi possível consultar a fatura.' }
 }
 function body() {
-  const a = parseOfficeErpMoney(f.amount), d = parseOfficeErpMoney(f.discount)
-  if (!f.description.trim()) throw Error('Informe a descrição.')
-  if (BigInt(a.replace('.', '')) <= 0n || BigInt(d.replace('.', '')) > BigInt(a.replace('.', ''))) throw Error('Revise os valores da linha.')
-  return { items: [{ description: f.description.trim(), amount: a, discount: d }], period_start: f.period_start, period_end: f.period_end, due_on: f.due_on }
+  if (!draftItems.value.length || draftItems.value.length > 100) throw Error('A fatura deve ter de uma a cem linhas.')
+  const items = draftItems.value.map((item, index) => {
+    const amount = parseOfficeErpMoney(item.amount)
+    const discount = parseOfficeErpMoney(item.discount)
+    if (!item.description.trim()) throw Error('Informe a descrição da linha ' + (index + 1) + '.')
+    if (BigInt(discount.replace('.', '')) > BigInt(amount.replace('.', ''))) throw Error('O desconto não pode superar o valor da linha ' + (index + 1) + '.')
+    return { description: item.description.trim(), amount, discount }
+  })
+  return { items, period_start: f.period_start, period_end: f.period_end, due_on: f.due_on }
 }
 async function mutate(action: string, path: string, data: Record<string, unknown>, method: 'POST' | 'PATCH' = 'POST') {
-  if (busy.value || unknown.value) return
+  if (busy.value || recoverable.value) return
   busy.value = true
   error.value = ''
   errors.value = {}
@@ -71,7 +74,7 @@ async function mutate(action: string, path: string, data: Record<string, unknown
       await router.replace('/gestao-erp/faturas/' + (r.data as { id: number }).id)
     }
     await load()
-  } finally { busy.value = false }
+  } finally { if (context.isCurrent(token)) busy.value = false }
 }
 async function save() {
   try {
@@ -92,14 +95,19 @@ async function adjust(p: { direction: 'credit' | 'debit', amount: string, reason
 }
 async function recover() {
   if (!key.value || recovering.value) return
+  const token = context.capture()
+  const pageId = id.value
   recovering.value = true
   try {
     const r = await command.recover<unknown>(key.value)
+    if (!context.isCurrent(token) || pageId !== id.value) return
     if (r.status === 'confirmed') {
       unknown.value = false
       await load()
     } else if (r.status === 'failed')error.value = r.failure.message
-  } finally { recovering.value = false }
+  } finally {
+    if (context.isCurrent(token) && pageId === id.value) recovering.value = false
+  }
 }
 watch(() => route.params.id, () => void load(), { immediate: true })
 watch(identity, () => {
@@ -108,6 +116,16 @@ watch(identity, () => {
   contracts.value = []
   loadError.value = ''
   error.value = ''
+  errors.value = {}
+  draftItems.value = [{ description: '', amount: '', discount: '0,00' }]
+  f.contract_id = ''
+  f.period_start = ''
+  f.period_end = ''
+  f.due_on = ''
+  reason.value = ''
+  open.value = false
+  busy.value = false
+  recovering.value = false
   unknown.value = false
   void load()
 }, { flush: 'sync' })
@@ -135,7 +153,7 @@ watch(identity, () => {
       title="Não foi possível concluir"
       :description="error"
     />
-    <UAlert v-if="unknown" color="warning" title="Confirmação pendente">
+    <UAlert v-if="recoverable || unknown" color="warning" title="Confirmação pendente">
       <template #description>
         <div>
           Consulte a operação antes de tentar novamente. <UButton :disabled="recovering" @click="recover">
@@ -150,12 +168,6 @@ watch(identity, () => {
       </template><div class="grid gap-3 sm:grid-cols-2">
         <UFormField v-if="isNew" label="Contrato">
           <USelect v-model="f.contract_id" :items="contracts.map(c => ({ label: c.client.name+' · '+c.id, value: String(c.id) }))" />
-        </UFormField><UFormField label="Descrição" :error="errors['items.0.description']?.[0]">
-          <UInput v-model="f.description" />
-        </UFormField><UFormField label="Valor" :error="errors['items.0.amount']?.[0]">
-          <UInput v-model="f.amount" inputmode="decimal" />
-        </UFormField><UFormField label="Desconto" :error="errors['items.0.discount']?.[0]">
-          <UInput v-model="f.discount" inputmode="decimal" />
         </UFormField><UFormField label="Início do período">
           <UInput v-model="f.period_start" type="date" />
         </UFormField><UFormField label="Fim do período">
@@ -163,8 +175,39 @@ watch(identity, () => {
         </UFormField><UFormField label="Vencimento">
           <UInput v-model="f.due_on" type="date" />
         </UFormField>
-      </div><template #footer>
-        <UButton :disabled="busy||unknown" :loading="busy" @click="save">
+      </div>
+      <div v-for="(item, index) in draftItems" :key="index" class="mt-4 grid gap-3 border-t border-default pt-4 sm:grid-cols-3">
+        <UFormField :label="'Descrição da linha ' + (index + 1)" :error="errors['items.' + index + '.description']?.[0]">
+          <UInput v-model="item.description" />
+        </UFormField>
+        <UFormField :label="'Valor da linha ' + (index + 1)" :error="errors['items.' + index + '.amount']?.[0]">
+          <UInput v-model="item.amount" inputmode="decimal" />
+        </UFormField>
+        <UFormField :label="'Desconto da linha ' + (index + 1)" :error="errors['items.' + index + '.discount']?.[0]">
+          <UInput v-model="item.discount" inputmode="decimal" />
+        </UFormField>
+        <UButton
+          v-if="draftItems.length > 1"
+          type="button"
+          color="neutral"
+          variant="outline"
+          @click="draftItems.splice(index, 1)"
+        >
+          Remover linha
+        </UButton>
+      </div>
+      <UButton
+        v-if="draftItems.length < 100"
+        class="mt-3"
+        type="button"
+        color="neutral"
+        variant="outline"
+        @click="draftItems.push({ description: '', amount: '', discount: '0,00' })"
+      >
+        Adicionar linha
+      </UButton>
+      <template #footer>
+        <UButton :disabled="busy||recoverable" :loading="busy" @click="save">
           Salvar rascunho
         </UButton>
       </template>
@@ -183,12 +226,13 @@ watch(identity, () => {
       </h3><p v-for="a in record.adjustments" :key="a.id">
         {{ a.direction==='credit'?'Crédito':'Débito' }} · {{ formatOfficeErpMoney(a.amount) }} · {{ a.reason }} <span v-if="a.corrects_adjustment_id">(corrige {{ a.corrects_adjustment_id }})</span>
       </p><div class="mt-4 flex gap-2">
-        <UButton v-if="record.document_status==='draft'" :disabled="busy||unknown" @click="issue">
+        <UButton v-if="record.document_status==='draft'" :disabled="busy||recoverable" @click="issue">
           Emitir fatura
         </UButton><UButton
           v-if="record.document_status!=='canceled'"
           color="error"
           variant="outline"
+          :disabled="busy||recoverable"
           @click="open=true"
         >
           Cancelar
@@ -202,7 +246,7 @@ watch(identity, () => {
         direction="credit"
         :errors="errors"
         :busy="busy"
-        :unknown="unknown"
+        :unknown="recoverable || unknown"
         :recovery-key="key"
         @submit="adjust"
         @recover="recover"
@@ -210,7 +254,7 @@ watch(identity, () => {
         direction="debit"
         :errors="errors"
         :busy="busy"
-        :unknown="unknown"
+        :unknown="recoverable || unknown"
         :recovery-key="key"
         @submit="adjust"
         @recover="recover"
@@ -226,7 +270,7 @@ watch(identity, () => {
           :initial-reason="adjustment.reason"
           :errors="errors"
           :busy="busy"
-          :unknown="unknown"
+          :unknown="recoverable || unknown"
           :recovery-key="key"
           @submit="adjust"
           @recover="recover"
@@ -239,7 +283,7 @@ watch(identity, () => {
           <UTextarea v-model="reason" />
         </UFormField>
       </template><template #footer>
-        <UButton color="error" :disabled="busy||unknown" @click="cancel">
+        <UButton color="error" :disabled="busy||recoverable" @click="cancel">
           Confirmar cancelamento
         </UButton>
       </template>

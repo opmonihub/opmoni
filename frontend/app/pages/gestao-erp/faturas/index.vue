@@ -4,7 +4,7 @@ import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
 
-definePageMeta({ middleware: 'auth', layout: 'erp' })
+definePageMeta({ middleware: 'auth' })
 
 interface InvoiceRow {
   id: number

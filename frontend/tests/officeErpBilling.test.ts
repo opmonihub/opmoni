@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
-import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import { compileVueComponent, vueSource } from './helpers/compileVueComponent.ts'
 import { formatOfficeErpMoney, parseOfficeErpMoney } from '../shared/utils/officeErpCommercial.ts'
 
 interface HostNode {
@@ -80,7 +80,513 @@ function input(mounted: ReturnType<typeof mountComponent>, label: string, value:
   return node
 }
 
+function mountPage(path: string, options: {
+  params?: Record<string, string>
+  api?: (path: string, options?: Record<string, unknown>) => Promise<unknown>
+  execute?: (...args: unknown[]) => Promise<unknown>
+  recover?: (...args: unknown[]) => Promise<unknown>
+  recoveryKey?: string | null
+  pending?: boolean
+} = {}) {
+  const root: HostNode = { tag: 'root', props: {}, children: [], parent: null }
+  const renderer = Vue.createRenderer<HostNode, HostNode>({
+    createElement: tag => ({ tag, props: {}, children: [], parent: null }),
+    createText: text => ({ tag: '#text', text, props: {}, children: [], parent: null }),
+    createComment: text => ({ tag: '#comment', text, props: {}, children: [], parent: null }),
+    setText: (node, text) => { node.text = text },
+    setElementText: (node, text) => {
+      node.text = text
+      node.children = []
+    },
+    patchProp: (node, key, _previous, next) => { node.props[key] = next },
+    insert: (node, parent, anchor) => {
+      if (node.parent) node.parent.children.splice(node.parent.children.indexOf(node), 1)
+      node.parent = parent
+      const index = anchor ? parent.children.indexOf(anchor) : -1
+      parent.children.splice(index < 0 ? parent.children.length : index, 0, node)
+    },
+    remove: (node) => {
+      if (node.parent) node.parent.children.splice(node.parent.children.indexOf(node), 1)
+      node.parent = null
+    },
+    parentNode: node => node.parent,
+    nextSibling: node => node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null
+  })
+  const route = Vue.reactive({ params: { id: 'nova', ...(options.params ?? {}) } })
+  const account = Vue.ref({ id: 1, status: 'active', role: 'admin' })
+  const user = Vue.ref({ id: 9 })
+  const sessionGeneration = Vue.ref(0)
+  const token = () => ({ key: String(account.value.id), generation: sessionGeneration.value })
+  const capabilities = Vue.ref({ can_read: true, can_maintain: true, capability_key: 'cap-' + account.value.id })
+  const context = { capabilities, capture: token, isCurrent: (captured: { key: string, generation: number }) => captured.key === String(account.value.id) && captured.generation === sessionGeneration.value, refresh: async () => {}, invalidate: () => {} }
+  const recoveryKey = Vue.ref(options.recoveryKey ?? null)
+  const pending = Vue.ref(options.pending ?? !!options.recoveryKey)
+  const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+  const commands: unknown[][] = []
+  const api = async (url: string, requestOptions?: Record<string, unknown>) => {
+    calls.push({ path: url, options: requestOptions })
+    return options.api ? options.api(url, requestOptions) : { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } }
+  }
+  const execute = async (...args: unknown[]) => {
+    commands.push(args)
+    return options.execute ? options.execute(...args) : { status: 'confirmed', data: { id: 21 } }
+  }
+  const recover = async (...args: unknown[]) => {
+    commands.push(['recover', ...args])
+    return options.recover ? options.recover(...args) : { status: 'confirmed', data: {} }
+  }
+  const metadata: Record<string, unknown>[] = []
+  const bindings = {
+    ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, nextTick: Vue.nextTick,
+    useRoute: () => route,
+    useRouter: () => ({ replace: async (url: string) => {
+      const match = /faturas\/(\d+)/.exec(url)
+      if (match) route.params.id = match[1]!
+    } }),
+    useAccessApi: () => ({ api }), useAuth: () => ({ user, currentAccount: account }),
+    useState: (_key: string, init: () => unknown) => Vue.ref(init()),
+    useOfficeErpContext: () => context, useOfficeErpCommand: () => ({ pending, recoveryKey, execute, recover }),
+    definePageMeta: (value: Record<string, unknown>) => { metadata.push(value) },
+    useToast: () => ({ add: () => {} }), useHead: () => {}
+  }
+  const shared = { parseOfficeErpMoney, formatOfficeErpMoney }
+  const modules = {
+    '#shared/utils/officeErpCommercial': shared,
+    '~/components/data-table/panel': { panelBodyClass: '', panelFooterClass: '', panelFooterCountClass: '', panelPaginationClass: '', panelTableUi: {} },
+    '~/composables/useApiError': { apiErrorMessage: (error: unknown) => error instanceof Error ? error.message : undefined }
+  }
+  const component = compileVueComponent(path, bindings, modules)
+  const app = renderer.createApp(component)
+  const basic = (props: string[] = []) => ({ props, setup: (_p: unknown, ctx: { slots: Record<string, () => HostNode[]> }) => () => Vue.h('div', {}, Object.values(ctx.slots).flatMap(slot => slot?.() ?? [])) })
+  app.component('UApp', basic())
+  app.component('UCard', basic())
+  app.component('UFormField', {
+    props: ['label', 'error', 'name'],
+    setup: (p: Record<string, unknown>, c: { slots: Record<string, () => HostNode[]> }) => () => Vue.h('label', { 'data-field': p.name }, [String(p.label ?? ''), ...Object.values(c.slots).flatMap(slot => slot?.() ?? []), p.error ? Vue.h('span', { role: 'alert' }, String(p.error)) : null])
+  })
+  app.component('DataTablePanelList', basic(['title', 'description']))
+  app.component('UTable', { setup: () => () => Vue.h('div', { 'data-test-table': true }) })
+  app.component('UPagination', { props: ['page', 'total', 'itemsPerPage', 'disabled'], emits: ['update:page'], setup: (p: { page: number }, c: { emit: (name: string, value: number) => void }) => () => Vue.h('button', { 'aria-label': 'Próxima página', 'disabled': p.page >= 2, 'onClick': () => c.emit('update:page', p.page + 1) }, 'Próxima página') })
+  app.component('UInput', { props: ['modelValue', 'label', 'type', 'disabled'], emits: ['update:modelValue'], setup: (p: Record<string, unknown>, c: { attrs: Record<string, unknown>, emit: (name: string, value: string) => void }) => () => Vue.h('input', { ...c.attrs, 'aria-label': c.attrs['aria-label'] ?? p.label, 'type': p.type ?? 'text', 'disabled': p.disabled, 'value': p.modelValue, 'onInput': (event: { target: { value: string } }) => c.emit('update:modelValue', event.target.value) }) })
+  app.component('UTextarea', { props: ['modelValue', 'label'], emits: ['update:modelValue'], setup: (p: Record<string, unknown>, c: { attrs: Record<string, unknown>, emit: (name: string, value: string) => void }) => () => Vue.h('textarea', { ...c.attrs, 'aria-label': p.label, 'value': p.modelValue, 'onInput': (event: { target: { value: string } }) => c.emit('update:modelValue', event.target.value) }) })
+  app.component('USelect', { props: ['modelValue', 'items', 'label'], emits: ['update:modelValue'], setup: (p: { modelValue: string, items: Array<{ label: string, value: string }> }, c: { emit: (name: string, value: string) => void }) => () => Vue.h('select', { value: p.modelValue, onChange: (event: { target: { value: string } }) => c.emit('update:modelValue', event.target.value) }, p.items?.map(item => Vue.h('option', { value: item.value }, item.label))) })
+  app.component('UButton', { props: ['label', 'disabled', 'loading', 'type'], setup: (p: Record<string, unknown>, c: { attrs: Record<string, unknown>, slots: { default?: () => HostNode[] } }) => () => Vue.h('button', { ...c.attrs, 'disabled': p.disabled, 'type': p.type ?? 'button', 'aria-busy': p.loading ? 'true' : undefined }, c.slots.default?.() ?? String(p.label ?? '')) })
+  app.component('UAlert', { props: ['title', 'description'], setup: (p: Record<string, unknown>, c: { slots: Record<string, () => HostNode[]> }) => () => Vue.h('div', { role: 'alert' }, [String(p.title ?? ''), String(p.description ?? ''), ...Object.values(c.slots).flatMap(slot => slot?.() ?? [])]) })
+  app.component('UBadge', basic(['color', 'variant']))
+  app.component('UModal', { props: ['open', 'title', 'description'], emits: ['update:open'], setup: (p: { open: boolean, title: string }, c: { slots: Record<string, () => HostNode[]>, emit: (name: string, value: boolean) => void }) => () => p.open ? Vue.h('section', { 'role': 'dialog', 'aria-label': p.title }, [...Object.values(c.slots).flatMap(slot => slot?.() ?? []), Vue.h('button', { 'aria-label': 'Fechar modal', 'onClick': () => c.emit('update:open', false) }, 'Fechar modal')]) : null })
+  app.component('UForm', { emits: ['submit'], setup: (_p: unknown, c: { slots: { default?: () => HostNode[] }, emit: (name: string, event: unknown) => void }) => () => Vue.h('form', { onSubmit: (event: unknown) => c.emit('submit', event) }, c.slots.default?.()) })
+  app.component('UCheckboxGroup', { props: ['modelValue', 'items'], emits: ['update:modelValue'], setup: (p: { modelValue: string[], items: Array<{ label: string, value: string }> }, c: { emit: (name: string, value: string[]) => void }) => () => Vue.h('fieldset', p.items?.map(item => Vue.h('button', { 'type': 'button', 'data-choice': item.value, 'onClick': () => c.emit('update:modelValue', p.modelValue.includes(item.value) ? p.modelValue.filter(value => value !== item.value) : [...p.modelValue, item.value]) }, item.label))) })
+  app.component('OfficeErpAdjustmentForm', compileVueComponent('components/office-erp/OfficeErpAdjustmentForm.vue', bindings, modules))
+  app.component('OfficeErpReceiptModal', compileVueComponent('components/office-erp/OfficeErpReceiptModal.vue', bindings, modules))
+  app.component('OfficeErpReversalModal', compileVueComponent('components/office-erp/OfficeErpReversalModal.vue', bindings, modules))
+  app.component('NuxtLink', { props: ['to'], setup: (_p: unknown, c: { slots: { default?: () => HostNode[] } }) => () => Vue.h('a', {}, c.slots.default?.()) })
+  app.mount(root)
+  const find = (predicate: (node: HostNode) => boolean) => {
+    const visit = (node: HostNode): HostNode | undefined => predicate(node) ? node : node.children.map(visit).find(Boolean)
+    return visit(root)
+  }
+  const all = (predicate: (node: HostNode) => boolean) => {
+    const result: HostNode[] = []
+    const visit = (node: HostNode) => {
+      if (predicate(node)) result.push(node)
+      node.children.forEach(visit)
+    }
+    visit(root)
+    return result
+  }
+  const text = (node: HostNode): string => (node.text ?? '') + node.children.map(text).join('')
+  return { app, root, route, account, sessionGeneration, calls, commands, metadata, find, all, text }
+}
+
+async function settlePage() {
+  await Vue.nextTick()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  await Vue.nextTick()
+}
+
+function setNodeInput(node: HostNode, value: string) {
+  const handler = node.props.onInput as ((event: { target: { value: string } }) => void) | undefined
+  assert.ok(handler, 'Missing input handler on ' + node.tag)
+  handler({ target: { value } })
+}
+
 describe('office ERP billing form components', () => {
+  it('renders all billing routes inside the office shell metadata', async (t) => {
+    const paths = [
+      'pages/gestao-erp/faturas/index.vue',
+      'pages/gestao-erp/faturas/[id]/index.vue',
+      'pages/gestao-erp/faturas/[id]/imprimir.vue',
+      'pages/gestao-erp/recebimentos.vue'
+    ]
+    const pages = paths.map(path => mountPage(path))
+    t.after(() => pages.forEach(page => page.app.unmount()))
+    await Vue.nextTick()
+    assert.equal(pages.length, 4)
+    for (const path of paths) {
+      const source = vueSource(path)
+      assert.match(source, /definePageMeta\(\{\s*middleware:\s*'auth'/)
+      assert.doesNotMatch(source, /layout:\s*'erp'/)
+    }
+  })
+
+  it('retains every draft line and allows zero amount and total in the PATCH payload', async (t) => {
+    const invoice = {
+      id: 42, contract_id: 3, kind: 'manual', document_status: 'draft', number: null, due_on: '2026-11-01',
+      period_start: '2026-10-01', period_end: '2026-10-31',
+      items_snapshot: [{ description: 'Linha zero', amount: '0.00', discount: '0.00' }, { description: 'Serviço', amount: '100.00', discount: '0.00' }],
+      adjustments: [], balance: { original_total: '100.00', adjusted_charge: '0.00', effective_received: '0.00', outstanding: '0.00' },
+      seller_snapshot: { account: { name: 'Escritório' } }, bill_to_snapshot: { client: { name: 'Cliente' }, company: null }
+    }
+    let submitted: unknown
+    const mounted = mountPage('pages/gestao-erp/faturas/[id]/index.vue', {
+      params: { id: '42' },
+      api: async () => ({ data: invoice }),
+      execute: async (...args) => {
+        submitted = args
+        return { status: 'confirmed', data: invoice }
+      }
+    })
+    t.after(() => mounted.app.unmount())
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const save = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Salvar rascunho'))
+    assert.ok(save, mounted.text(mounted.root))
+    ;(save.props.onClick as () => void)()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    assert.equal((submitted as unknown[])[1], '/erp-commercial/invoices/42')
+    assert.equal((submitted as unknown[])[3], 'PATCH')
+    assert.deepEqual(((submitted as unknown[])[2] as { items: unknown[] }).items, [
+      { description: 'Linha zero', amount: '0.00', discount: '0.00' },
+      { description: 'Serviço', amount: '100.00', discount: '0.00' }
+    ])
+  })
+
+  it('creates a draft with POST using an exact zero-value amount', async (t) => {
+    let submitted: unknown
+    const mounted = mountPage('pages/gestao-erp/faturas/[id]/index.vue', {
+      api: async path => path.endsWith('/contracts')
+        ? { data: [{ id: 3, client: { name: 'Cliente' }, agreement_status: 'effective' }] }
+        : { data: {
+            id: 21, contract_id: 3, kind: 'manual', document_status: 'draft', number: null, due_on: '2026-10-01',
+            period_start: '2026-10-01', period_end: '2026-10-31', items_snapshot: [{ description: 'Serviço gratuito', amount: '0.00', discount: '0.00' }],
+            adjustments: [], balance: { original_total: '0.00', adjusted_charge: '0.00', effective_received: '0.00', outstanding: '0.00' },
+            seller_snapshot: { account: { name: 'Escritório' } }, bill_to_snapshot: { client: { name: 'Cliente' }, company: null }
+          } },
+      execute: async (...args) => {
+        submitted = args
+        return { status: 'confirmed', data: { id: 21 } }
+      }
+    })
+    t.after(() => mounted.app.unmount())
+    await settlePage()
+    const contract = mounted.find(node => node.tag === 'select')
+    assert.ok(contract)
+    ;(contract.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '3' } })
+    const textInputs = mounted.all(node => node.tag === 'input' && node.props.type === 'text')
+    assert.equal(textInputs.length, 3)
+    setNodeInput(textInputs[0]!, 'Serviço gratuito')
+    setNodeInput(textInputs[1]!, '0,00')
+    setNodeInput(textInputs[2]!, '0,00')
+    for (const node of mounted.all(candidate => candidate.tag === 'input' && candidate.props.type === 'date')) setNodeInput(node, '2026-10-01')
+    const save = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Salvar rascunho'))
+    assert.ok(save)
+    ;(save.props.onClick as () => void)()
+    await settlePage()
+    assert.equal((submitted as unknown[])[1], '/erp-commercial/invoices')
+    assert.equal((submitted as unknown[])[3], 'POST')
+    assert.deepEqual(((submitted as unknown[])[2] as { items: unknown[] }).items, [{ description: 'Serviço gratuito', amount: '0.00', discount: '0.00' }])
+  })
+
+  it('sends separate explicit issue and reasoned cancel commands from the rendered invoice page', async (t) => {
+    const invoice = {
+      id: 42, contract_id: 3, kind: 'manual', document_status: 'draft', number: null, due_on: '2026-11-01',
+      period_start: '2026-10-01', period_end: '2026-10-31', items_snapshot: [{ description: 'Serviço', amount: '100.00', discount: '0.00' }],
+      adjustments: [], balance: { original_total: '100.00', adjusted_charge: '0.00', effective_received: '0.00', outstanding: '0.00' },
+      seller_snapshot: { account: { name: 'Escritório' } }, bill_to_snapshot: { client: { name: 'Cliente' }, company: null }
+    }
+    const submitted: unknown[][] = []
+    const mounted = mountPage('pages/gestao-erp/faturas/[id]/index.vue', {
+      params: { id: '42' }, api: async () => ({ data: invoice }),
+      execute: async (...args) => {
+        submitted.push(args)
+        return { status: 'confirmed', data: invoice }
+      }
+    })
+    t.after(() => mounted.app.unmount())
+    await settlePage()
+    const issue = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Emitir fatura'))
+    assert.ok(issue)
+    ;(issue.props.onClick as () => void)()
+    await settlePage()
+    assert.deepEqual(submitted[0]?.slice(0, 4), ['invoice.issue', '/erp-commercial/invoices/42/issue', {}, 'POST'])
+    const cancelTrigger = mounted.find(node => node.tag === 'button' && mounted.text(node).trim() === 'Cancelar')
+    assert.ok(cancelTrigger)
+    ;(cancelTrigger.props.onClick as () => void)()
+    await settlePage()
+    const reason = mounted.find(node => node.tag === 'textarea')
+    assert.ok(reason)
+    setNodeInput(reason, 'Correção solicitada')
+    const confirm = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Confirmar cancelamento'))
+    assert.ok(confirm)
+    ;(confirm.props.onClick as () => void)()
+    await settlePage()
+    assert.deepEqual(submitted[1]?.slice(0, 3), ['invoice.correct', '/erp-commercial/invoices/42/cancel', { reason: 'Correção solicitada' }])
+    assert.equal(mounted.find(node => node.props.role === 'dialog'), undefined)
+    assert.ok(mounted.find(node => node.tag === 'button' && mounted.text(node).trim() === 'Cancelar'), 'the dialog trigger remains mounted after dismissal')
+  })
+
+  it('preserves adjustment inputs and server errors after a rendered 422 response', async (t) => {
+    const invoice = {
+      id: 42, contract_id: 3, kind: 'manual', document_status: 'issued', number: 'F-42', due_on: '2026-11-01',
+      period_start: '2026-10-01', period_end: '2026-10-31', items_snapshot: [{ description: 'Serviço', amount: '100.00', discount: '0.00' }],
+      adjustments: [], balance: { original_total: '100.00', adjusted_charge: '100.00', effective_received: '0.00', outstanding: '100.00' },
+      seller_snapshot: { account: { name: 'Escritório' } }, bill_to_snapshot: { client: { name: 'Cliente' }, company: null }
+    }
+    let failure = { message: 'Falha de validação', errors: { amount: ['Valor indisponível'] } }
+    const mounted = mountPage('pages/gestao-erp/faturas/[id]/index.vue', {
+      params: { id: '42' }, api: async () => ({ data: invoice }),
+      execute: async () => ({ status: 'failed', failure })
+    })
+    t.after(() => mounted.app.unmount())
+    await settlePage()
+    const forms = mounted.all(node => node.props['data-office-erp-adjustment-form'] !== undefined)
+    assert.equal(forms.length, 2)
+    const amount = mounted.find(node => node.tag === 'input' && node.props['aria-label'] === 'Valor do ajuste')
+    assert.ok(amount)
+    setNodeInput(amount, '25,00')
+    const reason = mounted.find(node => node.tag === 'textarea' && node.props['aria-label'] === 'Motivo')
+    assert.ok(reason)
+    setNodeInput(reason, 'Ajuste')
+    const form = mounted.find(node => node.tag === 'form')
+    assert.ok(form)
+    ;(form.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+    await settlePage()
+    assert.equal(mounted.commands.length, 1)
+    const retained = mounted.find(node => node.tag === 'input' && node.props['aria-label'] === 'Valor do ajuste')
+    assert.equal(retained?.props.value, '25,00')
+    assert.match(mounted.text(mounted.root), /Valor indisponível/)
+    failure = { message: 'A fatura foi atualizada em outra sessão.', errors: {} }
+    const retry = mounted.find(node => node.tag === 'form')
+    assert.ok(retry)
+    ;(retry.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+    await settlePage()
+    assert.equal(mounted.find(node => node.tag === 'input' && node.props['aria-label'] === 'Valor do ajuste')?.props.value, '25,00')
+    assert.match(mounted.text(mounted.root), /atualizada em outra sessão/)
+  })
+
+  it('waits for a real private proof upload before issuing a partial receipt command', async (t) => {
+    const invoice = { id: 7, number: 'F-7', document_status: 'issued', balance: { outstanding: '100.00' }, bill_to_snapshot: { client: { name: 'Cliente' }, company: null } }
+    const receiptCalls: unknown[][] = []
+    let finishUpload!: (value: unknown) => void
+    const upload = new Promise((resolve) => {
+      finishUpload = resolve
+    })
+    const mounted = mountPage('pages/gestao-erp/recebimentos.vue', {
+      api: async (path, options) => {
+        if (path === '/erp-commercial/receipts') return { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } }
+        if (path === '/erp-commercial/invoices') return { data: [invoice], meta: { current_page: 1, last_page: 1, per_page: 100, total: 1 } }
+        if (path === '/erp-commercial/receipt-proofs') {
+          assert.equal(options?.method, 'POST')
+          assert.ok(options?.body instanceof FormData)
+          return upload
+        }
+        throw new Error(`Unexpected API request: ${path}`)
+      },
+      execute: async (...args) => {
+        receiptCalls.push(args)
+        return { status: 'confirmed', data: { id: 12 } }
+      }
+    })
+    t.after(() => mounted.app.unmount())
+    await settlePage()
+    const open = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Registrar recebimento'))
+    assert.ok(open)
+    ;(open.props.onClick as () => void)()
+    await settlePage()
+    const choice = mounted.find(node => node.props['data-choice'] === '7')
+    assert.ok(choice)
+    ;(choice.props.onClick as () => void)()
+    await settlePage()
+    const allocation = mounted.find(node => node.tag === 'input' && node.props['aria-label'] === 'Alocação para fatura 7')
+    assert.ok(allocation, mounted.text(mounted.root))
+    setNodeInput(allocation, '40,00')
+    const date = mounted.find(node => node.tag === 'input' && node.props['aria-label'] === 'Data do recebimento')
+    assert.ok(date)
+    setNodeInput(date, '2026-10-25')
+    const fileInput = mounted.find(node => node.tag === 'input' && node.props.type === 'file')
+    assert.ok(fileInput)
+    const proof = new File(['%PDF-1.7\nfixture'], 'comprovante.pdf', { type: 'application/pdf' })
+    ;(fileInput.props.onChange as (event: { target: { files: File[] } }) => void)({ target: { files: [proof] } })
+    await settlePage()
+    const form = mounted.find(node => node.tag === 'form')
+    assert.ok(form)
+    ;(form.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+    await settlePage()
+    assert.equal(receiptCalls.length, 0, 'no receipt command can race ahead of its proof upload')
+    finishUpload({ data: { id: 'proof-123' } })
+    await settlePage()
+    const refreshedForm = mounted.find(node => node.tag === 'form')
+    assert.ok(refreshedForm)
+    ;(refreshedForm.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+    await settlePage()
+    assert.deepEqual(receiptCalls[0]?.slice(0, 3), [
+      'receipt.record', '/erp-commercial/receipts',
+      { amount: '40.00', received_on: '2026-10-25', allocations: [{ invoice_id: 7, amount: '40.00' }], proof_id: 'proof-123' }
+    ])
+  })
+
+  it('restores receipt recovery UI from the command key and disables duplicate lookups while busy', async (t) => {
+    let finishRecovery!: (value: unknown) => void
+    const recovery = new Promise((resolve) => {
+      finishRecovery = resolve
+    })
+    const mounted = mountPage('pages/gestao-erp/recebimentos.vue', {
+      recoveryKey: '11111111-2222-4333-8444-555555555555', pending: true,
+      api: async path => path === '/erp-commercial/invoices'
+        ? { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } }
+        : { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } },
+      recover: async () => recovery
+    })
+    t.after(() => mounted.app.unmount())
+    await settlePage()
+    assert.ok(mounted.find(node => node.tag === 'section' && node.props.role === 'dialog'), 'restored operation reopens its receipt recovery modal')
+    const lookup = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Consultar operação'))
+    assert.ok(lookup)
+    assert.equal(lookup.props.disabled, false)
+    ;(lookup.props.onClick as () => void)()
+    await settlePage()
+    assert.equal(lookup.props.disabled, true, 'busy state prevents a duplicate recovery request')
+    finishRecovery({ status: 'failed', failure: { message: 'Ainda não confirmado', errors: {} } })
+    await settlePage()
+    assert.equal(lookup.props.disabled, false)
+  })
+
+  it('fences a late invoice command completion after the selected account changes', async (t) => {
+    const invoice = {
+      id: 42, contract_id: 3, kind: 'manual', document_status: 'draft', number: null, due_on: '2026-11-01',
+      period_start: '2026-10-01', period_end: '2026-10-31', items_snapshot: [{ description: 'Serviço', amount: '100.00', discount: '0.00' }],
+      adjustments: [], balance: { original_total: '100.00', adjusted_charge: '0.00', effective_received: '0.00', outstanding: '0.00' },
+      seller_snapshot: { account: { name: 'Escritório' } }, bill_to_snapshot: { client: { name: 'Cliente anterior' }, company: null }
+    }
+    let finishCommand!: (value: unknown) => void
+    let invoiceLoads = 0
+    const commandResult = new Promise((resolve) => {
+      finishCommand = resolve
+    })
+    const mounted = mountPage('pages/gestao-erp/faturas/[id]/index.vue', {
+      params: { id: '42' }, api: async () => {
+        invoiceLoads++
+        if (invoiceLoads > 1) throw new Error('Outra conta')
+        return { data: invoice }
+      },
+      execute: async () => commandResult
+    })
+    t.after(() => mounted.app.unmount())
+    await settlePage()
+    const save = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Salvar rascunho'))
+    assert.ok(save)
+    ;(save.props.onClick as () => void)()
+    await settlePage()
+    mounted.account.value = { id: 2, status: 'active', role: 'admin' }
+    await settlePage()
+    finishCommand({ status: 'failed', failure: { message: 'Resultado antigo', errors: {} } })
+    await settlePage()
+    assert.doesNotMatch(mounted.text(mounted.root), /Cliente anterior|Resultado antigo/)
+    assert.match(mounted.text(mounted.root), /Outra conta/)
+  })
+
+  it('discards a private proof upload callback when the active account changes', async (t) => {
+    let finishUpload!: (value: unknown) => void
+    const upload = new Promise((resolve) => {
+      finishUpload = resolve
+    })
+    const invoice = { id: 7, number: 'F-7', document_status: 'issued', balance: { outstanding: '100.00' }, bill_to_snapshot: { client: { name: 'Cliente' }, company: null } }
+    const mounted = mountPage('pages/gestao-erp/recebimentos.vue', {
+      api: async (path) => {
+        if (path === '/erp-commercial/receipt-proofs') return upload
+        if (path === '/erp-commercial/invoices') return { data: [invoice], meta: { current_page: 1, last_page: 1, per_page: 100, total: 1 } }
+        return { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } }
+      }
+    })
+    t.after(() => mounted.app.unmount())
+    await settlePage()
+    const open = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Registrar recebimento'))
+    assert.ok(open)
+    ;(open.props.onClick as () => void)()
+    await settlePage()
+    const fileInput = mounted.find(node => node.tag === 'input' && node.props.type === 'file')
+    assert.ok(fileInput)
+    const proof = new File(['%PDF-1.7\nfixture'], 'conta-anterior.pdf', { type: 'application/pdf' })
+    ;(fileInput.props.onChange as (event: { target: { files: File[] } }) => void)({ target: { files: [proof] } })
+    await settlePage()
+    mounted.account.value = { id: 2, status: 'active', role: 'admin' }
+    await settlePage()
+    finishUpload({ data: { id: 'old-proof' } })
+    await settlePage()
+    const reopened = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Registrar recebimento'))
+    assert.ok(reopened)
+    ;(reopened.props.onClick as () => void)()
+    await settlePage()
+    assert.doesNotMatch(mounted.text(mounted.root), /conta-anterior\.pdf|old-proof/)
+  })
+
+  it('loads the next receipt page through the rendered pagination control', async (t) => {
+    const pageRequests: number[] = []
+    const mounted = mountPage('pages/gestao-erp/recebimentos.vue', {
+      api: async (path, options) => {
+        if (path === '/erp-commercial/receipts') {
+          pageRequests.push(Number((options?.params as Record<string, unknown>)?.page))
+          return { data: [], meta: { current_page: Number((options?.params as Record<string, unknown>)?.page), last_page: 2, per_page: 25, total: 30 } }
+        }
+        return { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } }
+      }
+    })
+    t.after(() => mounted.app.unmount())
+    await settlePage()
+    const next = mounted.find(node => node.tag === 'button' && node.props['aria-label'] === 'Próxima página')
+    assert.ok(next)
+    ;(next.props.onClick as () => void)()
+    await settlePage()
+    assert.deepEqual(pageRequests, [1, 2])
+  })
+
+  it('prints only a loaded issued invoice and keeps protected print content absent on errors', async (t) => {
+    const originalWindow = (globalThis as { window?: unknown }).window
+    let printCalls = 0
+    ;(globalThis as { window?: unknown }).window = { print: () => {
+      printCalls++
+    } }
+    t.after(() => {
+      if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window
+      else (globalThis as { window?: unknown }).window = originalWindow
+    })
+    const invoice = {
+      id: 42, number: 'F-42', document_status: 'issued', issued_at: '2026-10-01T12:00:00Z', period_start: '2026-10-01', period_end: '2026-10-31', due_on: '2026-11-01',
+      items_snapshot: [{ description: 'Serviço', amount: '100.00', discount: '0.00' }], seller_snapshot: { account: { name: 'Escritório' } },
+      bill_to_snapshot: { client: { name: 'Cliente', tax_id: '12345678901' }, company: null }, balance: { original_total: '100.00', adjusted_charge: '100.00', effective_received: '0.00', outstanding: '100.00' }, adjustments: []
+    }
+    const success = mountPage('pages/gestao-erp/faturas/[id]/imprimir.vue', { params: { id: '42' }, api: async () => ({ data: invoice }) })
+    t.after(() => success.app.unmount())
+    await settlePage()
+    const print = success.find(node => node.tag === 'button' && success.text(node).includes('Imprimir ou salvar em PDF'))
+    assert.ok(print)
+    assert.equal(print.props.disabled, false)
+    ;(print.props.onClick as () => void)()
+    await settlePage()
+    assert.equal(printCalls, 1)
+    const failed = mountPage('pages/gestao-erp/faturas/[id]/imprimir.vue', {
+      params: { id: '42' }, api: async () => {
+        throw new Error('Acesso indisponível')
+      }
+    })
+    t.after(() => failed.app.unmount())
+    await settlePage()
+    assert.equal(failed.find(node => node.tag === 'article'), undefined)
+    const unavailablePrint = failed.find(node => node.tag === 'button' && failed.text(node).includes('Imprimir ou salvar em PDF'))
+    assert.ok(unavailablePrint)
+    assert.equal(unavailablePrint.props.disabled, true)
+    assert.equal(printCalls, 1)
+  })
+
   it('compiles the invoice list, detail, protected print and receipt pages as real Vue SFCs', () => {
     const mocks = {
       '#shared/utils/officeErpCommercial': { parseOfficeErpMoney, formatOfficeErpMoney },
