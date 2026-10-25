@@ -46,31 +46,33 @@ const pageTabs: NavigationMenuItem[][] = [[{
 
 <template>
   <NuxtPage v-if="isInvoicePrintRoute" />
-  <UDashboardPanel v-else id="gestao-erp" :ui="{ body: 'min-h-0 flex-1 gap-0 overflow-y-auto p-3 sm:p-4 lg:p-5' }">
-    <template #header>
-      <UDashboardNavbar title="Gestão ERP">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <span v-if="currentAccount" class="hidden text-sm text-muted sm:inline">{{ currentAccount.name }}</span>
-        </template>
-      </UDashboardNavbar>
-      <UDashboardToolbar>
-        <template #left>
-          <UNavigationMenu
-            as="nav"
-            aria-label="Navegação comercial ERP"
-            :items="pageTabs"
-            highlight
-            class="-mx-1 min-w-0 flex-1"
-          />
-        </template>
-      </UDashboardToolbar>
-    </template>
+  <main v-else aria-label="Gestão comercial ERP" class="flex min-h-0 min-w-0 flex-1">
+    <UDashboardPanel id="gestao-erp" :ui="{ body: 'min-h-0 flex-1 gap-0 overflow-y-auto p-3 sm:p-4 lg:p-5' }">
+      <template #header>
+        <UDashboardNavbar title="Gestão ERP">
+          <template #leading>
+            <UDashboardSidebarCollapse />
+          </template>
+          <template #right>
+            <span v-if="currentAccount" class="hidden text-sm text-muted sm:inline">{{ currentAccount.name }}</span>
+          </template>
+        </UDashboardNavbar>
+        <UDashboardToolbar>
+          <template #left>
+            <UNavigationMenu
+              as="nav"
+              aria-label="Navegação comercial ERP"
+              :items="pageTabs"
+              highlight
+              class="-mx-1 min-w-0 flex-1"
+            />
+          </template>
+        </UDashboardToolbar>
+      </template>
 
-    <template #body>
-      <NuxtPage />
-    </template>
-  </UDashboardPanel>
+      <template #body>
+        <NuxtPage />
+      </template>
+    </UDashboardPanel>
+  </main>
 </template>

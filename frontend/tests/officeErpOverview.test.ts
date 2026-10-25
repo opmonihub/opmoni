@@ -38,7 +38,7 @@ async function renderCommercialShell(path: string): Promise<string> {
     props: { as: String, items: Array, highlight: Boolean },
     setup: (props, { attrs }) => () => Vue.h(props.as ?? 'div', attrs)
   }))
-  app.component('NuxtPage', Vue.defineComponent({ setup: () => () => Vue.h('main', { id: 'invoice-print-page' }) }))
+  app.component('NuxtPage', Vue.defineComponent({ setup: () => () => Vue.h('section', { id: 'page-content' }) }))
 
   return renderToString(app)
 }
@@ -49,10 +49,17 @@ test('commercial shell exposes a named ERP navigation landmark', async () => {
   assert.match(html, /<nav[^>]*aria-label="Navegação comercial ERP"/)
 })
 
+test('commercial content is contained by a main landmark', async () => {
+  const html = await renderCommercialShell('/gestao-erp')
+
+  assert.match(html, /<main aria-label="Gestão comercial ERP"[^>]*>[\s\S]*<header title="Gestão ERP">[\s\S]*<nav[^>]*aria-label="Navegação comercial ERP"[\s\S]*<section id="page-content"><\/section>[\s\S]*<\/main>/)
+})
+
 test('invoice print route stays outside the commercial navigation shell', async () => {
   const html = await renderCommercialShell('/gestao-erp/faturas/123/imprimir')
 
-  assert.match(html, /<main id="invoice-print-page"><\/main>/)
+  assert.match(html, /<section id="page-content"><\/section>/)
+  assert.doesNotMatch(html, /<main[^>]*aria-label="Gestão comercial ERP"/)
   assert.doesNotMatch(html, /data-dashboard-panel/)
 })
 
