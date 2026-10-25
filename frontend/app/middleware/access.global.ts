@@ -4,7 +4,8 @@ import { isOfficeErpAdmin } from '~/utils/sidebarNav'
 export default defineNuxtRouteMiddleware(async (to) => {
   const { user, resolved, refresh } = useAuth()
   const { api } = useAccessApi()
-  const publicPage = ['/login', '/onboarding', '/primeiro-acesso', '/erp/cadastro'].includes(to.path)
+  const ownerActivationPage = to.path === '/erp/ativar'
+  const publicPage = ['/login', '/onboarding', '/primeiro-acesso', '/erp/cadastro', '/erp/ativar'].includes(to.path)
   if (!resolved.value) {
     try {
       await refresh()
@@ -30,6 +31,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
   if (to.path === '/admin' || to.path.startsWith('/admin/'))
     return user.value.is_super_admin ? undefined : navigateTo(accessDestination(user.value))
+  if (ownerActivationPage)
+    return
   const destination = accessDestination(user.value)
   const erpDestination = destination === '/erp'
   const officeErpPath = to.path === '/gestao-erp' || to.path.startsWith('/gestao-erp/')

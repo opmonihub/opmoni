@@ -64,6 +64,11 @@ export function useAuth() {
     csrf.value = null
     clearNuxtData()
     await rotateCsrf()
+    try {
+      const continuation = await api<{ state: string }>('/erp-invitations/current')
+      if (['valid', 'ready', 'accepted', 'identity_mismatch', 'login_required'].includes(continuation.state))
+        return navigateTo('/erp/ativar', { replace: true })
+    } catch { /* Ordinary authentication keeps its existing destination when no continuation is available. */ }
     return navigateTo(accessDestination(identity), { replace: true })
   }
   async function switchAccount(id: number) {
