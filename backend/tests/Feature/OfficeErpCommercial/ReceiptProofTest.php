@@ -4,19 +4,16 @@ namespace Tests\Feature\OfficeErpCommercial;
 
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpReceiptProofs;
-use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpReceiptController;
-use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpReceiptProofController;
-use App\Http\Middleware\ResolveOfficeErpCommercial;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\Commercial\OfficeErpReceipt;
+use App\Models\Erp\Commercial\OfficeErpReceiptAllocation;
 use App\Models\Erp\Commercial\OfficeErpReceiptProof;
 use Carbon\CarbonImmutable;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Tests\OfficeErpCommercialTestCase;
 
@@ -28,7 +25,6 @@ class ReceiptProofTest extends OfficeErpCommercialTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->registerReceiptTestRoutes();
         $this->usePrivateLocalDisk();
     }
 
@@ -80,14 +76,34 @@ class ReceiptProofTest extends OfficeErpCommercialTestCase
     {
         $ctx = $this->officeContext();
         $path = '/api/v1/erp-commercial/receipt-proofs';
+        $prefix = "%PDF-1.4\n";
+        $suffix = "\n%%EOF\n";
+        $oneByteOver = $prefix.str_repeat('x', OfficeErpReceiptProofs::MAX_PROOF_BYTES + 1 - strlen($prefix) - strlen($suffix)).$suffix;
 
         $this->asOffice($ctx)->post($path, [
-            'file' => UploadedFile::fake()->createWithContent('grande.pdf', "%PDF-1.4\n".str_repeat('x', 5 * 1024 * 1024)),
+            'file' => UploadedFile::fake()->createWithContent('grande.pdf', $oneByteOver),
         ])->assertUnprocessable()->assertJsonValidationErrors('file');
 
         $this->asOffice($ctx)->post($path, [
             'file' => UploadedFile::fake()->createWithContent('disfarce.pdf', 'texto simples sem assinatura PDF'),
         ])->assertUnprocessable()->assertJsonValidationErrors('file');
+
+        self::assertSame(0, OfficeErpReceiptProof::query()->count());
+        self::assertSame([], Storage::disk('local')->allFiles());
+    }
+
+    public function test_production_receipt_proof_route_enforces_ingress_and_csrf_middleware(): void
+    {
+        $ctx = $this->officeContext();
+        $file = UploadedFile::fake()->createWithContent('prova.pdf', "%PDF-1.4\nprova\n%%EOF\n");
+
+        $this->asOffice($ctx)->withoutHeader('X-CSRF-Token')->post('/api/v1/erp-commercial/receipt-proofs', [
+            'file' => $file,
+        ])->assertForbidden();
+
+        $this->asOffice($ctx)->withoutHeader('X-Opmoni-Ingress-Key')->post('/api/v1/erp-commercial/receipt-proofs', [
+            'file' => UploadedFile::fake()->createWithContent('prova.pdf', "%PDF-1.4\nprova\n%%EOF\n"),
+        ])->assertForbidden();
 
         self::assertSame(0, OfficeErpReceiptProof::query()->count());
         self::assertSame([], Storage::disk('local')->allFiles());
@@ -128,16 +144,73 @@ class ReceiptProofTest extends OfficeErpCommercialTestCase
         $invoice = $this->makeIssuedInvoice($ctx, '100.00');
         $proof = $this->stagePdf($ctx);
         $beforeReceiptCount = OfficeErpReceiptProof::query()->whereNotNull('receipt_id')->count();
-        DB::unprepared("CREATE TEMP TRIGGER fail_test_receipt_allocation BEFORE INSERT ON office_erp_receipt_allocations BEGIN SELECT RAISE(ABORT, 'receipt allocation failure fixture'); END");
+        $event = 'eloquent.creating: '.OfficeErpReceiptAllocation::class;
+        Event::listen($event, static function (): never {
+            throw new \RuntimeException('Portable receipt allocation failure fixture.');
+        });
 
-        $this->asOffice($ctx)->postJson('/api/v1/erp-commercial/receipts', $this->receiptInput($invoice, $proof['id']), [
-            'Idempotency-Key' => 'proof-failed-receipt-commit',
-        ])->assertServerError();
+        try {
+            $this->asOffice($ctx)->postJson('/api/v1/erp-commercial/receipts', $this->receiptInput($invoice, $proof['id']), [
+                'Idempotency-Key' => 'proof-failed-receipt-commit',
+            ])->assertServerError();
+        } finally {
+            Event::forget($event);
+        }
 
         self::assertSame(0, OfficeErpReceipt::query()->count());
         self::assertSame($beforeReceiptCount, OfficeErpReceiptProof::query()->whereNotNull('receipt_id')->count());
         self::assertNull(OfficeErpReceiptProof::query()->findOrFail($proof['id'])->receipt_id);
         Storage::disk('local')->assertExists($proof['path']);
+    }
+
+    public function test_exact_five_mib_pdf_is_accepted(): void
+    {
+        $ctx = $this->officeContext();
+        $prefix = "%PDF-1.4\n";
+        $suffix = "\n%%EOF\n";
+        $bytes = $prefix.str_repeat('x', OfficeErpReceiptProofs::MAX_PROOF_BYTES - strlen($prefix) - strlen($suffix)).$suffix;
+        self::assertSame(OfficeErpReceiptProofs::MAX_PROOF_BYTES, strlen($bytes));
+
+        $response = $this->asOffice($ctx)->post('/api/v1/erp-commercial/receipt-proofs', [
+            'file' => UploadedFile::fake()->createWithContent('limite.pdf', $bytes),
+        ])->assertCreated();
+
+        $proof = OfficeErpReceiptProof::query()->findOrFail($response->json('data.id'));
+        self::assertSame(OfficeErpReceiptProofs::MAX_PROOF_BYTES, (int) $proof->byte_length);
+        Storage::disk('local')->assertExists($proof->path);
+    }
+
+    public function test_expired_proof_cannot_be_claimed_and_first_claim_cannot_be_reused(): void
+    {
+        $ctx = $this->officeContext();
+        $firstInvoice = $this->makeIssuedInvoice($ctx, '100.00');
+        $secondInvoice = $this->makeIssuedInvoice($ctx, '100.00');
+        $claimed = $this->stagePdf($ctx);
+
+        $firstReceipt = $this->asOffice($ctx)->postJson('/api/v1/erp-commercial/receipts', $this->receiptInput($firstInvoice, $claimed['id']), [
+            'Idempotency-Key' => 'proof-first-claim',
+        ])->assertCreated()->json('data');
+        $this->asOffice($ctx)->postJson('/api/v1/erp-commercial/receipts', $this->receiptInput($secondInvoice, $claimed['id']), [
+            'Idempotency-Key' => 'proof-second-claim',
+        ])->assertUnprocessable()->assertJsonValidationErrors('proof_id');
+        $storedClaim = OfficeErpReceiptProof::query()->findOrFail($claimed['id']);
+        self::assertSame((int) $firstReceipt['id'], (int) $storedClaim->receipt_id);
+        self::assertNotNull($storedClaim->claimed_at);
+        Storage::disk('local')->assertExists($claimed['path']);
+        self::assertSame(1, OfficeErpReceipt::query()->count());
+
+        $start = CarbonImmutable::now();
+        Carbon::setTestNow($start);
+        $expired = $this->stagePdf($ctx);
+        Carbon::setTestNow($start->addHours(24)->addSecond());
+
+        $this->asOffice($ctx)->postJson('/api/v1/erp-commercial/receipts', $this->receiptInput($secondInvoice, $expired['id']), [
+            'Idempotency-Key' => 'proof-expired-claim',
+        ])->assertUnprocessable()->assertJsonValidationErrors('proof_id');
+        self::assertNull(OfficeErpReceiptProof::query()->findOrFail($expired['id'])->receipt_id);
+        self::assertNull(OfficeErpReceiptProof::query()->findOrFail($expired['id'])->claimed_at);
+        Storage::disk('local')->assertExists($expired['path']);
+        self::assertSame(1, OfficeErpReceipt::query()->count());
     }
 
     public function test_expiry_cleanup_deletes_only_verified_unclaimed_proof_objects(): void
@@ -167,20 +240,6 @@ class ReceiptProofTest extends OfficeErpCommercialTestCase
         Storage::disk('local')->assertExists('unrelated/private-sentinel.dat');
         self::assertNull(OfficeErpReceiptProof::query()->find($expired['id']));
         self::assertNotNull(OfficeErpReceiptProof::query()->findOrFail($corrupt['id']));
-    }
-
-    private function registerReceiptTestRoutes(): void
-    {
-        Route::middleware(['web', 'auth', ResolveOfficeErpCommercial::class])
-            ->prefix('api/v1/erp-commercial')
-            ->group(function (): void {
-                Route::get('/receipts', [OfficeErpReceiptController::class, 'index'])->name('test.office-erp.receipts.index');
-                Route::post('/receipts', [OfficeErpReceiptController::class, 'store'])->name('test.office-erp.receipts.store');
-                Route::get('/receipts/{receipt}', [OfficeErpReceiptController::class, 'show'])->whereNumber('receipt')->name('test.office-erp.receipts.show');
-                Route::post('/receipts/{receipt}/reverse', [OfficeErpReceiptController::class, 'reverse'])->whereNumber('receipt')->name('test.office-erp.receipts.reverse');
-                Route::post('/receipt-proofs', [OfficeErpReceiptProofController::class, 'store'])->name('test.office-erp.receipt-proofs.store');
-                Route::get('/receipt-proofs/{proofId}', [OfficeErpReceiptProofController::class, 'download'])->name('test.office-erp.receipt-proofs.download');
-            });
     }
 
     private function usePrivateLocalDisk(): void
