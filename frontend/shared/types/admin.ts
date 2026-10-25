@@ -1,9 +1,11 @@
+import type { OfficeErpAllowance } from './officeErpCommercial'
 import type { PlatformAccount as AccessAccount, IssuedAccount } from './access'
 
 export interface Plan {
   id: number
   slug: string
   name: string
+  erp_commercial?: OfficeErpAllowance | null
   limits?: { users?: number | null, clients?: number | null, monitorings?: number | null } | null
 }
 export interface Subscription {

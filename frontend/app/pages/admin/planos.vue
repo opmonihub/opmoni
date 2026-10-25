@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Plan } from '#shared/types/admin'
 import * as z from 'zod'
+import { defaultOfficeErpAllowance, officeErpModuleOptions } from '#shared/utils/officeErpCommercial'
 import { apiFailure } from '#shared/utils/access'
 import { createLatestRequestRunner } from '~/utils/adminListFilters'
 import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
@@ -72,11 +73,16 @@ const editSchema = z.object({
   name: z.string().min(2, 'Nome muito curto'),
   users: z.number().int().min(0).nullable().default(null),
   clients: z.number().int().min(0).nullable().default(null),
-  monitorings: z.number().int().min(0).nullable().default(null)
+  monitorings: z.number().int().min(0).nullable().default(null),
+  erp_commercial: z.object({
+    enabled: z.boolean(),
+    licence_limit: z.number().int().min(0).nullable().default(null),
+    module_keys: z.array(z.string())
+  }).default(defaultOfficeErpAllowance)
 })
 type EditSchema = z.output<typeof editSchema>
 const editTarget = ref<Plan | null>(null)
-const editState = reactive<Partial<EditSchema>>({ name: '', users: null, clients: null, monitorings: null })
+const editState = reactive<EditSchema>({ name: '', users: null, clients: null, monitorings: null, erp_commercial: defaultOfficeErpAllowance() })
 const saving = ref(false)
 let active = true
 onBeforeUnmount(() => {
@@ -92,6 +98,9 @@ function openEdit(plan: Plan) {
   editState.users = plan.limits?.users ?? null
   editState.clients = plan.limits?.clients ?? null
   editState.monitorings = plan.limits?.monitorings ?? null
+  editState.erp_commercial = plan.erp_commercial
+    ? { ...plan.erp_commercial, module_keys: [...plan.erp_commercial.module_keys] }
+    : defaultOfficeErpAllowance()
   editOpen.value = true
 }
 function planActions(plan: Plan) {
@@ -99,7 +108,7 @@ function planActions(plan: Plan) {
     type: 'label' as const,
     label: 'Ações'
   }, {
-    label: 'Editar limites',
+    label: 'Editar plano',
     icon: 'i-lucide-pencil',
     onSelect: () => openEdit(plan)
   }]
@@ -113,7 +122,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
   try {
     await $api(`/admin/plans/${editTarget.value.id}`, {
       method: 'PUT',
-      body: { name: event.data.name, limits }
+      body: { name: event.data.name, limits, erp_commercial: event.data.erp_commercial ?? defaultOfficeErpAllowance() }
     })
     if (!active)
       return
@@ -134,7 +143,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
 <template>
   <DataTablePanelList
     title="Planos"
-    description="Limites de usuários, clientes e monitoramentos."
+    description="Limites de usuários, clientes, monitoramentos e revenda ERP."
   >
     <template #toolbar>
       <UInput
@@ -271,6 +280,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
           <UInputNumber
             v-model="editState.users"
             :min="0"
+            :step="1"
             placeholder="Ilimitado"
             class="w-full"
           />
@@ -284,6 +294,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
           <UInputNumber
             v-model="editState.clients"
             :min="0"
+            :step="1"
             placeholder="Ilimitado"
             class="w-full"
           />
@@ -297,7 +308,46 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
           <UInputNumber
             v-model="editState.monitorings"
             :min="0"
+            :step="1"
             placeholder="Ilimitado"
+            class="w-full"
+          />
+        </UFormField>
+        <USeparator label="Revenda ERP" />
+        <UFormField name="erp_commercial.enabled" :error="fieldErrors['erp_commercial.enabled']?.[0] || fieldErrors['erp_commercial']?.[0]">
+          <USwitch
+            v-model="editState.erp_commercial.enabled"
+            label="Permitir revenda ERP"
+            description="Habilita o escritório a oferecer o ERP aos seus clientes."
+          />
+        </UFormField>
+        <UFormField
+          label="Licenças ERP"
+          name="erp_commercial.licence_limit"
+          :error="fieldErrors['erp_commercial.licence_limit']?.[0]"
+          hint="Vazio = ilimitado"
+        >
+          <UInputNumber
+            v-model="editState.erp_commercial.licence_limit"
+            :min="0"
+            :step="1"
+            placeholder="Ilimitado"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          label="Módulos disponíveis para revenda"
+          name="erp_commercial.module_keys"
+          :error="fieldErrors['erp_commercial.module_keys']?.[0]"
+          description="Selecione os módulos que o escritório pode oferecer. A seleção pode ficar vazia."
+        >
+          <USelectMenu
+            v-model="editState.erp_commercial.module_keys"
+            :items="officeErpModuleOptions"
+            value-key="value"
+            multiple
+            placeholder="Nenhum módulo selecionado"
+            :search-input="{ placeholder: 'Buscar módulo...' }"
             class="w-full"
           />
         </UFormField>

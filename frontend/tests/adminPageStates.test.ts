@@ -200,12 +200,94 @@ it('plans submit explicit nullable limits once while busy and preserve invalid i
   view.state.openEdit({ id: 1, name: 'Basic', limits: { users: 5 } })
   const first = view.state.onSave({ data: { name: 'Basic', users: null, clients: 0, monitorings: null } })
   const second = view.state.onSave({ data: { name: 'Basic', users: null, clients: 0, monitorings: null } })
-  assert.deepEqual(writes, [{ name: 'Basic', limits: { users: null, clients: 0, monitorings: null } }])
+  assert.deepEqual(writes, [{ name: 'Basic', limits: { users: null, clients: 0, monitorings: null }, erp_commercial: { enabled: false, licence_limit: 0, module_keys: [] } }])
   pending.reject({ data: { errors: { name: ['Invalid'] } } })
   await Promise.all([first, second])
   assert.equal(view.state.editState.name, 'Basic')
   assert.equal(view.state.editOpen.value, true)
   view.stop()
+})
+it('test_resale_editor_sends_explicit_allowance_and_legacy_limits', async () => {
+  const writes: Runtime[] = []
+  const view = await page('planos', async (path, options) => {
+    if (options?.method) {
+      assert.equal(path, '/admin/plans/1')
+      assert.equal(options.method, 'PUT')
+      writes.push(options.body)
+    }
+    return []
+  })
+  try {
+    await view.start()
+    view.state.openEdit({ id: 1, slug: 'basic', name: 'Basic', limits: { users: 5 } })
+    const nodes = view.nodes()
+    const enabled = nodes.find(node => (node.type as Runtime)?.name === 'USwitch')!
+    const modules = nodes.find(node => (node.type as Runtime)?.name === 'USelectMenu')!
+    assert.equal(modules.props!.multiple, '')
+    assert.equal(modules.props!['value-key'], 'value')
+    assert.deepEqual(modules.props!.items.map((item: Runtime) => item.value), ['purchases', 'add_sale', 'pos_sale', 'stock_transfers', 'stock_adjustment', 'expenses', 'cte', 'mdfe'])
+    enabled.props!['onUpdate:modelValue'](true)
+    modules.props!['onUpdate:modelValue'](['purchases'])
+    const inputs = nodes.filter(node => (node.type as Runtime)?.name === 'UInputNumber')
+    for (const input of inputs) {
+      assert.equal(input.props!.min, 0)
+      assert.equal(input.props!.step, 1)
+      input.props!['onUpdate:modelValue'](undefined)
+    }
+    inputs[1]!.props!['onUpdate:modelValue'](0)
+    const form = nodes.find(node => (node.type as Runtime)?.name === 'UForm')!
+    const data = form.props!.schema.parse(form.props!.state)
+    await form.props!.onSubmit({ data })
+    assert.deepEqual(writes[0].erp_commercial, { enabled: true, licence_limit: null, module_keys: ['purchases'] })
+    assert.deepEqual(writes[0].limits, { users: null, clients: 0, monitorings: null })
+    assert.equal(view.state.editOpen.value, false)
+  } finally {
+    view.stop()
+  }
+})
+it('test_resale_editor_preserves_values_and_errors_on_422', async () => {
+  const view = await page('planos', async (_path, options) => {
+    if (options?.method)
+      throw { statusCode: 422, data: { errors: { 'erp_commercial.module_keys': ['Invalid module'] } } }
+    return []
+  })
+  try {
+    await view.start()
+    view.state.openEdit({ id: 1, slug: 'basic', name: 'Basic', erp_commercial: { enabled: true, licence_limit: null, module_keys: ['purchases'] } })
+    await view.state.onSave({ data: view.state.editState })
+    assert.equal(view.state.editOpen.value, true)
+    assert.equal(view.state.editState.erp_commercial?.licence_limit, null)
+    assert.deepEqual(view.state.fieldErrors.value['erp_commercial.module_keys'], ['Invalid module'])
+    const field = view.nodes().find(node => node.props?.name === 'erp_commercial.module_keys')!
+    assert.equal(field.props!.error, 'Invalid module')
+  } finally {
+    view.stop()
+  }
+})
+it('resale editor defaults legacy plans safely, detaches drafts and permits empty modules', async () => {
+  const saved = { id: 1, slug: 'basic', name: 'Basic', erp_commercial: { enabled: true, licence_limit: 5, module_keys: ['purchases'] } }
+  const writes: Runtime[] = []
+  const view = await page('planos', async (_path, options) => {
+    if (options?.method)
+      writes.push(options.body)
+    return [saved]
+  })
+  try {
+    await view.start()
+    view.state.openEdit(saved)
+    assert.deepEqual(view.state.editState.erp_commercial, { enabled: true, licence_limit: 5, module_keys: ['purchases'] })
+    view.state.editState.erp_commercial?.module_keys.push('expenses')
+    assert.deepEqual(saved.erp_commercial.module_keys, ['purchases'])
+    view.state.openEdit({ id: 2, slug: 'legacy', name: 'Legacy' })
+    assert.deepEqual(view.state.editState.erp_commercial, { enabled: false, licence_limit: 0, module_keys: [] })
+    const form = view.nodes().find(node => (node.type as Runtime)?.name === 'UForm')!
+    assert.equal(form.props!.schema.safeParse({ ...view.state.editState, erp_commercial: { enabled: true, licence_limit: 1.5, module_keys: [] } }).success, false)
+    const data = form.props!.schema.parse(view.state.editState)
+    await form.props!.onSubmit({ data })
+    assert.deepEqual(writes[0].erp_commercial, { enabled: false, licence_limit: 0, module_keys: [] })
+  } finally {
+    view.stop()
+  }
 })
 it('accounts preserve results on refresh error and temporary link clears on close', async () => {
   let response: Runtime = resource([{ id: 1, name: 'Saved', status: 'active', members_count: 0 }])
@@ -379,17 +461,17 @@ it('rendered Plan number inputs normalize cleared undefined before form validati
   await view.start()
   view.state.openEdit(plan)
   const inputs = view.nodes().filter(node => (node.type as Runtime)?.name === 'UInputNumber')
-  assert.equal(inputs.length, 3)
+  assert.equal(inputs.length, 4)
   for (const input of inputs) input.props!['onUpdate:modelValue'](undefined)
   const form = view.nodes().find(node => node.props?.id === 'edit-plan-form')!
   const cleared = form.props!.schema.safeParse(form.props!.state)
   assert.equal(cleared.success, true, 'Empty values emitted by the rendered number inputs must pass UForm validation')
-  assert.deepEqual(cleared.data, { name: 'Basic', users: null, clients: null, monitorings: null })
+  assert.deepEqual(cleared.data, { name: 'Basic', users: null, clients: null, monitorings: null, erp_commercial: { enabled: false, licence_limit: null, module_keys: [] } })
   inputs[1]!.props!['onUpdate:modelValue'](0)
   const validated = form.props!.schema.safeParse(form.props!.state)
   assert.equal(validated.success, true)
   await form.props!.onSubmit({ data: validated.data })
-  assert.deepEqual(writes, [{ name: 'Basic', limits: { users: null, clients: 0, monitorings: null } }])
+  assert.deepEqual(writes, [{ name: 'Basic', limits: { users: null, clients: 0, monitorings: null }, erp_commercial: { enabled: false, licence_limit: null, module_keys: [] } }])
   assert.equal(view.state.limitValue(view.state.plans.value[0], 'users'), null)
   assert.equal(view.state.limitValue(view.state.plans.value[0], 'clients'), 0)
   assert.equal(view.state.limitValue(view.state.plans.value[0], 'monitorings'), null)
