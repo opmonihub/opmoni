@@ -52,7 +52,7 @@ function body() {
   return { items, period_start: f.period_start, period_end: f.period_end, due_on: f.due_on }
 }
 async function mutate(action: string, path: string, data: Record<string, unknown>, method: 'POST' | 'PATCH' = 'POST') {
-  if (busy.value || recoverable.value) return
+  if (busy.value || recovering.value || recoverable.value || unknown.value) return
   busy.value = true
   error.value = ''
   errors.value = {}
@@ -103,6 +103,15 @@ async function recover() {
     if (!context.isCurrent(token) || pageId !== id.value) return
     if (r.status === 'confirmed') {
       unknown.value = false
+      if (isNew.value) {
+        const result = r.data && typeof r.data === 'object' ? r.data as { id?: unknown } : {}
+        if (typeof result.id !== 'number' || !Number.isSafeInteger(result.id) || result.id < 1) {
+          error.value = 'A operação foi confirmada, mas não retornou a fatura criada.'
+          unknown.value = true
+          return
+        }
+        await router.replace('/gestao-erp/faturas/' + result.id)
+      }
       await load()
     } else if (r.status === 'failed')error.value = r.failure.message
   } finally {
@@ -207,7 +216,7 @@ watch(identity, () => {
         Adicionar linha
       </UButton>
       <template #footer>
-        <UButton :disabled="busy||recoverable" :loading="busy" @click="save">
+        <UButton :disabled="busy||recovering||recoverable||unknown" :loading="busy||recovering" @click="save">
           Salvar rascunho
         </UButton>
       </template>

@@ -9,14 +9,11 @@ interface ListResponse<T> { data: T[], meta: { current_page: number, last_page: 
 const { api } = useAccessApi(), context = useOfficeErpContext(), command = useOfficeErpCommand()
 const { user, currentAccount } = useAuth(), sessionGeneration = useState('access-session-generation', () => 0)
 const rows = ref<Receipt[]>([]), invoices = ref<InvoiceChoice[]>([]), total = ref(0), lastPage = ref(1), page = ref(1), perPage = ref<25 | 50 | 100>(25)
-const from = ref(''), to = ref(''), loading = ref(false), loadError = ref(''), empty = ref(false), open = ref(!!command.pending.value || !!command.recoveryKey.value), busy = ref(false), pending = ref(false), unknown = ref(false), recovering = ref(false), error = ref(''), errors = ref<Record<string, string[]>>({}), proofId = ref<string | null>(null), proofName = ref(''), proofError = ref('')
+const from = ref(''), to = ref(''), loading = ref(false), loadError = ref(''), empty = ref(false), open = ref(false), busy = ref(false), pending = ref(false), unknown = ref(false), recovering = ref(false), error = ref(''), errors = ref<Record<string, string[]>>({}), proofId = ref<string | null>(null), proofName = ref(''), proofError = ref('')
 const proofUploadPending = ref(false), proofRequired = ref(false)
 const key = computed(() => command.recoveryKey.value)
 const recoverable = computed(() => !!command.pending.value || !!key.value)
 const identity = computed(() => JSON.stringify([user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null, context.capabilities.value?.capability_key ?? null]))
-watch(key, (value) => {
-  if (value) open.value = true
-})
 const reversing = ref<Receipt | null>(null)
 let generation = 0
 let proofUploadGeneration = 0
@@ -56,6 +53,8 @@ async function load() {
 }
 async function uploadProof(file: File) {
   const request = ++proofUploadGeneration
+  proofId.value = null
+  proofName.value = ''
   proofRequired.value = true
   proofUploadPending.value = true
   proofError.value = ''
@@ -78,6 +77,20 @@ async function uploadProof(file: File) {
     if (context.isCurrent(token) && request === proofUploadGeneration) proofUploadPending.value = false
   }
 }
+function clearSelectedProof(event: Event) {
+  const input = event.target as HTMLInputElement | null
+  if (input?.type !== 'file' || input.getAttribute('aria-label') !== 'Selecionar comprovante') return
+  proofId.value = null
+  proofName.value = ''
+  proofRequired.value = true
+  proofError.value = ''
+}
+onMounted(() => {
+  if (typeof window !== 'undefined') window.addEventListener('change', clearSelectedProof, true)
+})
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') window.removeEventListener('change', clearSelectedProof, true)
+})
 async function create(payload: { amount: string, received_on: string, reference?: string, proof_id?: string, allocations: Array<{ invoice_id: number, amount: string }> }) {
   if (busy.value || pending.value || unknown.value || recoverable.value || proofUploadPending.value) {
     if (proofUploadPending.value) proofError.value = 'Aguarde o envio do comprovante privado antes de registrar o recebimento.'
@@ -110,6 +123,7 @@ async function create(payload: { amount: string, received_on: string, reference?
     open.value = false
     proofId.value = null
     proofName.value = ''
+    proofRequired.value = false
     await load()
   } finally { if (context.isCurrent(token)) busy.value = false }
 }
@@ -244,6 +258,15 @@ watch(identity, () => {
         />
       </div>
     </DataTablePanelList>
+    <UAlert v-if="recoverable && !unknown" color="warning" title="Confirmação pendente">
+      <template #description>
+        <div>
+          Consulte a operação antes de tentar novamente. <UButton :disabled="recovering" @click="recover">
+            Consultar operação
+          </UButton>
+        </div>
+      </template>
+    </UAlert>
     <OfficeErpReceiptModal
       :key="identity"
       v-model:open="open"
