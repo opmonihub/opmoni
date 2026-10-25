@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\Erp\ErpCompanyMemberController;
 use App\Http\Controllers\Api\V1\Erp\ErpCompanySettingsController;
 use App\Http\Controllers\Api\V1\Erp\ErpEstablishmentController;
 use App\Http\Controllers\Api\V1\Erp\ErpSubscriptionController;
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpCompanyInvoiceController;
 use App\Http\Middleware\ResolveCompany;
 use Illuminate\Support\Facades\Route;
 
@@ -16,6 +17,8 @@ Route::prefix('erp')->group(function (): void {
 
     Route::middleware(ResolveCompany::class)->group(function (): void {
         Route::get('/subscription', [ErpSubscriptionController::class, 'show'])->name('erp.subscription.show');
+        Route::get('/commercial-invoices', [OfficeErpCompanyInvoiceController::class, 'index'])->name('erp.commercial-invoices.index');
+        Route::get('/commercial-invoices/{invoice}', [OfficeErpCompanyInvoiceController::class, 'show'])->whereNumber('invoice')->name('erp.commercial-invoices.show');
         Route::get('/establishments', [ErpEstablishmentController::class, 'index'])->name('erp.establishments.index');
         Route::get('/establishments/{establishment}', [ErpEstablishmentController::class, 'show'])->whereNumber('establishment')->name('erp.establishments.show');
         Route::post('/establishments', [ErpEstablishmentController::class, 'store'])->name('erp.establishments.store');

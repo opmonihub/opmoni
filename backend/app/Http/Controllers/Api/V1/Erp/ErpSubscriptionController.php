@@ -18,6 +18,6 @@ class ErpSubscriptionController extends Controller
         abort_unless($subscription, 404);
 
         return response()->json(['data' => (new ErpSubscriptionResource($subscription))->resolve($request)])
-            ->header('Cache-Control', 'no-store');
+            ->header('Cache-Control', 'private, no-store');
     }
 }

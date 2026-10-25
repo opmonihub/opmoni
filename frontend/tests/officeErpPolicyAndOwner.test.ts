@@ -130,6 +130,182 @@ function fixture(options: { read?: () => Promise<unknown>, preview?: (body: Reco
   return { ...mount(component), calls, executeCalls, recoverCalls, toasts, command, context }
 }
 
+function ownerContractFixture(api: (path: string) => Promise<unknown>) {
+  const currentCompany = Vue.ref({ id: 12 })
+  const currentAccount = Vue.ref<{ id: number } | null>(null)
+  const sessionGeneration = Vue.ref(1)
+  const calls: string[] = []
+  const component = compileVueComponent('pages/erp/contrato.vue', {
+    definePageMeta() {},
+    onMounted: (callback: () => void) => { void callback() },
+    onScopeDispose: () => {},
+    useAuth: () => ({ user: testUser, currentCompany, currentAccount }),
+    useHead() {},
+    useState: () => sessionGeneration,
+    useNuxtApp: () => ({ $api: async (path: string) => {
+      calls.push(path)
+      return api(path)
+    } })
+  })
+
+  return { ...mount(component), currentCompany, currentAccount, sessionGeneration, calls }
+}
+
+describe('Company ERP contract page', () => {
+  it('renders persistent pending status, accepted retail terms and only the current Company invoices without activation', async () => {
+    const view = ownerContractFixture(async (path) => {
+      if (path === '/erp/subscription') {
+        return { data: {
+          status: 'pending',
+          plan: { name: 'Plano técnico legado', modules: [{ module_key: 'purchases' }] },
+          company: { name: 'Empresa do owner', status: 'active' },
+          retail_contract: {
+            agreement_status: 'accepted',
+            terms: { price: '125.00', currency: 'BRL', interval_months: 1, due_in_days: 10, module_keys: ['purchases'] },
+            service_anchor_on: null,
+            billing_timezone: 'America/Sao_Paulo'
+          }
+        } }
+      }
+
+      if (path === '/erp/commercial-invoices/41') {
+        return { data: {
+          id: 41,
+          kind: 'recurring',
+          document_status: 'issued',
+          number: 'ERP-2026-0001',
+          issued_at: '2026-10-25T12:00:00.000Z',
+          period_start: '2026-10-25',
+          period_end: '2026-11-25',
+          due_on: '2026-11-04',
+          currency: 'BRL',
+          items: [{ description: 'Licença ERP', amount: '125.00' }],
+          original_total: '125.00',
+          adjustments: [],
+          balance: { original_total: '125.00', adjusted_charge: '125.00', effective_received: '0.00', outstanding: '125.00', settlement_status: 'unpaid', overdue: false }
+        } }
+      }
+
+      return { data: [{
+        id: 41,
+        number: 'ERP-2026-0001',
+        kind: 'recurring',
+        document_status: 'issued',
+        period_start: '2026-10-25',
+        period_end: '2026-11-25',
+        due_on: '2026-11-04',
+        items: [{ description: 'Licença ERP', amount: '125.00' }],
+        adjustments: [],
+        original_total: '125.00',
+        balance: { original_total: '125.00', adjusted_charge: '125.00', effective_received: '0.00', outstanding: '125.00', settlement_status: 'unpaid', overdue: false }
+      }], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }
+    })
+    await flush()
+
+    assert.match(renderText(view.root), /Empresa do owner/)
+    assert.match(renderText(view.root), /Pendente de habilitação/)
+    assert.match(renderText(view.root), /Contrato de revenda/)
+    assert.match(renderText(view.root), /125,00/)
+    assert.match(renderText(view.root), /ERP-2026-0001/)
+    assert.doesNotMatch(renderText(view.root), /Ativar contrato|Ativar agora/)
+    const detailButton = find(view.root, node => node.tag === 'button' && renderText(node).includes('Ver detalhes'))[0]
+    assert.ok(detailButton)
+    ;(detailButton.props.onClick as () => void)()
+    await flush()
+    assert.match(renderText(view.root), /Detalhes de ERP-2026-0001/)
+    assert.match(renderText(view.root), /Saldo em aberto\s+R\$ 125,00/)
+    assert.match(renderText(view.root), /Licença ERP/)
+    assert.deepEqual(view.calls, ['/erp/subscription', '/erp/commercial-invoices', '/erp/commercial-invoices/41'])
+    view.app.unmount()
+  })
+
+  it('preserves the existing unlinked direct subscription presentation without requesting retail invoices', async () => {
+    const view = ownerContractFixture(async () => ({ data: {
+      status: 'active',
+      plan: { name: 'Plano ERP legado', modules: [{ module_key: 'purchases' }] },
+      company: { name: 'Empresa independente', status: 'active' }
+    } }))
+    await flush()
+
+    assert.match(renderText(view.root), /Empresa independente/)
+    assert.match(renderText(view.root), /Plano ERP legado/)
+    assert.match(renderText(view.root), /Módulos do plano/)
+    assert.doesNotMatch(renderText(view.root), /Contrato de revenda|Faturas do contrato/)
+    assert.deepEqual(view.calls, ['/erp/subscription'])
+    view.app.unmount()
+  })
+
+  it('discards a delayed contract response after the current Company changes', async () => {
+    let resolveSubscription!: (value: unknown) => void
+    const view = ownerContractFixture((path) => {
+      if (path === '/erp/subscription') {
+        return new Promise((resolve) => {
+          resolveSubscription = resolve
+        })
+      }
+
+      throw new Error('Faturas indisponíveis')
+    })
+    await flush()
+    view.currentCompany.value = { id: 13 }
+    resolveSubscription({ data: {
+      status: 'pending',
+      plan: { name: 'Plano atual', modules: [] },
+      company: { name: 'Empresa anterior protegida', status: 'active' },
+      retail_contract: { agreement_status: 'accepted', terms: { price: '125.00', currency: 'BRL', interval_months: 1, due_in_days: 10, module_keys: [] }, service_anchor_on: null, billing_timezone: 'America/Sao_Paulo' }
+    } })
+    await flush()
+
+    assert.doesNotMatch(renderText(view.root), /Empresa anterior protegida|Faturas indisponíveis/)
+    view.app.unmount()
+  })
+
+  it('discards delayed contract responses after the Account or authenticated session changes', async () => {
+    for (const changeAuthority of [
+      (view: ReturnType<typeof ownerContractFixture>) => { view.currentAccount.value = { id: 91 } },
+      (view: ReturnType<typeof ownerContractFixture>) => { view.sessionGeneration.value++ }
+    ]) {
+      let resolveSubscription!: (value: unknown) => void
+      const view = ownerContractFixture(() => new Promise((resolve) => {
+        resolveSubscription = resolve
+      }))
+      await flush()
+      changeAuthority(view)
+      resolveSubscription({ data: {
+        status: 'pending',
+        plan: { name: 'Plano antigo', modules: [] },
+        company: { name: 'Empresa antiga protegida', status: 'active' },
+        retail_contract: { agreement_status: 'accepted', terms: { price: '125.00', currency: 'BRL', interval_months: 1, due_in_days: 10, module_keys: [] }, service_anchor_on: null, billing_timezone: 'America/Sao_Paulo' }
+      } })
+      await flush()
+
+      assert.doesNotMatch(renderText(view.root), /Empresa antiga protegida/)
+      view.app.unmount()
+    }
+  })
+
+  it('keeps retail terms visible and reports an invoice error without inventing a balance', async () => {
+    const view = ownerContractFixture(async (path) => {
+      if (path === '/erp/subscription') {
+        return { data: {
+          status: 'pending',
+          plan: { name: 'Plano atual', modules: [] },
+          company: { name: 'Empresa atual', status: 'active' },
+          retail_contract: { agreement_status: 'accepted', terms: { price: '125.00', currency: 'BRL', interval_months: 1, due_in_days: 10, module_keys: [] }, service_anchor_on: null, billing_timezone: 'America/Sao_Paulo' }
+        } }
+      }
+
+      throw new Error('Faturas indisponíveis')
+    })
+    await flush()
+
+    assert.match(renderText(view.root), /Contrato de revenda/)
+    assert.match(renderText(view.root), /Não foi possível carregar as faturas/)
+    assert.doesNotMatch(renderText(view.root), /0,00|0 contratos/)
+    view.app.unmount()
+  })
+})
+
 describe('Office ERP policy settings page', () => {
   it('does not invent zero impact when the initial settings request fails', async () => {
     const view = fixture({ read: async () => {
