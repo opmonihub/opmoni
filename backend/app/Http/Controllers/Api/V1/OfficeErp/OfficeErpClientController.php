@@ -13,10 +13,11 @@ use Illuminate\Http\Request;
 
 final class OfficeErpClientController extends Controller
 {
-    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpQueries $queries): JsonResponse
+    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpOwnerInvitations $invitations, OfficeErpQueries $queries): JsonResponse
     {
         $filters = ListCommercialRequest::validateFilters('clients', $request->query());
         $ctx = $admission->context($request);
+        $invitations->expireDueInvitationsForOfficeRead($ctx);
         $page = $queries->clients($ctx, $filters);
 
         return response()->json([

@@ -55,6 +55,12 @@ final class OfficeErpOwnerInvitations
         });
     }
 
+    public function expireDueInvitationsForOfficeRead(OfficeErpExecutionContext $ctx): void
+    {
+        $this->assertOfficeAdministrator($ctx);
+        $this->expirePendingInvitations($ctx);
+    }
+
     /** @param array<string, mixed> $owner @return array<string, mixed> */
     public function preview(OfficeErpExecutionContext $ctx, int $clientId, int $revisionId, array $owner): array
     {
