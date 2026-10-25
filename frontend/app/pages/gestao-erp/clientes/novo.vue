@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { OfficeErpCommandResult, OfficeErpInvitationOutcome, OfficeErpOffer, OfficeErpOfferListResponse, OfficeErpOnboardingPreview, OfficeErpPortfolioClient, OfficeErpPortfolioClientListResponse } from '#shared/types/officeErpCommercial'
+import type { OfficeErpCommandResult, OfficeErpInvitationOutcome, OfficeErpOffer, OfficeErpOfferListResponse, OfficeErpOfferRevision, OfficeErpOnboardingPreview, OfficeErpPortfolioClient, OfficeErpPortfolioClientListResponse } from '#shared/types/officeErpCommercial'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { panelBodyClass } from '~/components/data-table/panel'
@@ -32,8 +32,11 @@ const offerLastPage = ref(1)
 const offersLoading = ref(false)
 const offersError = ref('')
 const perPage = ref<25 | 50 | 100>(25)
-const selectedClient = ref<OfficeErpPortfolioClient | null>(null)
-const selectedRevision = ref<{ id: number, label: string, offer: OfficeErpOffer, revisionId: number } | null>(null)
+type OfficeErpClientOption = OfficeErpPortfolioClient & { label: string }
+type OfficeErpPublishedRevision = { id: number, revisionId: number, offer: OfficeErpOffer, label: string, revision: OfficeErpOfferRevision }
+
+const selectedClient = ref<OfficeErpClientOption>()
+const selectedRevision = ref<OfficeErpPublishedRevision>()
 const ownerName = ref('')
 const ownerEmail = ref('')
 const preview = ref<OfficeErpOnboardingPreview | null>(null)
@@ -55,16 +58,17 @@ const identityStamp = computed(() => JSON.stringify([
   currentAccount.value?.status ?? null, currentAccount.value?.role ?? null,
   context.capabilities.value?.capability_key ?? null
 ]))
-const clientOptions = computed(() => clients.value.map(client => ({
+const clientOptions = computed<OfficeErpClientOption[]>(() => clients.value.map(client => ({
   ...client,
   label: client.trade_name || client.name
 })))
-const publishedRevisions = computed(() => offers.value.flatMap((offer) => {
+const publishedRevisions = computed<OfficeErpPublishedRevision[]>(() => offers.value.flatMap((offer) => {
   const revision = offer.current_revision
   if (offer.status !== 'active' || !revision?.published || !revision.published_at) return []
   return [{ id: revision.id, revisionId: revision.id, offer, label: `${revision.name} · revisão ${revision.revision_number}`, revision }]
 }))
 const recoveryKey = computed(() => command.recoveryKey.value)
+const commandPending = computed(() => command.pending.value)
 const selectedClientId = computed(() => selectedClient.value?.id ?? null)
 const selectedRevisionId = computed(() => selectedRevision.value?.revisionId ?? null)
 const ownerSnapshot = computed(() => `${ownerName.value.trim()}\n${ownerEmail.value.trim().toLowerCase()}`)
@@ -313,8 +317,8 @@ watch(identityStamp, () => {
   offers.value = []
   clientPage.value = 1
   offerPage.value = 1
-  selectedClient.value = null
-  selectedRevision.value = null
+  selectedClient.value = undefined
+  selectedRevision.value = undefined
   ownerName.value = ''
   ownerEmail.value = ''
   preselectedClientHandled = false
@@ -535,7 +539,7 @@ onBeforeUnmount(() => {
             variant="outline"
             icon="i-lucide-clipboard-check"
             :loading="previewLoading"
-            :disabled="!canReview || previewLoading || command.pending"
+            :disabled="!canReview || previewLoading || commandPending"
             @click="reviewTerms"
           >
             Revisar termos
@@ -621,7 +625,7 @@ onBeforeUnmount(() => {
             v-if="!previewError"
             icon="i-lucide-send"
             :loading="commandBusy"
-            :disabled="commandBusy || command.pending"
+            :disabled="commandBusy || commandPending"
             @click="issueInvitation"
           >
             Enviar convite
@@ -639,7 +643,7 @@ onBeforeUnmount(() => {
             <UButton
               color="neutral"
               variant="outline"
-              :disabled="commandBusy || command.pending"
+              :disabled="commandBusy || commandPending"
               @click="reissueInvitation"
             >
               Gerar novo link
@@ -650,7 +654,7 @@ onBeforeUnmount(() => {
               </UFormField><UButton
                 color="error"
                 variant="outline"
-                :disabled="revokeReason.trim().length < 3 || commandBusy || command.pending"
+                :disabled="revokeReason.trim().length < 3 || commandBusy || commandPending"
                 :loading="commandBusy"
                 @click="revokeInvitation"
               >

@@ -102,7 +102,7 @@ function uiComponents(): Record<string, Vue.Component> {
           disabled: props.disabled,
           onChange: (event: { target: { value: string } }) => {
             const item = (props.items as Array<{ id: number }>).find(option => String(option.id) === event.target.value)
-            context.emit('update:modelValue', item ?? null)
+            context.emit('update:modelValue', item)
           }
         }, [Vue.h('option', { value: '' }, 'Selecione'), ...(props.items as Array<{ id: number, label: string }>).map(item => Vue.h('option', { value: String(item.id) }, item.label))])
       }
@@ -475,7 +475,14 @@ describe('Office ERP seller onboarding SFC', () => {
     command.recoveryResult = { status: 'confirmed', data: { data: { id: 7, name: 'Oferta Varejo' } } }
     const page = harness('pages/gestao-erp/clientes/novo.vue', { command })
     await flush()
-    assert.ok(findButton(page.root, 'Verificar resultado'))
+    assert.equal(findButton(page.root, 'Verificar resultado')?.props.disabled, false)
+    selectOption(page.root, 'client_id', '18')
+    selectOption(page.root, 'revision_id', '34')
+    updateInput(page.root, 'owner.full_name', 'Ana Souza')
+    updateInput(page.root, 'owner.email', 'ana@example.test')
+    await flush()
+    assert.equal(findButton(page.root, 'Revisar termos')?.props.disabled, true)
+    assert.equal(typeof findButton(page.root, 'Revisar termos')?.props.disabled, 'boolean')
     ;(findButton(page.root, 'Verificar resultado')?.props.onClick as () => void)()
     await flush()
     assert.match(textOf(page.root), /resultado não corresponde a um convite/)
