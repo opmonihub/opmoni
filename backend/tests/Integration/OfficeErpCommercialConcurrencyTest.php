@@ -340,9 +340,26 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $fixture = $this->effectiveInvoiceFixture();
         $invoice = $this->issueRaceInvoice($fixture, $fixture['contracts'][0]);
         $proof = $this->stageRaceProof($fixture);
-        $frozenNow = CarbonImmutable::parse('2030-06-15T12:00:00Z');
-        $expiresAt = $frozenNow->addSecond();
+        $otherProofMinimumExpiry = DB::table('office_erp_receipt_proofs')
+            ->whereNull('receipt_id')
+            ->whereNull('claimed_at')
+            ->where('id', '!=', $proof['id'])
+            ->min('expires_at');
+        if ($otherProofMinimumExpiry === null) {
+            $expiresAt = CarbonImmutable::now()->addSecond();
+            $cleanupCutoff = $expiresAt->addSecond();
+        } else {
+            $cleanupCutoff = CarbonImmutable::parse($otherProofMinimumExpiry)->subSecond();
+            $expiresAt = $cleanupCutoff->subSecond();
+        }
+        $frozenNow = $expiresAt->subSecond();
         DB::table('office_erp_receipt_proofs')->where('id', $proof['id'])->update(['expires_at' => $expiresAt]);
+        self::assertSame(false, DB::table('office_erp_receipt_proofs')
+            ->whereNull('receipt_id')
+            ->whereNull('claimed_at')
+            ->where('id', '!=', $proof['id'])
+            ->where('expires_at', '<=', $cleanupCutoff)
+            ->exists(), 'Cleanup cutoff must exclude every unrelated unclaimed proof before cleanup starts.');
         $first = $this->worker('receipt', $this->financialPayload($fixture, [
             'receipt' => [...$this->receiptInput($invoice, '25.00'), 'proof_id' => $proof['id']],
             'idempotency_key' => 'race-proof-cleanup-claim',
@@ -355,7 +372,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertGreaterThan(0, $held['transaction_level']);
         self::assertStringContainsString('insert into "office_erp_receipt_allocations"', strtolower($held['lock_query']));
         $second = $this->worker('proof_cleanup', $this->financialPayload($fixture, [
-            'now' => $expiresAt->addSecond()->toIso8601String(),
+            'now' => $cleanupCutoff->toIso8601String(),
             'contract_id' => (int) $fixture['contracts'][0]->id,
         ]));
         $this->assertWaitingOnProofLock($second);
