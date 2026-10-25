@@ -350,6 +350,10 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
             $cleanupCutoff = $expiresAt->addSecond();
         } else {
             $cleanupCutoff = CarbonImmutable::parse($otherProofMinimumExpiry)->subSecond();
+            $latestSafeCutoff = CarbonImmutable::now()->addSeconds(2);
+            if ($cleanupCutoff->greaterThan($latestSafeCutoff)) {
+                $cleanupCutoff = $latestSafeCutoff;
+            }
             $expiresAt = $cleanupCutoff->subSecond();
         }
         $frozenNow = $expiresAt->subSecond();
@@ -361,7 +365,11 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
             ->where('expires_at', '<=', $cleanupCutoff)
             ->exists(), 'Cleanup cutoff must exclude every unrelated unclaimed proof before cleanup starts.');
         $first = $this->worker('receipt', $this->financialPayload($fixture, [
-            'receipt' => [...$this->receiptInput($invoice, '25.00'), 'proof_id' => $proof['id']],
+            'receipt' => [
+                ...$this->receiptInput($invoice, '25.00'),
+                'proof_id' => $proof['id'],
+                'received_on' => $frozenNow->setTimezone('America/Sao_Paulo')->toDateString(),
+            ],
             'idempotency_key' => 'race-proof-cleanup-claim',
             'frozen_now' => $frozenNow->toIso8601String(),
             'hold_after_proof_claim' => true,
@@ -371,6 +379,12 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame($this->signalData($first, 'ready')['database_pid'], $held['database_pid']);
         self::assertGreaterThan(0, $held['transaction_level']);
         self::assertStringContainsString('insert into "office_erp_receipt_allocations"', strtolower($held['lock_query']));
+        self::assertSame(false, DB::table('office_erp_receipt_proofs')
+            ->whereNull('receipt_id')
+            ->whereNull('claimed_at')
+            ->where('id', '!=', $proof['id'])
+            ->where('expires_at', '<=', $cleanupCutoff)
+            ->exists(), 'Cleanup cutoff must still exclude every unrelated unclaimed proof immediately before cleanup.');
         $second = $this->worker('proof_cleanup', $this->financialPayload($fixture, [
             'now' => $cleanupCutoff->toIso8601String(),
             'contract_id' => (int) $fixture['contracts'][0]->id,
