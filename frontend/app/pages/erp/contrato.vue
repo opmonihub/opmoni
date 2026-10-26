@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useErpAdministrationContext } from '~/composables/useErpAdministrationContext'
+import { useErpReadScope } from '~/composables/useErpReadScope'
+import { listNavigationField, useListNavigationState } from '~/composables/useListNavigationState'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
@@ -60,14 +63,22 @@ interface CompanyInvoicePayload {
 }
 
 const { $api } = useNuxtApp()
-const { user, currentCompany, currentAccount } = useAuth()
-const sessionGeneration = useState<number>('access-session-generation', () => 0)
+const context = useErpAdministrationContext()
+const reads = useErpReadScope()
+const navigation = useListNavigationState('erp-contract-invoices', {
+  defaults: () => ({ page: 1 }),
+  authority: () => context.key.value,
+  normalize(value: unknown) {
+    const page = typeof value === 'object' && value !== null ? (value as { page?: unknown }).page : undefined
+    return { page: typeof page === 'number' && Number.isSafeInteger(page) && page > 0 ? page : 1 }
+  }
+})
 const loading = ref(true)
 const error = ref<unknown>(null)
 const subscription = ref<ErpSubscriptionPayload['data'] | null>(null)
 const invoices = ref<CompanyInvoice[]>([])
 const invoiceMeta = ref<CompanyInvoiceListPayload['meta'] | null>(null)
-const invoicePage = ref(1)
+const invoicePage = listNavigationField(navigation, 'page')
 const invoicesLoading = ref(false)
 const invoicesError = ref<unknown>(null)
 const invoiceDetail = ref<CompanyInvoice | null>(null)
@@ -75,9 +86,12 @@ const invoiceDetailLoading = ref(false)
 const invoiceDetailError = ref<unknown>(null)
 let generation = 0
 let detailGeneration = 0
+let listGeneration = 0
 
 function clearProtectedState() {
+  reads.cancel()
   generation++
+  listGeneration++
   detailGeneration++
   subscription.value = null
   invoices.value = []
@@ -92,33 +106,17 @@ function clearProtectedState() {
   invoiceDetailLoading.value = false
 }
 
-watch([
-  () => currentCompany.value?.id,
-  () => currentAccount.value?.id,
-  () => user.value?.id,
-  sessionGeneration
-], clearProtectedState, { flush: 'sync' })
+watch(context.key, clearProtectedState, { flush: 'sync' })
 
 onScopeDispose(() => {
   generation++
+  listGeneration++
   detailGeneration++
 })
 
-function captureAuthority() {
-  return {
-    userId: user.value?.id ?? null,
-    companyId: currentCompany.value?.id ?? null,
-    accountId: currentAccount.value?.id ?? null,
-    sessionGeneration: sessionGeneration.value
-  }
-}
-
+const captureAuthority = context.capture
 function authorityIsCurrent(snapshot: ReturnType<typeof captureAuthority>, version: number) {
-  return version === generation
-    && snapshot.userId === (user.value?.id ?? null)
-    && snapshot.companyId === (currentCompany.value?.id ?? null)
-    && snapshot.accountId === (currentAccount.value?.id ?? null)
-    && snapshot.sessionGeneration === sessionGeneration.value
+  return version === generation && context.isCurrent(snapshot)
 }
 
 function isAuthorityLoss(error: unknown) {
@@ -180,6 +178,10 @@ function formatDate(value: string) {
 
 async function load() {
   const version = ++generation
+  const signal = reads.start('subscription')
+  reads.cancel('invoices')
+  reads.cancel('detail')
+  listGeneration++
   detailGeneration++
   const authority = captureAuthority()
   if (subscription.value?.retail_contract)
@@ -188,14 +190,13 @@ async function load() {
   error.value = null
   invoices.value = []
   invoiceMeta.value = null
-  invoicePage.value = 1
   invoicesLoading.value = false
   invoicesError.value = null
   invoiceDetail.value = null
   invoiceDetailLoading.value = false
   invoiceDetailError.value = null
   try {
-    const response = await $api<ErpSubscriptionPayload>('/erp/subscription')
+    const response = await $api<ErpSubscriptionPayload>('/erp/subscription', { signal })
     if (!authorityIsCurrent(authority, version))
       return
 
@@ -204,11 +205,11 @@ async function load() {
     if (!retailContract)
       return
 
-    await loadInvoices(1, authority, version)
+    await loadInvoices(invoicePage.value, authority, version)
   } catch (loadError) {
     if (authorityIsCurrent(authority, version)) {
       if (isAuthorityLoss(loadError))
-        subscription.value = null
+        clearProtectedState()
       error.value = loadError
     }
   } finally {
@@ -217,7 +218,12 @@ async function load() {
   }
 }
 
-async function loadInvoices(page: number, authority = captureAuthority(), version = generation) {
+async function loadInvoices(page: number, authority = captureAuthority(), version = generation): Promise<void> {
+  if (!Number.isSafeInteger(page) || page < 1) return
+  const listVersion = ++listGeneration
+  const signal = reads.start('invoices')
+  reads.cancel('detail')
+  const current = () => authorityIsCurrent(authority, version) && listVersion === listGeneration
   invoicesLoading.value = true
   invoicesError.value = null
   invoiceDetail.value = null
@@ -226,18 +232,24 @@ async function loadInvoices(page: number, authority = captureAuthority(), versio
   detailGeneration++
   try {
     const response = await $api<CompanyInvoiceListPayload>('/erp/commercial-invoices', {
-      query: { page, per_page: 25 }
+      query: { page, per_page: 25 }, signal
     })
-    if (authorityIsCurrent(authority, version)) {
+    if (current()) {
+      const availablePage = Math.max(1, response.meta.last_page)
+      if (page > availablePage) return await loadInvoices(availablePage, authority, version)
       invoices.value = response.data
       invoiceMeta.value = response.meta
       invoicePage.value = response.meta.current_page
     }
   } catch (invoiceLoadError) {
-    if (authorityIsCurrent(authority, version))
-      invoicesError.value = invoiceLoadError
+    if (current()) {
+      if (isAuthorityLoss(invoiceLoadError)) {
+        clearProtectedState()
+        error.value = invoiceLoadError
+      } else invoicesError.value = invoiceLoadError
+    }
   } finally {
-    if (authorityIsCurrent(authority, version))
+    if (current())
       invoicesLoading.value = false
   }
 }
@@ -245,17 +257,22 @@ async function loadInvoices(page: number, authority = captureAuthority(), versio
 async function showInvoice(invoiceId: number) {
   const version = generation
   const detailVersion = ++detailGeneration
+  const signal = reads.start('detail')
   const authority = captureAuthority()
   invoiceDetailLoading.value = true
   invoiceDetail.value = null
   invoiceDetailError.value = null
   try {
-    const response = await $api<CompanyInvoicePayload>(`/erp/commercial-invoices/${invoiceId}`)
+    const response = await $api<CompanyInvoicePayload>(`/erp/commercial-invoices/${invoiceId}`, { signal })
     if (authorityIsCurrent(authority, version) && detailVersion === detailGeneration)
       invoiceDetail.value = response.data
   } catch (loadError) {
-    if (authorityIsCurrent(authority, version) && detailVersion === detailGeneration)
-      invoiceDetailError.value = loadError
+    if (authorityIsCurrent(authority, version) && detailVersion === detailGeneration) {
+      if (isAuthorityLoss(loadError)) {
+        clearProtectedState()
+        error.value = loadError
+      } else invoiceDetailError.value = loadError
+    }
   } finally {
     if (authorityIsCurrent(authority, version) && detailVersion === detailGeneration)
       invoiceDetailLoading.value = false

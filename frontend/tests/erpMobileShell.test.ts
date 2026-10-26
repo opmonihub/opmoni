@@ -18,6 +18,7 @@ function evaluate(code: string, globals: Record<string, unknown> = {}) {
   const exports = {} as { default: { setup: (props: object, context: object) => { statusLabel: Vue.Ref<string>, subscription: Vue.Ref<{ company: { name: string } } | null>, error: Vue.Ref<unknown>, load: () => Promise<void> } }, render: (...args: unknown[]) => Vue.VNode }
   new Function('require', 'exports', ...Object.keys(globals), output)((name: string) => {
     if (name === 'vue') return { ...Vue, resolveComponent: globals.resolveComponent ?? ((name: string) => ({ name })), renderSlot: (slots: Record<string, () => Vue.VNode[]>, name: string, props: { key?: string }) => Vue.h(Vue.Fragment, { key: props?.key }, slots[name]?.()) }
+    if (['~/composables/useErpAdministrationContext', '~/composables/useErpReadScope', '~/composables/useListNavigationState'].includes(name)) return loadAppComposable(name.slice(2) + '.ts', globals)
     if (name === '~/utils/erpModulesNav') return nav
     if (name === '~/utils/sidebarNav') return sidebarNav
     if (name === '#shared/utils/access') return access
@@ -107,10 +108,15 @@ function contract(api: () => Promise<unknown>) {
   const currentAccount = Vue.ref<{ id: number } | null>(null)
   const user = Vue.ref({ id: 5 })
   const sessionGeneration = Vue.ref(1)
+  const states = new Map<string, Vue.Ref>()
   return { currentCompany, currentAccount, user, sessionGeneration, ...surface('pages/erp/contrato.vue', {
     useNuxtApp: () => ({ $api: api }),
     useAuth: () => ({ user, currentCompany, currentAccount }),
-    useState: () => sessionGeneration
+    useState: (key: string, init: () => unknown) => {
+      if (key === 'access-session-generation') return sessionGeneration
+      if (!states.has(key)) states.set(key, Vue.ref(init()))
+      return states.get(key)!
+    }
   }) }
 }
 const payload = (status = 'active') => ({ data: { status, company: { name: 'Empresa A' }, plan: { name: 'Plano A', modules: [] } } })
