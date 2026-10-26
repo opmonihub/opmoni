@@ -260,7 +260,7 @@ describe('Office ERP navigation and access', () => {
     assert.deepEqual(navs, ['/', '/acesso-indisponivel', '/acesso-indisponivel'])
   })
 
-  it('keeps the exact commercial root on its overview and preserves the plans tab', () => {
+  it('keeps the exact commercial root active and defers offers from primary tabs', () => {
     const tabsAt = (path: string) => evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { computed: Vue.computed, route: { path } }).pageTabs as Array<Array<{ label: string, to: string, active: boolean }>>
     const overview = tabsAt('/gestao-erp').flat()
     assert.equal(overview.find(item => item.to === '/gestao-erp')?.active, true)
@@ -268,7 +268,7 @@ describe('Office ERP navigation and access', () => {
 
     const plans = tabsAt('/gestao-erp/planos').flat()
     assert.equal(plans.find(item => item.to === '/gestao-erp')?.active, false)
-    assert.deepEqual(plans.filter(item => item.active).map(item => item.label), ['Ofertas'])
+    assert.deepEqual(plans.filter(item => item.active).map(item => item.label), [])
   })
 
   it('keeps legacy plan bookmarks privileged and redirects only after office authorization', async () => {
