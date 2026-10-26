@@ -13,9 +13,9 @@ class ErpTrialController extends Controller
 {
     /** @var array<string, string> */
     private const REGISTRATION_CONFLICT_MESSAGES = [
-        'client_association_requires_owner_verification' => 'Entre na conta proprietária do escritório para confirmar a associação deste cliente.',
+        'client_association_requires_owner_verification' => 'Entre com sua conta para confirmar a associação deste cliente ao escritório.',
         'confirm_existing_association_required' => 'Confirme que este cliente pertence à carteira do escritório.',
-        'company_association_required' => 'Esta empresa já está vinculada a outra conta.',
+        'company_association_required' => 'Esta empresa já possui proprietário. Entre com a conta do proprietário atual para continuar.',
         'company_client_association_required' => 'A associação desta empresa ao cliente precisa ser confirmada pelo escritório.',
         'trial_already_used' => 'Este CNPJ já utilizou o período de teste.',
         'client_not_active' => 'O cliente associado não está ativo e não pode ser usado no cadastro.',
