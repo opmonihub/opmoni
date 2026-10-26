@@ -129,22 +129,12 @@ final class OfficeErpOwnerSetup
             $key,
             'owner.accept',
             $payload,
-            fn (string $action, array $operationPayload): mixed => $this->authorizeAccept($ctx, $continuation, $request, $action, $operationPayload),
-            function () use ($ctx, $continuation, $request, $input, &$createdOwner): array {
-                return DB::transaction(function () use ($ctx, $continuation, $request, $input, &$createdOwner): array {
-                    $invitation = OfficeErpRecords::query($ctx, OfficeErpOwnerInvitation::class)
-                        ->whereKey($continuation['invitation_id'])->lockForUpdate()->firstOrFail();
-                    $contract = OfficeErpRecords::query($ctx, OfficeErpContract::class)
-                        ->whereKey($continuation['contract_id'])->lockForUpdate()->firstOrFail();
-                    $company = ErpCompany::query()->whereKey($contract->erp_company_id)->lockForUpdate()->firstOrFail();
-                    abort_unless($invitation->purpose === 'access_setup' && $invitation->status === 'pending', 409, 'owner_setup_not_pending');
-                    abort_unless($company->owner_setup_status === 'unclaimed', 409, 'company_owner_already_claimed');
-                    abort_unless(ErpCompanyMembership::query()->where('erp_company_id', $company->id)->where('role', 'owner')->doesntExist(), 409, 'company_owner_already_claimed');
-
-                    $owner = $request->user();
+            fn (string $action, array $operationPayload): mixed => $this->authorizeAccept($ctx, $continuation, $request, $action, $operationPayload, $key),
+            function () use ($ctx, $continuation, $request, $input, $key, &$createdOwner): array {
+                return DB::transaction(function () use ($ctx, $continuation, $request, $input, $key, &$createdOwner): array {
+                    [, $contract, $company, , $invitation, $owner] = $this->lockAcceptanceState($ctx, $continuation, $request, $key, false);
                     if (! $owner) {
                         $email = (string) $continuation['owner_email'];
-                        app(AccessAccounts::class)->advisory('email:'.$email);
                         abort_if(User::query()->where('email', $email)->lockForUpdate()->exists(), 409, 'login_required');
                         $password = $input['password'] ?? null;
                         abort_unless(is_string($password) && mb_strlen($password) >= 8 && mb_strlen($password) <= 128, 422, 'invalid_password');
@@ -227,20 +217,78 @@ final class OfficeErpOwnerSetup
     }
 
     /** @param array<string, mixed> $continuation @param array<string, mixed> $payload */
-    private function authorizeAccept(OfficeErpExecutionContext $ctx, array $continuation, Request $request, string $action, array $payload): void
+    private function authorizeAccept(OfficeErpExecutionContext $ctx, array $continuation, Request $request, string $action, array $payload, string $key): void
     {
         abort_unless($action === 'owner.accept', 403);
         abort_unless((int) ($payload['invitation_id'] ?? 0) === (int) $continuation['invitation_id']
             && hash_equals((string) $continuation['owner_identity'], (string) ($payload['owner_identity'] ?? '')), 409);
-        $invitation = OfficeErpRecords::query($ctx, OfficeErpOwnerInvitation::class)
-            ->whereKey($continuation['invitation_id'])->firstOrFail();
-        abort_unless($invitation->purpose === 'access_setup'
-            && (int) $invitation->contract_id === (int) $continuation['contract_id']
-            && $invitation->owner_email === $continuation['owner_email'], 404);
+
+        $this->lockAcceptanceState($ctx, $continuation, $request, $key);
+    }
+
+    /** @param array<string, mixed> $continuation @return array{Account, OfficeErpContract, ErpCompany, OfficeErpLicenceAllocation, OfficeErpOwnerInvitation, ?User} */
+    private function lockAcceptanceState(OfficeErpExecutionContext $ctx, array $continuation, Request $request, string $key, bool $acquireEmailAdvisory = true): array
+    {
         $owner = $request->user();
-        if ($owner !== null) {
-            abort_unless(mb_strtolower(trim($owner->email)) === $continuation['owner_email'], 403, 'invitation_owner_mismatch');
+        if ($owner === null && $acquireEmailAdvisory) {
+            app(AccessAccounts::class)->advisory('email:'.$continuation['owner_email']);
         }
+
+        [$account] = $this->admission->lockCommercialAggregate($ctx);
+        abort_unless($account->status === 'active', 410, 'invitation_expired');
+
+        $contractIdentity = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+            ->whereKey($continuation['contract_id'])
+            ->firstOrFail();
+        abort_unless($contractIdentity->erp_company_id !== null, 409, 'owner_setup_not_pending');
+        $company = ErpCompany::query()->whereKey($contractIdentity->erp_company_id)->lockForUpdate()->firstOrFail();
+        $contract = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+            ->whereKey($continuation['contract_id'])->lockForUpdate()->firstOrFail();
+        $allocation = OfficeErpRecords::query($ctx, OfficeErpLicenceAllocation::class)
+            ->where('contract_id', $contract->id)
+            ->where('erp_company_id', $company->id)
+            ->lockForUpdate()
+            ->first();
+        $invitation = OfficeErpRecords::query($ctx, OfficeErpOwnerInvitation::class)
+            ->whereKey($continuation['invitation_id'])->lockForUpdate()->firstOrFail();
+
+        abort_unless((int) $invitation->account_id === $ctx->accountId
+            && (int) $invitation->contract_id === (int) $contract->id
+            && (int) $contract->account_id === $ctx->accountId
+            && (int) $contract->erp_company_id === (int) $company->id
+            && in_array($contract->agreement_status, ['accepted', 'effective'], true)
+            && $invitation->purpose === 'access_setup'
+            && $invitation->owner_email === $continuation['owner_email'], 404);
+        abort_unless($allocation?->state === 'occupied', 409, 'licence_allocation_not_occupied');
+
+        if ($owner !== null) {
+            $owner = User::query()->whereKey($owner->id)->lockForUpdate()->firstOrFail();
+            abort_unless(mb_strtolower(trim($owner->email)) === $continuation['owner_email'], 403, 'invitation_owner_mismatch');
+        } else {
+            abort_if(User::query()->where('email', $continuation['owner_email'])->lockForUpdate()->exists(), 409, 'login_required');
+        }
+
+        $operationExists = OfficeErpRecords::query($ctx, OfficeErpCommercialOperation::class)
+            ->where('actor_kind', $ctx->actorKind)
+            ->where('actor_identity', $ctx->actorIdentity)
+            ->where('idempotency_key', $key)
+            ->where('action', 'owner.accept')
+            ->exists();
+        $consumedReplay = $invitation->status === 'consumed' && $operationExists;
+        if ($consumedReplay) {
+            abort_unless($company->owner_setup_status === 'claimed'
+                && $owner !== null
+                && ErpCompanyMembership::query()->where('erp_company_id', $company->id)
+                    ->where('user_id', $owner->id)->where('role', 'owner')->exists(), 409, 'owner_setup_replay_conflict');
+        } else {
+            abort_unless((int) $continuation['expires_at'] > now()->timestamp, 410, 'invitation_continuation_expired');
+            abort_unless($invitation->status === 'pending', 409, 'owner_setup_not_pending');
+            abort_unless($invitation->expires_at !== null && $invitation->expires_at->isFuture(), 410, 'invitation_expired');
+            abort_unless($company->owner_setup_status === 'unclaimed'
+                && ErpCompanyMembership::query()->where('erp_company_id', $company->id)->where('role', 'owner')->doesntExist(), 409, 'company_owner_already_claimed');
+        }
+
+        return [$account, $contract, $company, $allocation, $invitation, $owner];
     }
 
     /** @param array<string, mixed> $owner @return array{full_name: string, email: string} */

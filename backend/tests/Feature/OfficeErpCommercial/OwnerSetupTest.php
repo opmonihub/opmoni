@@ -3,6 +3,7 @@
 namespace Tests\Feature\OfficeErpCommercial;
 
 use App\Erp\Commercial\OfficeErpExecutionContext;
+use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
@@ -68,6 +69,11 @@ class OwnerSetupTest extends OfficeErpCommercialTestCase
         self::assertSame($subscriptionId, $company->fresh()->subscription->id);
         self::assertSame($invoiceCount, OfficeErpInvoice::query()->count());
         self::assertSame($allocationCount, OfficeErpLicenceAllocation::query()->count());
+        $subscription->forceFill(['status' => 'canceled'])->save();
+        $before = [OfficeErpInvoice::query()->count(), OfficeErpLicenceAllocation::query()->count(), ErpCompanyMembership::query()->count()];
+        $this->requestFromIsolatedIngress()->withHeaders(['X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => $operationKey])
+            ->postJson('/api/v1/erp-invitations/accept', [])->assertOk()->assertJsonPath('data.owner_setup_status', 'claimed');
+        self::assertSame($before, [OfficeErpInvoice::query()->count(), OfficeErpLicenceAllocation::query()->count(), ErpCompanyMembership::query()->count()]);
     }
 
     public function test_existing_owner_identity_keeps_its_password_and_office_memberships(): void
@@ -115,6 +121,69 @@ class OwnerSetupTest extends OfficeErpCommercialTestCase
 
         self::assertSame($ownerId, ErpCompanyMembership::query()->where('erp_company_id', $company->id)->where('role', 'owner')->value('user_id'));
         self::assertSame('claimed', $company->fresh()->owner_setup_status);
+    }
+
+    public function test_expired_invitation_cannot_be_claimed_after_its_continuation_was_resolved(): void
+    {
+        ['context' => $context, 'contract' => $contract, 'company' => $company] = $this->unclaimedCompany();
+        $issued = $this->issueSetup($context, $contract, 'owner.setup.expired-after-resolve');
+        $csrf = $this->csrf();
+        Auth::logout();
+        $resolved = $this->resolve($this->token($issued));
+        $resolved->assertJsonPath('state', 'valid');
+        $operationKey = (string) $resolved->json('operation_key');
+        OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id'])
+            ->forceFill(['expires_at' => now()->subSecond()])->save();
+
+        $this->requestFromIsolatedIngress()->withHeaders(['X-CSRF-Token' => $csrf, 'Idempotency-Key' => $operationKey])
+            ->postJson('/api/v1/erp-invitations/accept', ['password' => 'owner-password-123'])->assertGone();
+
+        self::assertSame('unclaimed', $company->fresh()->owner_setup_status);
+        self::assertSame(0, ErpCompanyMembership::query()->where('erp_company_id', $company->id)->count());
+        self::assertSame('pending', OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id'])->status);
+    }
+
+    public function test_account_suspension_after_initial_read_is_rechecked_under_lock_before_claim(): void
+    {
+        ['context' => $context, 'contract' => $contract, 'company' => $company] = $this->unclaimedCompany();
+        $issued = $this->issueSetup($context, $contract, 'owner.setup.suspend-during-accept');
+        $csrf = $this->csrf();
+        Auth::logout();
+        $resolved = $this->resolve($this->token($issued));
+        $resolved->assertJsonPath('state', 'valid');
+        $operationKey = (string) $resolved->json('operation_key');
+        Account::query()->findOrFail($context->accountId)->forceFill(['status' => 'suspended'])->save();
+
+        $this->requestFromIsolatedIngress()->withHeaders(['X-CSRF-Token' => $csrf, 'Idempotency-Key' => $operationKey])
+            ->postJson('/api/v1/erp-invitations/accept', ['password' => 'owner-password-123'])->assertGone();
+
+        self::assertSame('suspended', Account::query()->findOrFail($context->accountId)->status);
+        self::assertSame('unclaimed', $company->fresh()->owner_setup_status);
+        self::assertSame(0, ErpCompanyMembership::query()->where('erp_company_id', $company->id)->count());
+    }
+
+    public function test_legacy_signature_without_purpose_cannot_be_relabelled_as_access_setup(): void
+    {
+        ['context' => $context, 'contract' => $contract] = $this->unclaimedCompany();
+        $issued = $this->issueSetup($context, $contract, 'owner.setup.purpose-tampering');
+        $invitation = OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id']);
+        $identity = hash('sha256', $invitation->id.':'.mb_strtolower(trim($invitation->owner_email)));
+        $continuation = [
+            'invitation_id' => (int) $invitation->id,
+            'account_id' => $context->accountId,
+            'contract_id' => (int) $contract->id,
+            'owner_email' => $invitation->owner_email,
+            'owner_name' => $invitation->owner_name,
+            'owner_identity' => $identity,
+            'operation_key' => hash_hmac('sha256', 'office-erp-owner-access_setup:'.$invitation->id.':'.$identity, (string) config('app.key')),
+            'expires_at' => now()->addMinutes(15)->timestamp,
+        ];
+        $continuation['signature'] = hash_hmac('sha256', json_encode($continuation, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), (string) config('app.key'));
+        $continuation['purpose'] = 'access_setup';
+
+        Auth::logout();
+        $this->requestFromIsolatedIngress()->withSession(['office_erp.owner_continuation' => $continuation])
+            ->getJson('/api/v1/erp-invitations/current')->assertOk()->assertJsonPath('state', 'missing');
     }
 
     public function test_already_claimed_company_cannot_receive_an_owner_setup_continuation(): void

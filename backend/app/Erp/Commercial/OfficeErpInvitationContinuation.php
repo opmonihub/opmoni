@@ -254,6 +254,9 @@ final class OfficeErpInvitationContinuation
     private function createPayload(OfficeErpOwnerInvitation $invitation): array
     {
         $identity = hash('sha256', $invitation->id.':'.mb_strtolower(trim($invitation->owner_email)));
+        $operationPrefix = $invitation->purpose === 'commercial_acceptance'
+            ? 'office-erp-owner-acceptance:'
+            : 'office-erp-owner-access_setup:';
         $payload = [
             'invitation_id' => (int) $invitation->id,
             'account_id' => (int) $invitation->account_id,
@@ -262,7 +265,7 @@ final class OfficeErpInvitationContinuation
             'owner_name' => $invitation->owner_name,
             'owner_identity' => $identity,
             'purpose' => (string) $invitation->purpose,
-            'operation_key' => hash_hmac('sha256', 'office-erp-owner-'.$invitation->purpose.':'.$invitation->id.':'.$identity, $this->applicationKey()),
+            'operation_key' => hash_hmac('sha256', $operationPrefix.$invitation->id.':'.$identity, $this->applicationKey()),
             'expires_at' => now()->addSeconds(self::TTL_SECONDS)->timestamp,
         ];
         $payload['signature'] = self::sign($payload);
@@ -297,7 +300,11 @@ final class OfficeErpInvitationContinuation
         unset($payload['signature']);
 
         if (hash_equals(self::sign($payload), $signature)) {
-            return true;
+            return ! array_key_exists('purpose', $payload)
+                || in_array($payload['purpose'], ['commercial_acceptance', 'access_setup'], true);
+        }
+        if (array_key_exists('purpose', $payload) && $payload['purpose'] !== 'commercial_acceptance') {
+            return false;
         }
         unset($payload['purpose']);
 
