@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpInvitationContinuation;
 use App\Erp\Commercial\OfficeErpOwnerAcceptance;
+use App\Erp\Commercial\OfficeErpOwnerSetup;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ final class OfficeErpOwnerSetupController extends Controller
         return response()->json($continuation->current($request));
     }
 
-    public function accept(Request $request, OfficeErpOwnerAcceptance $acceptance): JsonResponse
+    public function accept(Request $request, OfficeErpOwnerAcceptance $acceptance, OfficeErpOwnerSetup $ownerSetup): JsonResponse
     {
         abort_unless(array_diff(array_keys($request->all()), ['password', 'company_id']) === [], 422, 'invalid_acceptance_input');
         $data = $request->validate([
@@ -31,9 +32,13 @@ final class OfficeErpOwnerSetupController extends Controller
         ]);
         $key = $request->header('Idempotency-Key');
         abort_unless(is_string($key) && preg_match('/\A[a-zA-Z0-9._:-]{16,128}\z/', $key) === 1, 422, 'invalid_idempotency_key');
-        $continuation = app(OfficeErpInvitationContinuation::class)->current($request);
-        $status = ($continuation['state'] ?? null) === 'accepted' ? 200 : 201;
-        $contract = $acceptance->accept($request, $data, $key);
+        $continuation = app(OfficeErpInvitationContinuation::class)->verifiedContinuation($request);
+        abort_if(($continuation['purpose'] ?? null) === 'access_setup' && array_key_exists('company_id', $data), 422, 'company_selection_not_allowed');
+        $state = app(OfficeErpInvitationContinuation::class)->current($request);
+        $status = ($state['state'] ?? null) === 'accepted' ? 200 : 201;
+        $contract = ($continuation['purpose'] ?? null) === 'access_setup'
+            ? $ownerSetup->accept($request, $data, $key)
+            : $acceptance->accept($request, $data, $key);
 
         return response()->json(['data' => [
             'id' => (int) $contract->id,
@@ -42,6 +47,7 @@ final class OfficeErpOwnerSetupController extends Controller
                 'id' => (int) $contract->erp_company_id,
                 'name' => (string) $contract->company?->name,
             ],
+            ...(($continuation['purpose'] ?? null) === 'access_setup' ? ['owner_setup_status' => 'claimed'] : []),
         ]], $status);
     }
 }
