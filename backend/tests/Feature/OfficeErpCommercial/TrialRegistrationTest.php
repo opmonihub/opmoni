@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\OfficeErpCommercial;
 
+use App\Erp\ErpCommercialCatalog;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
@@ -18,12 +19,61 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Tests\OfficeErpCommercialTestCase;
 
 class TrialRegistrationTest extends OfficeErpCommercialTestCase
 {
+    public function test_trial_registration_takes_catalog_lock_before_locking_the_technical_plan(): void
+    {
+        config(['erp.office_trial_enabled' => true]);
+        $code = $this->enabledTrialLink();
+        $events = [];
+        $providerReturned = false;
+        $catalog = new class($events) extends ErpCommercialCatalog
+        {
+            public function __construct(private array &$events) {}
+
+            public function advisory(): void
+            {
+                $this->events[] = 'catalog';
+                parent::advisory();
+            }
+        };
+        $this->app->instance(ErpCommercialCatalog::class, $catalog);
+        DB::listen(function ($query) use (&$events, &$providerReturned): void {
+            if ($providerReturned && str_contains(strtolower($query->sql), 'from "erp_plans"')
+                && str_contains(strtolower($query->sql), 'where "erp_plans"."id" =')) {
+                $events[] = 'plan';
+            }
+        });
+        Http::fake(function () use (&$providerReturned) {
+            $providerReturned = true;
+
+            return Http::response([], 404);
+        });
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+
+        $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', [
+                'name' => 'Pessoa responsável',
+                'email' => 'lock-order-owner@example.test',
+                'password' => 'never-store-this-password',
+                'company_name' => 'Empresa de teste',
+                'cnpj' => '27865757000102',
+                'tax_regime' => 'presumed_profit',
+            ], ['Idempotency-Key' => 'trial-catalog-lock-order-operation'])
+            ->assertCreated();
+
+        $catalogIndex = array_search('catalog', $events, true);
+        $planIndex = array_search('plan', $events, true);
+        self::assertIsInt($catalogIndex, json_encode($events, JSON_THROW_ON_ERROR));
+        self::assertIsInt($planIndex, json_encode($events, JSON_THROW_ON_ERROR));
+        self::assertLessThan($planIndex, $catalogIndex);
+    }
+
     public function test_public_current_route_requires_authentication_without_selected_company(): void
     {
         $this->getJson('/api/v1/erp/trials/current', ['Idempotency-Key' => 'trial-recovery-operation-1'])

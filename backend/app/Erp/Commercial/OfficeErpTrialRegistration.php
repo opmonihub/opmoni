@@ -6,6 +6,7 @@ use App\Actions\AccessAccounts;
 use App\Actions\ErpCommercialRegistration;
 use App\Enums\ClientPersonType;
 use App\Enums\ClientStatus;
+use App\Erp\ErpCommercialCatalog;
 use App\Erp\ErpCompanyProvisioning;
 use App\Erp\ErpCoreModules;
 use App\Http\Resources\IdentityResource;
@@ -35,6 +36,7 @@ final class OfficeErpTrialRegistration
     public function __construct(
         private readonly OfficeErpTrialLinks $links,
         private readonly OfficeErpAdmission $admission,
+        private readonly ErpCommercialCatalog $catalog,
         private readonly OfficeErpOperations $operations,
         private readonly ClientManager $clients,
         private readonly ErpCommercialRegistration $registration,
@@ -231,6 +233,9 @@ final class OfficeErpTrialRegistration
         abort_unless((int) $link->account_id === $context->accountId
             && (int) $link->erp_plan_id === (int) $snapshot['erp_plan_id'], 409, 'trial_link_changed');
 
+        // Match ensureBasicPlan's catalog-before-plan order so registration cannot
+        // hold the technical plan while another registration holds the catalog lock.
+        $this->catalog->advisory();
         $plan = ErpPlan::query()->whereKey((int) $snapshot['erp_plan_id'])->lockForUpdate()->firstOrFail();
         $moduleKeys = $plan->modules()->orderBy('module_key')->pluck('module_key')->all();
         $snapshotModuleKeys = array_values($snapshot['plan_module_keys']);
