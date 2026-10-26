@@ -20,6 +20,7 @@ use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\Commercial\OfficeErpOwnerInvitation;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
+use App\Models\Erp\Commercial\OfficeErpTrialLink;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpPlan;
@@ -34,6 +35,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
@@ -213,6 +215,24 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             'contract_ids' => array_map(static fn (OfficeErpContract $contract): int => (int) $contract->id, $contracts),
             'second_contract_snapshot' => $contracts[1]->getAttributes(),
         ];
+    }
+
+    /** @return array{link: OfficeErpTrialLink, code: string, plan_id: int} */
+    protected function trialLinkFixture(array $office): array
+    {
+        $plan = ErpPlan::factory()->create();
+        $code = (string) Str::uuid();
+        $link = OfficeErpTrialLink::query()->create([
+            'account_id' => $office['account_id'],
+            'public_code' => $code,
+            'erp_plan_id' => $plan->id,
+            'enabled' => true,
+            'revision' => 1,
+            'created_by_user_id' => $office['actor_id'],
+            'updated_by_user_id' => $office['actor_id'],
+        ]);
+
+        return ['link' => $link, 'code' => $code, 'plan_id' => (int) $plan->id];
     }
 
     /** @return array<string, mixed> */
