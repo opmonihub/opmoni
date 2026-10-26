@@ -217,7 +217,7 @@ test('keeps paid subscription status and next billing visible after trial conver
   }
 })
 
-test('distinguishes an accepted trial while owner activation is pending', async () => {
+test('shows an accepted trial as operating while retaining legacy activation copy elsewhere', async () => {
   const acceptedTrial = {
     ...detail,
     agreement_status: 'accepted',
@@ -235,8 +235,34 @@ test('distinguishes an accepted trial while owner activation is pending', async 
   const page = harness('pages/gestao-erp/assinaturas/[id].vue', acceptedTrial)
   try {
     await settle()
-    assert.match(text(page.root), /Teste iniciado · aguardando ativação/)
+    assert.match(text(page.root), /Em teste/)
+    assert.doesNotMatch(text(page.root), /Teste iniciado · aguardando ativação/)
     assert.match(text(page.root), /Teste de 7 dias/)
+  } finally {
+    page.app.unmount()
+  }
+})
+
+test('shows an expired accepted trial as ended instead of awaiting activation', async () => {
+  const expiredTrial = {
+    ...detail,
+    agreement_status: 'accepted',
+    licence_status: 'trial_expired',
+    trial: {
+      id: 71,
+      started_at: '2026-10-18T12:00:00Z',
+      ends_at: '2026-10-25T12:00:00Z',
+      converted_at: null,
+      expired_at: '2026-10-25T12:00:00Z',
+      situation: 'expired'
+    },
+    next_billing_on: null
+  }
+  const page = harness('pages/gestao-erp/assinaturas/[id].vue', expiredTrial)
+  try {
+    await settle()
+    assert.match(text(page.root), /Teste encerrado/)
+    assert.doesNotMatch(text(page.root), /Aceito · aguardando ativação/)
   } finally {
     page.app.unmount()
   }

@@ -109,7 +109,18 @@ const identityStamp = computed(() => JSON.stringify([
 const recoveryKey = computed(() => command.recoveryKey.value)
 const canMaintain = computed(() => !!context.capabilities.value?.can_maintain && !!record.value)
 const canConvertTrial = computed(() => canMaintain.value && ['trialing', 'expired'].includes(record.value?.trial?.situation ?? ''))
-const lifecycleStatus = computed(() => record.value?.agreement_status === 'effective' ? 'Vigente' : record.value?.agreement_status === 'accepted' && record.value.trial?.situation === 'trialing' ? 'Teste iniciado · aguardando ativação' : record.value?.agreement_status === 'accepted' ? 'Aceito · aguardando ativação' : record.value?.agreement_status === 'canceled' ? 'Cancelado' : record.value?.agreement_status ?? 'Indisponível')
+const lifecycleStatus = computed(() => {
+  const contract = record.value
+  if (!contract) return 'Indisponível'
+  if (contract.agreement_status === 'effective') return 'Vigente'
+  if (contract.agreement_status === 'accepted') {
+    if (contract.trial?.situation === 'trialing') return 'Em teste'
+    if (contract.trial?.situation === 'expired') return 'Teste encerrado'
+    return 'Aceito · aguardando ativação'
+  }
+  if (contract.agreement_status === 'canceled') return 'Cancelado'
+  return contract.agreement_status
+})
 const licenceStatus = computed(() => ({ active: 'Ativa', pending: 'Pendente', suspended: 'Suspensa', past_due: 'Em atraso', canceled: 'Cancelada' } as Record<string, string>)[record.value?.licence_status ?? ''] ?? 'Sem licença vinculada')
 const trialStatus = computed(() => ({ trialing: 'Em teste', expired: 'Teste encerrado', converted: 'Convertido em assinatura paga' } as Record<string, string>)[record.value?.trial?.situation ?? ''] ?? '')
 
