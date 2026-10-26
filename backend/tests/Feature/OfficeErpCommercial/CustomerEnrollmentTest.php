@@ -67,6 +67,38 @@ class CustomerEnrollmentTest extends OfficeErpCommercialTestCase
         ]);
     }
 
+    public function test_new_client_rejects_valid_cpf_before_provider_or_enrollment_effects(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $plan = $this->technicalPlan();
+        $payload = $this->newClientPayload($plan->id);
+        $payload['new_client']['tax_id'] = '12345678909';
+        Http::fake();
+        $before = [
+            DB::table('clients')->count(),
+            ErpCompany::query()->count(),
+            ErpSubscription::query()->count(),
+            OfficeErpContract::query()->count(),
+            OfficeErpLicenceAllocation::query()->count(),
+            OfficeErpInvoice::query()->count(),
+        ];
+
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-cpf-rejected')
+            ->postJson('/api/v1/erp-commercial/enrollments', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('new_client.tax_id');
+
+        Http::assertNothingSent();
+        $this->assertSame($before, [
+            DB::table('clients')->count(),
+            ErpCompany::query()->count(),
+            ErpSubscription::query()->count(),
+            OfficeErpContract::query()->count(),
+            OfficeErpLicenceAllocation::query()->count(),
+            OfficeErpInvoice::query()->count(),
+        ]);
+    }
+
     public function test_direct_enrollment_replay_has_one_invoice(): void
     {
         $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
