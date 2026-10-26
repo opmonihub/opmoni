@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { apiFailure } from '#shared/utils/access'
 import type { ErpSettingsField } from '~/utils/erpCompanySettingsFields'
+import { createSettingsFieldDraft } from '~/utils/settingsFieldDraft'
 
 const props = defineProps<{
   title: string
@@ -11,6 +12,8 @@ const props = defineProps<{
 const { state, meta, pending, canRead, canWrite, authorityKey, refresh, save } = useErpCompanySettings()
 const toast = useToast()
 const form = reactive<Record<string, unknown>>({})
+const draft = createSettingsFieldDraft(form)
+const conflictingFields = ref<string[]>([])
 const loadError = ref('')
 const saveError = ref('')
 const fieldErrors = ref<Record<string, string[]>>({})
@@ -36,6 +39,8 @@ watch(state, syncForm, { flush: 'sync' })
 watch([authorityKey, canRead, canWrite], () => {
   loadError.value = ''
   clearSaveFeedback()
+  draft.reset()
+  conflictingFields.value = []
   syncForm()
 }, { flush: 'sync' })
 
@@ -44,18 +49,32 @@ function clearSaveFeedback() {
   fieldErrors.value = {}
 }
 
-function syncForm() {
-  if (!state.value) {
-    for (const key of Object.keys(form)) Reflect.deleteProperty(form, key)
-    return
-  }
+function confirmedFields() {
+  const values: Record<string, unknown> = {}
+  if (!state.value) return values
   for (const field of props.fields) {
     const key = field.key as string
     const value = state.value[key]
-    form[key] = ['code', 'decimal'].includes(field.type ?? '') && typeof value === 'number'
+    values[key] = ['code', 'decimal'].includes(field.type ?? '') && typeof value === 'number'
       ? String(value)
       : value ?? (field.type === 'checkbox' ? 0 : '')
   }
+  return values
+}
+
+function syncForm() {
+  if (!state.value) {
+    draft.reset()
+    conflictingFields.value = []
+    return
+  }
+  conflictingFields.value = draft.reconcile(confirmedFields())
+}
+
+function discardDraft() {
+  draft.reset(confirmedFields())
+  conflictingFields.value = []
+  clearSaveFeedback()
 }
 
 async function refreshSettings() {
@@ -70,7 +89,7 @@ async function refreshSettings() {
 }
 
 async function onSubmit() {
-  if (!canWrite.value || pending.value || !state.value) return
+  if (!canWrite.value || pending.value || !state.value || conflictingFields.value.length) return
   const authority = authorityKey.value
   clearSaveFeedback()
   const patch: Record<string, unknown> = {}
@@ -83,6 +102,7 @@ async function onSubmit() {
   try {
     const response = await save(patch)
     if (!response || !canWrite.value || authority !== authorityKey.value) return
+    conflictingFields.value = draft.confirm(confirmedFields(), patch)
     toast.add({ title: 'Configurações salvas', color: 'success', icon: 'i-lucide-check' })
   } catch (error) {
     if (!canWrite.value || authority !== authorityKey.value) return
@@ -147,7 +167,7 @@ function selectOptions(field: (typeof props.fields)[number]) {
       <UButton
         v-if="canWrite"
         type="submit"
-        :disabled="pending || !state"
+        :disabled="pending || !state || conflictingFields.length > 0"
         label="Salvar"
         color="primary"
         :loading="pending"
@@ -173,6 +193,14 @@ function selectOptions(field: (typeof props.fields)[number]) {
     <p v-if="saveError" role="alert" class="mb-4 text-sm text-error">
       {{ saveError }}
     </p>
+    <UAlert
+      v-if="conflictingFields.length"
+      color="warning"
+      title="Configurações alteradas em outra atualização"
+      description="Seu rascunho foi mantido. Confira os valores atuais antes de salvar."
+      class="mb-4"
+      :actions="[{ label: 'Descartar rascunho e usar valores atuais', color: 'warning', variant: 'outline', onClick: discardDraft }]"
+    />
     <UPageCard
       v-for="group in fieldGroups"
       :key="group.label ?? title"

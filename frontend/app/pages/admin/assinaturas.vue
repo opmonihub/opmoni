@@ -31,7 +31,7 @@ function loadCatalog() {
     return
   catalogLoading.value = true
   catalogError.value = null
-  return runCatalog(() => $api<Plan[]>('/admin/plans'), {
+  return runCatalog(signal => $api<Plan[]>('/admin/plans', { signal }), {
     onSuccess: (data) => {
       plans.value = data
       catalogLoaded.value = true
@@ -79,7 +79,7 @@ const { isLoading, showError, retry } = useRetryableLoad({
 function load() {
   loading.value = true
   loadError.value = null
-  return runLatestLoad(() => $api<ResourceListResponse<Subscription>>('/admin/subscriptions', { params: listParams.value }), {
+  return runLatestLoad(signal => $api<ResourceListResponse<Subscription>>('/admin/subscriptions', { params: listParams.value, signal }), {
     onSuccess: (subs) => {
       const meta = readPaginatedMeta(subs)
       const recovered = pageWithinLastPage(page.value, meta.last_page)
@@ -102,7 +102,6 @@ function load() {
 }
 onMounted(() => {
   void load()
-  void loadCatalog()
 })
 onBeforeUnmount(() => {
   runLatestLoad.invalidate()
@@ -138,6 +137,7 @@ function openEdit(subscription: Subscription) {
   editState.plan_id = subscription.plan?.id
   editState.status = subscription.status
   editOpen.value = true
+  if (!catalogLoaded.value) void loadCatalog()
 }
 function subscriptionActions(subscription: Subscription) {
   return [{

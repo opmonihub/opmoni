@@ -1,0 +1,106 @@
+page,evidence_status,scope_or_trigger,shared_consumers,payload_read_mentions
+acesso-indisponivel.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth,0
+admin/assinaturas.vue,candidate,Obsolete eager catalog read,useNuxtApp; useRetryableLoad; useToast,0
+admin/contas.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAccountFilters; useAuth; useRetryableLoad,0
+admin/erp/assinaturas.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useOfficeErpContext; useState,0
+admin/erp/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useOfficeErpContext; useState,0
+admin/erp/planos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useOfficeErpContext; useState,0
+admin/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useNuxtApp; useRetryableLoad,0
+admin/planos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useNuxtApp; useRetryableLoad; useToast,0
+admin/serpro.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useNuxtApp; useSerpro; useToast,0
+admin/suporte.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useNuxtApp; useRetryableLoad; useToast,0
+admin/usuarios.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useNuxtApp; useRetryableLoad,0
+admin.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useRoute,0
+customers/[documento]/[[situacao]].vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAsyncData; useAuth; useClientListExport; useClientListFilters; useClientListSelection; useClientMediaQuery; useClients; useRoute; useState; useToast,3
+customers/empresa/[id].vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useClients; useDispatchContacts; useRoute; useToast,0
+customers/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useRoute,0
+customers/painel.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useClients; useRetryableLoad,0
+customers.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useRoute; useState,0
+equipe/departamentos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAsyncData; useAuth; useDepartments; useMembers; useRetryableLoad; useToast,2
+equipe/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAsyncData; useAuth; useDepartments; useMembers; useRetryableLoad; useToast,2
+equipe.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useRoute,0
+erp/ativar.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useHead; useRoute,0
+erp/cadastro.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useHead; useNuxtApp; useState,0
+erp/cadastros/categorias.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useHead,0
+erp/cadastros/contatos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useHead,0
+erp/cadastros/etiquetas.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useErpCatalogLabels; useHead,0
+erp/cadastros/fiscal.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useHead,0
+erp/cadastros/grupos-clientes.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useHead,0
+erp/cadastros/importacao.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useErpCatalogImport,0
+erp/cadastros/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useHead; useRoute,0
+erp/cadastros/logistica.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useHead,0
+erp/cadastros/marcas.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useHead,0
+erp/cadastros/precos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useHead,0
+erp/cadastros/produtos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useHead,0
+erp/cadastros/unidades.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useHead,0
+erp/cadastros.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useRoute,0
+erp/caixa/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/compras/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/compras.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/email.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useErpCompanySettings; useToast,0
+erp/configuracoes/empresa.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/escritorio.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/estabelecimentos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth,0
+erp/configuracoes/membros.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/modulos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useNuxtApp,0
+erp/configuracoes/pontos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/prefixos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/produto.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/rotulos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/sistema.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/sms.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/taxas.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes/vendas.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/configuracoes.vue,candidate,Full URL editor key,useAuth; useRoute,0
+erp/contabilidade/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/contrato.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useHead; useNuxtApp,0
+erp/estoque/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/financeiro/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/fiscal/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth,0
+erp/relatorios/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+erp/testar/[code].vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useErpTrialRegistration; useHead; useRoute,0
+erp/vendas/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+fiscal/clientes.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useClientMediaQuery; useFiscal; useRetryableLoad,1
+fiscal/documentos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAsyncData; useFiscal; useRetryableLoad; useRoute; useToast,2
+fiscal/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useElementSize; useFiscal; useRetryableLoad; useState,1
+fiscal/processamento.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useFiscal; useState,0
+fiscal.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useRoute,0
+gestao-erp/assinaturas/[id].vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useOfficeErpCommand; useOfficeErpContext; useRoute; useState; useToast,0
+gestao-erp/assinaturas/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useOfficeErpContext; useState,0
+gestao-erp/clientes/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useOfficeErpContext; useState; useToast,0
+gestao-erp/clientes/novo.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useClients; useOfficeErpCommand; useOfficeErpContext; useRoute; useState,0
+gestao-erp/configuracoes.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useHead; useOfficeErpCommand; useOfficeErpContext; useState; useToast,0
+gestao-erp/faturas/[id]/imprimir.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useOfficeErpContext; useRoute; useState,0
+gestao-erp/faturas/[id]/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useOfficeErpCommand; useOfficeErpContext; useRoute; useRouter; useState,0
+gestao-erp/faturas/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useOfficeErpContext; useState,0
+gestao-erp/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useOfficeErpContext; useState,0
+gestao-erp/planos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useOfficeErpCommand; useOfficeErpContext; useRoute; useState; useToast,0
+gestao-erp/recebimentos.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useOfficeErpCommand; useOfficeErpContext; useState,0
+gestao-erp.vue,candidate,Frozen active tabs,useRoute,0
+inbox.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useBreakpoints,1
+index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useDashboard,0
+login.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth,0
+monitoring/[...slug].vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useRoute,1
+monitoring/index.vue,candidate,Hydration cache policy,useMonitoringActions; useRetryableLoad; useSerpro,1
+monitoring.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useRoute; useState,0
+onboarding.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useHead; useTemplateRef,0
+primeiro-acesso.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAccessApi; useAuth; useHead; useRoute,0
+selecionar-escritorio.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+settings/certificado.vue,candidate,Hydration cache policy,useAuth; useRetryableLoad; useSerpro; useToast,1
+settings/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useToast,0
+settings/integracoes-erp.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+settings/members.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+settings/notifications.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+settings/security.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,,0
+settings/whatsapp.vue,candidate,Hydration cache policy,useRetryableLoad; useToast; useWhatsAppChannel,4
+settings.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth,0
+work/calendario.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAsyncData; useAuth; useClientMediaQuery; useClients; useDepartments; useMembers; useRetryableLoad; useRoute; useRouter; useToast; useWork,2
+work/clientes.vue,candidate,Duplicate month URL writer,useAsyncData; useAuth; useClientMediaQuery; useDepartments; useDirectory; useRetryableLoad; useToast; useWork; useWorkReferenceMonth; useWorkTaskActions,2
+work/modelos/[id].vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAsyncData; useAuth; useDepartments; useDirectory; useNuxtApp; useRetryableLoad; useRoute; useRouter; useState; useToast; useWork,4
+work/modelos/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAuth; useRetryableLoad; useWork,1
+work/processos/[id].vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useRetryableLoad; useRoute; useWork,1
+work/processos/index.vue,unavailable,Awaiting lifecycle review; inventory is not browser acceptance,useAsyncData; useAuth; useClientMediaQuery; useDepartments; useDirectory; useRetryableLoad; useWork; useWorkReferenceMonth; useWorkTaskActions,2
+work/tarefas.vue,candidate,Duplicate month URL writer,useAsyncData; useAuth; useClientMediaQuery; useDepartments; useDirectory; useRetryableLoad; useToast; useWork; useWorkReferenceMonth,2
+work.vue,candidate,Duplicate month URL writer,useRoute; useWorkReferenceMonth,0

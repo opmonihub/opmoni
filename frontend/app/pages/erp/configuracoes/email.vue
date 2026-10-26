@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { apiFailure } from '#shared/utils/access'
+import { createSettingsFieldDraft } from '~/utils/settingsFieldDraft'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -14,6 +15,8 @@ const form = reactive({
   mail_from_address: '',
   mail_from_name: ''
 })
+const draft = createSettingsFieldDraft(form)
+const conflictingFields = ref<string[]>([])
 
 onMounted(async () => {
   if (!state.value && canRead.value) await refreshSettings()
@@ -24,6 +27,8 @@ watch(state, sync, { flush: 'sync' })
 watch([authorityKey, canRead, canWrite], () => {
   loadError.value = ''
   clearSaveFeedback()
+  draft.reset()
+  conflictingFields.value = []
   sync()
 }, { flush: 'sync' })
 
@@ -36,12 +41,25 @@ function fieldError(key: string) {
   return fieldErrors.value[`email_settings.${key}`]?.[0] ?? fieldErrors.value[key]?.[0]
 }
 
-function sync() {
+function confirmedFields() {
   const email = (state.value?.email_settings ?? {}) as Record<string, string>
-  form.mail_host = email.mail_host ?? ''
-  form.mail_port = email.mail_port ?? ''
-  form.mail_from_address = email.mail_from_address ?? ''
-  form.mail_from_name = email.mail_from_name ?? ''
+  return {
+    mail_host: email.mail_host ?? '',
+    mail_port: email.mail_port ?? '',
+    mail_from_address: email.mail_from_address ?? '',
+    mail_from_name: email.mail_from_name ?? ''
+  }
+}
+
+function sync() {
+  if (!state.value) draft.reset()
+  conflictingFields.value = draft.reconcile(confirmedFields())
+}
+
+function discardDraft() {
+  draft.reset(confirmedFields())
+  conflictingFields.value = []
+  clearSaveFeedback()
 }
 
 async function refreshSettings() {
@@ -56,12 +74,14 @@ async function refreshSettings() {
 }
 
 async function onSubmit() {
-  if (!canWrite.value || pending.value || !state.value) return
+  if (!canWrite.value || pending.value || !state.value || conflictingFields.value.length) return
   const authority = authorityKey.value
   clearSaveFeedback()
+  const submitted = { ...form }
   try {
-    const response = await save({ email_settings: { ...form } })
+    const response = await save({ email_settings: submitted })
     if (!response || !canWrite.value || authority !== authorityKey.value) return
+    conflictingFields.value = draft.confirm(confirmedFields(), submitted)
     toast.add({ title: 'E-mail salvo', color: 'success', icon: 'i-lucide-check' })
   } catch (error) {
     if (!canWrite.value || authority !== authorityKey.value) return
@@ -84,7 +104,7 @@ async function onSubmit() {
       <UButton
         v-if="canWrite"
         type="submit"
-        :disabled="pending || !state"
+        :disabled="pending || !state || conflictingFields.length > 0"
         label="Salvar"
         :loading="pending"
         class="w-fit lg:ms-auto"
@@ -109,6 +129,14 @@ async function onSubmit() {
     <p v-if="saveError" role="alert" class="mb-4 text-sm text-error">
       {{ saveError }}
     </p>
+    <UAlert
+      v-if="conflictingFields.length"
+      color="warning"
+      title="Configurações alteradas em outra atualização"
+      description="Seu rascunho foi mantido. Confira os valores atuais antes de salvar."
+      class="mb-4"
+      :actions="[{ label: 'Descartar rascunho e usar valores atuais', color: 'warning', variant: 'outline', onClick: discardDraft }]"
+    />
     <UPageCard variant="subtle" class="space-y-4">
       <UFormField label="Host SMTP" name="mail_host" :error="fieldError('mail_host')">
         <UInput v-model="form.mail_host" class="max-w-md" :disabled="!canWrite || pending || !state" />

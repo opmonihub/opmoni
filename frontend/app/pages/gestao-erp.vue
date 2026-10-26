@@ -5,7 +5,7 @@ definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
 const isInvoicePrintRoute = computed(() => /^\/gestao-erp\/faturas\/[1-9]\d*\/imprimir$/.test(route.path))
-const pageTabs: NavigationMenuItem[][] = [[{
+const pageTabs = computed<NavigationMenuItem[][]>(() => [[{
   label: 'Visão geral',
   icon: 'i-lucide-layout-dashboard',
   to: '/gestao-erp',
@@ -24,7 +24,7 @@ const pageTabs: NavigationMenuItem[][] = [[{
   label: 'Assinaturas',
   icon: 'i-lucide-file-key',
   to: '/gestao-erp/assinaturas',
-  active: route.path.startsWith('/gestao-erp/assinaturas')
+  active: route.path === '/gestao-erp/assinaturas' || route.path.startsWith('/gestao-erp/assinaturas/')
 }, {
   label: 'Faturas',
   icon: 'i-lucide-receipt',
@@ -40,7 +40,7 @@ const pageTabs: NavigationMenuItem[][] = [[{
   icon: 'i-lucide-settings',
   to: '/gestao-erp/configuracoes',
   active: route.path === '/gestao-erp/configuracoes'
-}]]
+}]])
 </script>
 
 <template>

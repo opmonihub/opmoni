@@ -1,6 +1,14 @@
 import type { ComputedRef } from 'vue'
 import type { ContextToken, OfficeErpCapabilities } from '#shared/types/officeErpCommercial'
 
+interface ContextFlight {
+  authority: string
+  request: number
+  promise: Promise<void>
+}
+
+const pendingContext = new WeakMap<object, ContextFlight>()
+
 function isCapabilities(value: unknown): value is OfficeErpCapabilities {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<OfficeErpCapabilities>
@@ -33,6 +41,7 @@ function isCapabilities(value: unknown): value is OfficeErpCapabilities {
 }
 
 export function useOfficeErpContext() {
+  const nuxtApp = useNuxtApp()
   const { user, currentAccount } = useAuth()
   const sessionGeneration = useState('access-session-generation', () => 0)
   const { api } = useAccessApi()
@@ -63,6 +72,7 @@ export function useOfficeErpContext() {
     generation.value++
     requestGeneration.value++
     clearCapabilities()
+    pendingContext.delete(nuxtApp)
   }
 
   watch(authorityKey, () => {
@@ -86,22 +96,37 @@ export function useOfficeErpContext() {
 
     const token = capture()
     const sourceKey = authorityKey.value
+    const existing = pendingContext.get(nuxtApp)
+    if (existing?.authority === sourceKey && existing.request === requestGeneration.value) return existing.promise
     const request = ++requestGeneration.value
-    try {
-      const response = await api<{ data?: unknown }>('/erp-commercial/context')
-      if (request !== requestGeneration.value || !isCurrent(token)) return
-      if (!response || !isCapabilities(response.data)) {
-        if (capabilities.value) generation.value++
-        clearCapabilities()
-        return
-      }
+    let complete!: () => void
+    const flight: ContextFlight = { authority: sourceKey, request, promise: new Promise<void>((resolve) => {
+      complete = resolve
+    }) }
+    pendingContext.set(nuxtApp, flight)
+    void confirm().finally(() => {
+      if (pendingContext.get(nuxtApp) === flight) pendingContext.delete(nuxtApp)
+      complete()
+    })
+    return flight.promise
 
-      storedCapabilities.value = response.data
-      capabilitiesOwner.value = sourceKey
-    } catch {
-      if (request === requestGeneration.value && isCurrent(token)) {
-        if (capabilities.value) generation.value++
-        clearCapabilities()
+    async function confirm() {
+      try {
+        const response = await api<{ data?: unknown }>('/erp-commercial/context')
+        if (request !== requestGeneration.value || !isCurrent(token)) return
+        if (!response || !isCapabilities(response.data)) {
+          if (capabilities.value) generation.value++
+          clearCapabilities()
+          return
+        }
+
+        storedCapabilities.value = response.data
+        capabilitiesOwner.value = sourceKey
+      } catch {
+        if (request === requestGeneration.value && isCurrent(token)) {
+          if (capabilities.value) generation.value++
+          clearCapabilities()
+        }
       }
     }
   }

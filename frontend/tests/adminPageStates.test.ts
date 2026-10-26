@@ -355,8 +355,11 @@ it('subscription catalog retries independently, guards duplicate saves and retai
   })
   await view.start()
   assert.equal(view.state.subscriptions.value[0].status, 'canceled')
-  assert.ok(view.state.catalogError.value)
+  assert.equal(view.state.catalogLoaded.value, false)
+  assert.equal(view.state.catalogError.value, null)
   view.state.openEdit(view.state.subscriptions.value[0])
+  await flush()
+  assert.ok(view.state.catalogError.value)
   await view.state.onSave({ data: { plan_id: 9, status: 'active' } })
   assert.equal(writes.length, 0)
   catalogFailure = false

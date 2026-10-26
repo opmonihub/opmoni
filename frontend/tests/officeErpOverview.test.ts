@@ -66,7 +66,7 @@ test('invoice print route stays outside the commercial navigation shell', async 
 test('commercial shell exposes plans with the other primary destinations and exact active routes', async () => {
   const html = await renderCommercialShell('/gestao-erp')
   assert.doesNotMatch(html, /Escritório exemplo/)
-  const tabsAt = (path: string) => evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { route: { path } }).pageTabs as Array<Array<{ label: string, to: string, active: boolean }>>
+  const tabsAt = (path: string) => (evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { computed: Vue.computed, route: { path } }).pageTabs as Vue.ComputedRef<Array<Array<{ label: string, to: string, active: boolean }>>>).value
   const expectedDestinations = [
     ['Visão geral', '/gestao-erp'],
     ['Planos', '/gestao-erp/planos'],

@@ -49,10 +49,11 @@ function mountContext(options: { account?: Account | null, actorId?: number, ses
   const identity = Vue.ref<Identity>({ id: options.actorId ?? 41, current_account: options.account === undefined ? { id: 8, status: 'active', role: 'admin' } : options.account })
   const session = Vue.ref(options.session ?? 3)
   const states = new Map<string, Vue.Ref<unknown>>()
+  const app = {}
   const api = options.api ?? (async () => ({ data: fullCapabilities('cap-v1') }))
   const loaded = loadAppComposable<Record<string, unknown>>('composables/useOfficeErpContext.ts', {
     ref: Vue.ref, computed: Vue.computed, watch: Vue.watch, readonly: Vue.readonly, onScopeDispose: Vue.onScopeDispose,
-    useNuxtApp: () => ({}),
+    useNuxtApp: () => app,
     useState: <T>(key: string, init: () => T) => {
       if (key === 'access-session-generation') return session as Vue.Ref<T>
       if (!states.has(key)) states.set(key, Vue.ref(init()))
@@ -63,8 +64,47 @@ function mountContext(options: { account?: Account | null, actorId?: number, ses
   })
   const scope = Vue.effectScope()
   const context = scope.run(() => (loaded.useOfficeErpContext as () => Context)())!
-  return { context, identity, session, api, stop: () => scope.stop() }
+  return { context, identity, session, api, createConsumer: () => scope.run(() => (loaded.useOfficeErpContext as () => Context)())!, stop: () => scope.stop() }
 }
+
+it('coalesces pending confirmation across consumers but rechecks after settlement', async (t) => {
+  let calls = 0
+  const response = deferred<unknown>()
+  const harness = mountContext({ api: async () => {
+    calls++
+    return response.promise
+  } })
+  t.after(harness.stop)
+  const second = harness.createConsumer()
+  const firstRead = harness.context.refresh()
+  const secondRead = second.refresh()
+  assert.equal(calls, 1)
+  response.resolve({ data: fullCapabilities('shared') })
+  await Promise.all([firstRead, secondRead])
+  assert.equal(harness.context.capabilities.value?.capability_key, 'shared')
+  assert.equal(second.capabilities.value?.capability_key, 'shared')
+  await second.refresh()
+  assert.equal(calls, 2)
+})
+
+it('an older authority completion cannot clear a newer shared flight', async (t) => {
+  const old = deferred<unknown>()
+  const current = deferred<unknown>()
+  let calls = 0
+  const harness = mountContext({ api: () => ++calls === 1 ? old.promise : current.promise })
+  t.after(harness.stop)
+  const second = harness.createConsumer()
+  const oldRead = harness.context.refresh()
+  harness.identity.value.current_account = { id: 12, status: 'active', role: 'admin' }
+  const currentRead = second.refresh()
+  old.resolve({ data: fullCapabilities('old') })
+  await oldRead
+  const sharedRead = harness.context.refresh()
+  assert.equal(calls, 2)
+  current.resolve({ data: fullCapabilities('current') })
+  await Promise.all([currentRead, sharedRead])
+  assert.equal(harness.context.capabilities.value?.capability_key, 'current')
+})
 
 describe('useOfficeErpContext', () => {
   it('loads office capabilities through the tenant API and captures actor, Account and capability identity', async (t) => {

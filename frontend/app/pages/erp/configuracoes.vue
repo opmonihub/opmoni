@@ -27,7 +27,7 @@ const settingsWidth = computed(() => ['/erp/configuracoes/empresa', '/erp/config
     </template>
     <template #body>
       <div :class="['mx-auto w-full space-y-5', settingsWidth]">
-        <NuxtPage :key="route.fullPath" />
+        <NuxtPage />
       </div>
     </template>
   </UDashboardPanel>

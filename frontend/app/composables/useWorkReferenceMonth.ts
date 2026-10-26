@@ -12,7 +12,7 @@ import {
  * Persists in `useState` so tab switches keep the month, and mirrors
  * `?reference_month=` on month-scoped routes.
  */
-export function useWorkReferenceMonth() {
+export function useWorkReferenceMonth(options: { syncRoute?: boolean } = {}) {
   const route = useRoute()
   const router = useRouter()
 
@@ -32,31 +32,33 @@ export function useWorkReferenceMonth() {
 
   const label = computed(() => formatReferenceMonthLabel(month.value))
 
-  watch(
-    () => route.query.reference_month,
-    (raw) => {
-      const parsed = parseReferenceMonth(raw)
-      if (parsed && parsed !== month.value) {
-        month.value = parsed
-      }
-    },
-    { immediate: true }
-  )
-
-  watch(
-    [isMonthScoped, month],
-    () => {
-      if (!isMonthScoped.value) return
-      if (route.query.reference_month === month.value) return
-      router.replace({
-        query: {
-          ...route.query,
-          reference_month: month.value
+  if (options.syncRoute) {
+    watch(
+      () => route.query.reference_month,
+      (raw) => {
+        const parsed = parseReferenceMonth(raw)
+        if (parsed && parsed !== month.value) {
+          month.value = parsed
         }
-      })
-    },
-    { immediate: true }
-  )
+      },
+      { immediate: true }
+    )
+
+    watch(
+      [isMonthScoped, month],
+      () => {
+        if (!isMonthScoped.value) return
+        if (route.query.reference_month === month.value) return
+        router.replace({
+          query: {
+            ...route.query,
+            reference_month: month.value
+          }
+        })
+      },
+      { immediate: true }
+    )
+  }
 
   function prevMonth() {
     month.value = shiftReferenceMonth(month.value, -1)

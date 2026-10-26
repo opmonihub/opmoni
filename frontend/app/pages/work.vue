@@ -12,7 +12,7 @@ const {
   isMonthScoped,
   prevMonth,
   nextMonth
-} = useWorkReferenceMonth()
+} = useWorkReferenceMonth({ syncRoute: true })
 
 const title = computed(() => {
   const current = workNav.find(item => route.path === item.to || route.path.startsWith(`${item.to}/`))

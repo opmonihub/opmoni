@@ -51,24 +51,33 @@ interface LatestRequestHandlers<T> {
 
 export function createLatestRequestRunner() {
   let latestRequest = 0
+  let controller: AbortController | undefined
 
   async function runLatest<T>(
-    request: () => Promise<T>,
+    request: (signal: AbortSignal) => Promise<T>,
     handlers: LatestRequestHandlers<T>
   ): Promise<void> {
     const requestId = ++latestRequest
+    controller?.abort()
+    const attempt = new AbortController()
+    controller = attempt
 
     try {
-      const value = await request()
-      if (requestId === latestRequest) handlers.onSuccess(value)
+      const value = await request(attempt.signal)
+      if (requestId === latestRequest && !attempt.signal.aborted) handlers.onSuccess(value)
     } catch (error) {
-      if (requestId === latestRequest) handlers.onError(error)
+      if (requestId === latestRequest && !attempt.signal.aborted) handlers.onError(error)
     } finally {
-      if (requestId === latestRequest) handlers.onSettled()
+      if (requestId === latestRequest) {
+        controller = undefined
+        handlers.onSettled()
+      }
     }
   }
   runLatest.invalidate = () => {
     latestRequest++
+    controller?.abort()
+    controller = undefined
   }
   return runLatest
 }

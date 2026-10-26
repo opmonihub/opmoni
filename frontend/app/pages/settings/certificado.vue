@@ -85,7 +85,7 @@ const { data: certificate, status: certificateStatus, error: certificateError, r
       throw e
     }
   },
-  { default: () => null, getCachedData: () => undefined }
+  { default: () => null, getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined }
 )
 
 const hasCertificate = computed(() => certificate.value !== null)

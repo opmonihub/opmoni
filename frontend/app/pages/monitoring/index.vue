@@ -14,18 +14,13 @@ definePageMeta({ middleware: 'auth' })
 
 const { overview } = useSerpro()
 
-/**
- * `getCachedData: () => undefined` is load-bearing, not a default. Without it
- * Nuxt serves the payload cached in the SSR context, and a synchronization
- * that finished a minute ago would keep showing the counters from before it —
- * the spec scenario "Atualização após sincronização" fails.
- */
+/** Reuse the SSR result during hydration; later visits read current stored counters. */
 const { data, status, error, refresh: reload } = await useAsyncData<MonitoringOverview>(
   'serpro-monitoring-overview',
   () => overview(),
   {
     default: () => ({ portfolio_total: 0, attention: {} }),
-    getCachedData: () => undefined
+    getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined
   }
 )
 

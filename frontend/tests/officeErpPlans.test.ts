@@ -261,7 +261,7 @@ describe('Office ERP navigation and access', () => {
   })
 
   it('keeps the overview and plans tabs active only on their matching routes', () => {
-    const tabsAt = (path: string) => evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { computed: Vue.computed, route: { path } }).pageTabs as Array<Array<{ label: string, to: string, active: boolean }>>
+    const tabsAt = (path: string) => (evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { computed: Vue.computed, route: { path } }).pageTabs as Vue.ComputedRef<Array<Array<{ label: string, to: string, active: boolean }>>>).value
     const overview = tabsAt('/gestao-erp').flat()
     assert.equal(overview.find(item => item.to === '/gestao-erp')?.active, true)
     assert.deepEqual(overview.filter(item => item.active).map(item => item.label), ['Visão geral'])

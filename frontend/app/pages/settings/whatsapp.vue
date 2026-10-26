@@ -46,7 +46,7 @@ async function readChannel() {
 const { data: currentChannel, status: channelStatus, error: channelError, refresh: reloadChannel } = await useAsyncData<WhatsAppChannel | null>(
   'whatsapp-channel',
   readChannel,
-  { default: () => null, getCachedData: () => undefined }
+  { default: () => null, getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined }
 )
 
 const { isLoading, showError, retry } = useRetryableLoad({
