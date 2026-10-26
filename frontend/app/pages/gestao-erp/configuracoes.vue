@@ -26,7 +26,7 @@ interface TrialLinkResource {
   url: string | null
   erp_plan_id: number | null
   plan: { name: string, module_keys: string[] } | null
-  plans: TrialLinkPlan[]
+  plans?: TrialLinkPlan[]
 }
 interface PolicyPreviewRow {
   contract_id: number
@@ -203,10 +203,11 @@ function applyTrialLinkResult(result: OfficeErpCommandResult<TrialLinkResource>,
     trialLinkError.value = ''
     recoveryMessage.value = ''
     recoveryAction.value = 'policy'
-    trialLink.value = result.data
+    const plans = Array.isArray(result.data.plans) ? result.data.plans : trialLinkPlans.value
+    trialLink.value = { ...result.data, plans }
     trialLinkPlanId.value = result.data.erp_plan_id
     trialLinkEnabled.value = result.data.enabled
-    trialLinkPlans.value = result.data.plans
+    trialLinkPlans.value = plans
     return true
   }
   if (result.status === 'unknown') {

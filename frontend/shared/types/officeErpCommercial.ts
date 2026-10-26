@@ -243,7 +243,7 @@ export interface TrialRegistrationResponse {
 export interface TrialRegistrationAvailability {
   sponsor: { name: string }
   plan: { name: string, description?: string | null, module_keys?: string[] }
-  trial_duration_hours: 168
+  duration_days: 7
   available: boolean
   reason?: string | null
 }

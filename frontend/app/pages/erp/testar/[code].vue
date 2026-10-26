@@ -8,11 +8,12 @@ definePageMeta({ layout: false })
 useHead({ title: 'Teste ERP de 7 dias · Opmoni', meta: [{ name: 'referrer', content: 'no-referrer' }] })
 
 const route = useRoute()
+const { user } = useAuth()
 const trial = useErpTrialRegistration()
 const form = reactive<TrialRegistrationInput>({
   name: '',
   email: '',
-  password: '',
+  password: undefined,
   company_name: '',
   cnpj: '',
   tax_regime: 'presumed_profit',
@@ -21,12 +22,17 @@ const form = reactive<TrialRegistrationInput>({
 const schema = z.object({
   name: z.string().trim().min(2, 'Informe seu nome completo.').max(255),
   email: z.email('Informe um email válido.').max(254),
-  password: z.string().refine(value => passwordLength(value) >= 8, 'Use ao menos 8 caracteres.').refine(value => passwordLength(value) <= 128, 'Use no máximo 128 caracteres.'),
+  password: z.string().optional(),
   company_name: z.string().trim().min(2, 'Informe a razão social.').max(255),
   cnpj: z.string().trim().min(14, 'Informe um CNPJ válido.').max(20),
   tax_regime: z.enum(['mei', 'simple_national', 'presumed_profit', 'actual_profit', 'other']),
   confirm_existing_association: z.boolean().optional()
 }).superRefine((value, context) => {
+  if (!user.value) {
+    const length = passwordLength(value.password ?? '')
+    if (length < 8 || length > 128)
+      context.addIssue({ code: 'custom', path: ['password'], message: 'Use uma senha com 8 a 128 caracteres.' })
+  }
   if (requiresAssociationConfirmation.value && value.confirm_existing_association !== true) {
     context.addIssue({ code: 'custom', path: ['confirm_existing_association'], message: 'Confirme a associação para continuar.' })
   }
@@ -41,7 +47,7 @@ const regimeOptions = [
   { label: 'Outro', value: 'other' }
 ]
 const fieldError = (name: string) => trial.failure.value?.fieldErrors[name]?.[0]
-const requiresAssociationConfirmation = computed(() => trial.failure.value?.code === 'company_association_required')
+const requiresAssociationConfirmation = computed(() => ['company_association_required', 'client_association_requires_owner_verification', 'confirm_existing_association_required'].includes(trial.failure.value?.code ?? ''))
 const loginRequired = computed(() => trial.failure.value?.code === 'login_required')
 const busy = computed(() => trial.phase.value === 'submitting')
 const recoveryBusy = ref(false)
@@ -52,8 +58,17 @@ const taxRegimeValue = computed({
 
 function submit(event: FormSubmitEvent<SignupForm>) {
   Object.assign(form, event.data)
+  if (user.value)
+    form.password = undefined
   void trial.submit(form)
 }
+
+watch(user, (identity) => {
+  if (!identity) return
+  form.name = identity.name
+  form.email = identity.email
+  form.password = undefined
+}, { immediate: true })
 
 async function recover() {
   if (recoveryBusy.value) return
@@ -145,6 +160,13 @@ onMounted(() => {
             >
               Entrar em outra aba
             </UButton>
+            <UButton
+              color="primary"
+              variant="outline"
+              @click="trial.load(String(route.params.code ?? ''))"
+            >
+              Já entrei, atualizar acesso
+            </UButton>
           </template>
         </UAlert>
 
@@ -201,7 +223,7 @@ onMounted(() => {
         </div>
 
         <UForm
-          v-else-if="trial.phase.value === 'form'"
+          v-else-if="trial.phase.value === 'form' && !loginRequired"
           :schema="schema"
           :state="form"
           class="space-y-5 rounded-xl border border-default bg-elevated p-5 sm:p-7"
@@ -209,10 +231,10 @@ onMounted(() => {
         >
           <div>
             <h2 class="text-xl font-semibold text-highlighted">
-              Crie seu acesso
+              {{ user ? 'Confirme os dados da empresa' : 'Crie seu acesso' }}
             </h2>
             <p class="mt-2 text-sm leading-6 text-muted">
-              Se já possui uma conta, entre primeiro e volte a este link. O escritório não receberá sua senha.
+              {{ user ? 'Usaremos sua conta autenticada. Nenhuma senha será solicitada ou reenviada.' : 'Se já possui uma conta, entre primeiro e volte a este link. O escritório não receberá sua senha.' }}
             </p>
           </div>
 
@@ -238,6 +260,7 @@ onMounted(() => {
             />
           </UFormField>
           <UFormField
+            v-if="!user"
             label="Senha"
             name="password"
             required

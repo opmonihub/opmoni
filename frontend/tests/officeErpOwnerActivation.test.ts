@@ -782,7 +782,7 @@ test('login resumes the server-verified owner continuation at the activation rou
   assert.deepEqual(calls, ['/login', '/erp-invitations/current'])
 })
 
-test('the real global middleware admits owner activation for anonymous and authenticated visitors', async () => {
+test('the real global middleware admits owner activation and exact public trial signup routes', async () => {
   let activeUser: unknown = null
   const authUser = Vue.ref<unknown>(null)
   const resolved = Vue.ref(true)
@@ -804,10 +804,14 @@ test('the real global middleware admits owner activation for anonymous and authe
   })
   const middleware = (await import('../app/middleware/access.global.ts')).default as (to: { path: string }) => Promise<unknown>
   assert.equal(await middleware({ path: '/erp/ativar' }), undefined)
+  assert.equal(await middleware({ path: '/erp/testar/abc123' }), undefined, 'anonymous visitors may reach a public trial link')
+  assert.equal(await middleware({ path: '/erp/testar/abc123/extra' }), '/login', 'only the exact trial route is public')
   assert.equal(await middleware({ path: '/settings' }), '/login', 'ordinary anonymous routes retain the login guard')
   resolved.value = false
   activeUser = { id: 9, name: 'Ana', email: 'ana@example.test', is_super_admin: false, accounts: [], current_account: null, companies: [], current_company: null }
   assert.equal(await middleware({ path: '/erp/ativar' }), undefined)
+  assert.equal(await middleware({ path: '/erp/testar/abc123' }), undefined, 'an authenticated owner stays on the public signup page')
+  assert.notEqual(await middleware({ path: '/erp/testar/abc123/extra' }), undefined, 'nested trial-looking routes remain protected')
   assert.equal(refreshCalls, 1, 'unresolved identity is refreshed before allowing activation')
   assert.notEqual(await middleware({ path: '/settings' }), undefined, 'ordinary authenticated routes retain destination guards')
 })

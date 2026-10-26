@@ -17,7 +17,7 @@ const storageKey = 'office-erp.trial-registration.pending'
 const recoveryRetention = 15 * 60 * 1000
 
 export function useErpTrialRegistration() {
-  const { api } = useAccessApi()
+  const { api, refreshCsrf } = useAccessApi()
   const { user, resolved, refreshWithStatus } = useAuth()
   const sessionGeneration = useState('access-session-generation', () => 0)
   const phase = ref<TrialRegistrationPhase>('availability')
@@ -90,6 +90,11 @@ export function useErpTrialRegistration() {
     failure.value = null
     phase.value = pending.value ? 'recovery' : 'availability'
     try {
+      await refreshWithStatus()
+      if (request !== requestGeneration) return
+      if (user.value)
+        await refreshCsrf()
+      if (request !== requestGeneration) return
       const response = await api<TrialRegistrationAvailabilityResponse>(`/erp/trials/${encodeURIComponent(code)}`)
       if (request !== requestGeneration) return
       availability.value = response.data
@@ -126,10 +131,13 @@ export function useErpTrialRegistration() {
     phase.value = 'submitting'
     const key = newOperationKey()
     try {
+      const requestBody = { ...input }
+      if (actorAtSubmit !== null)
+        delete requestBody.password
       const response = await api<TrialRegistrationResponse>(`/erp/trials/${encodeURIComponent(code)}/register`, {
         method: 'POST',
         headers: { 'Idempotency-Key': key },
-        body: { ...input }
+        body: requestBody
       })
       if (request !== requestGeneration) return
       if ((user.value?.id ?? null) !== actorAtSubmit || sessionGeneration.value !== sessionAtSubmit) {
@@ -143,7 +151,8 @@ export function useErpTrialRegistration() {
       input.password = undefined
       outcome.value = response.data
       registrationCommitted = true
-      user.value = response.identity
+      if (actorAtSubmit === null)
+        user.value = response.identity
       resolved.value = true
       sessionGeneration.value++
       persistPending({ key, email: input.email.trim().toLowerCase(), expires_at: Date.now() + recoveryRetention })
@@ -164,6 +173,18 @@ export function useErpTrialRegistration() {
       clearRecovery()
     } catch (error) {
       if (request !== requestGeneration) return
+      if (registrationCommitted) {
+        input.password = undefined
+        failure.value = {
+          code: 'identity_refresh_failed',
+          message: 'Seu cadastro foi recebido, mas não foi possível confirmar o acesso. Recupere o resultado sem reenviar sua senha.',
+          http_status: 0,
+          fieldErrors: {}
+        }
+        persistPending({ key, email: input.email.trim().toLowerCase(), expires_at: Date.now() + recoveryRetention })
+        phase.value = 'recovery'
+        return
+      }
       if (!registrationCommitted && ((user.value?.id ?? null) !== actorAtSubmit || sessionGeneration.value !== sessionAtSubmit)) {
         input.password = undefined
         operationKey.value = ''
@@ -173,8 +194,8 @@ export function useErpTrialRegistration() {
       }
       const parsed = setFailure(error)
       if (parsed.status === 422 || parsed.status === 403 || parsed.status === 410
-        || (parsed.status === 409 && ['login_required', 'company_association_required', 'trial_already_used', 'trial_capacity_unavailable'].includes(parsed.code))) {
-        if (parsed.status !== 422)
+        || (parsed.status === 409 && ['login_required', 'company_association_required', 'client_association_requires_owner_verification', 'confirm_existing_association_required', 'trial_already_used', 'trial_capacity_unavailable'].includes(parsed.code))) {
+        if (parsed.status !== 422 && !['client_association_requires_owner_verification', 'confirm_existing_association_required'].includes(parsed.code))
           input.password = undefined
         operationKey.value = ''
         phase.value = parsed.status === 410 || parsed.status === 403 ? 'availability' : 'form'

@@ -5,7 +5,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const { user, resolved, refresh } = useAuth()
   const { api } = useAccessApi()
   const ownerActivationPage = to.path === '/erp/ativar'
-  const publicPage = ['/login', '/onboarding', '/primeiro-acesso', '/erp/cadastro', '/erp/ativar'].includes(to.path)
+  const publicTrialSignup = /^\/erp\/testar\/[^/]+$/.test(to.path)
+  const publicPage = ['/login', '/onboarding', '/primeiro-acesso', '/erp/cadastro', '/erp/ativar'].includes(to.path) || publicTrialSignup
   if (!resolved.value) {
     try {
       await refresh()
@@ -15,7 +16,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
       return
     }
   }
-  if (ownerActivationPage)
+  if (ownerActivationPage || publicTrialSignup)
     return
   if (!user.value) {
     if (to.path === '/primeiro-acesso' || to.path === '/erp/cadastro')

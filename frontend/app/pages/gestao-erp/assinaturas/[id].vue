@@ -28,6 +28,7 @@ interface ContractDetail {
   id: number
   erp_plan_id?: number | null
   erp_plan?: { id: number, name: string } | null
+  contract_type?: string
   client: { id: number, name: string }
   company: { id: number, name: string, owner_setup_status?: 'unclaimed' | 'claimed' } | null
   trial: ContractTrial | null
@@ -52,7 +53,14 @@ interface EnrollmentPlan {
 }
 interface EnrollmentPlansResponse {
   data: EnrollmentPlan[]
-  eligibility: { can_provision: boolean, reasons: string[], licence_limit: number | null, used_licences: number, available_module_keys: string[] }
+  eligibility: {
+    can_provision: boolean
+    reasons: string[]
+    licence_limit: number | null
+    used_licences: number
+    available_module_keys: string[]
+    trial_conversion?: { eligible: boolean, capacity_mode: 'occupied_trial' | 'new_slot' | null, reason: string | null }
+  }
 }
 interface OfficeErpSettingsResponse {
   data: { billing_timezone: string }
@@ -221,14 +229,14 @@ async function prepareTrialConversion() {
     if (request !== conversionGeneration || scope !== identityStamp.value || !canConvertTrial.value) return
     const token = context.capture()
     const [plans, settings] = await Promise.all([
-      api<EnrollmentPlansResponse>('/erp-commercial/enrollment-plans'),
+      api<EnrollmentPlansResponse>(`/erp-commercial/enrollment-plans?contract_id=${record.value.id}`),
       api<OfficeErpSettingsResponse>('/erp-commercial/settings')
     ])
     if (request !== conversionGeneration || scope !== identityStamp.value || !context.isCurrent(token)) return
     if (!Array.isArray(plans.data) || typeof settings.data?.billing_timezone !== 'string')
       throw new Error('Não foi possível carregar os termos disponíveis para conversão.')
     conversionPlans.value = plans.data.filter(plan => Number.isSafeInteger(plan.id) && typeof plan.name === 'string' && Array.isArray(plan.module_keys))
-    if (plans.eligibility?.can_provision !== true || conversionPlans.value.length === 0)
+    if (plans.eligibility?.trial_conversion?.eligible !== true || conversionPlans.value.length === 0)
       throw new Error('O escritório não tem capacidade ou plano elegível para converter este teste agora.')
     conversionPlanId.value = conversionPlans.value.some(plan => plan.id === record.value?.erp_plan_id)
       ? record.value!.erp_plan_id
@@ -562,7 +570,7 @@ watch(identityStamp, () => {
         </div>
       </section>
 
-      <section v-if="record.agreement_status === 'accepted'" class="border-t border-default pt-4">
+      <section v-if="record.agreement_status === 'accepted' && record.contract_type !== 'office_trial' && !record.trial" class="border-t border-default pt-4">
         <h2 class="font-semibold text-highlighted">
           Ativar contrato aceito
         </h2>

@@ -727,6 +727,46 @@ describe('Office ERP policy settings page', () => {
     }
   })
 
+  it('preserves the loaded trial plan catalog when PUT and rotate responses omit plans', async () => {
+    const resource = {
+      configured: true,
+      enabled: true,
+      revision: 4,
+      url: 'https://app.example.test/erp/testar/link-atual',
+      erp_plan_id: 73,
+      plan: { name: 'ERP Essencial', module_keys: ['purchases'] },
+      plans: [{ id: 73, name: 'ERP Essencial', module_keys: ['purchases'] }]
+    }
+    const { plans: _plans, ...writeResult } = {
+      ...resource,
+      revision: 5,
+      url: 'https://app.example.test/erp/testar/link-novo'
+    }
+    const view = fixture({
+      trialLink: async () => ({ data: resource }),
+      execute: async () => ({ status: 'confirmed', data: writeResult })
+    })
+    try {
+      await flush()
+      const save = find(view.root, node => node.tag === 'button' && renderText(node).includes('Salvar link'))[0]
+      assert.ok(save)
+      ;(save.props.onClick as () => void)()
+      await flush()
+      assert.match(renderText(view.root), /ERP Essencial/)
+      assert.equal(find(view.root, node => node.tag === 'select').length, 1)
+
+      const rotate = find(view.root, node => node.tag === 'button' && renderText(node).includes('Renovar endereço do link'))[0]
+      assert.ok(rotate)
+      ;(rotate.props.onClick as () => void)()
+      await flush()
+      assert.match(renderText(view.root), /Plano atual: ERP Essencial · revisão 5/)
+      assert.equal(find(view.root, node => node.tag === 'select').length, 1)
+      assert.equal(view.executeCalls.length, 2)
+    } finally {
+      view.app.unmount()
+    }
+  })
+
   it('loads eligible plans for office-only trial conversion and submits explicit paid terms', async () => {
     const detail = {
       id: 31,
@@ -734,15 +774,18 @@ describe('Office ERP policy settings page', () => {
       company: { id: 12, name: 'Empresa em teste' },
       erp_plan_id: 73,
       trial: { id: 81, started_at: '2026-10-18T10:00:00Z', ends_at: '2026-10-25T10:00:00Z', converted_at: null, expired_at: null, situation: 'trialing' },
-      agreement_status: 'effective', licence_status: 'trialing', current_revision: null, pending_revision: null,
+      contract_type: 'office_trial', agreement_status: 'accepted', licence_status: 'trialing', current_revision: null, pending_revision: null,
       service_anchor_on: null, next_period_month_offset: null, cancel_effective_on: null, cancellation_reason: null,
       manual_hold: false, balance: { outstanding: '0.00', invoice_count: 0 }, revisions: []
     }
     const view = trialContractFixture(async (path) => {
       if (path === '/erp-commercial/contracts/31') return { data: detail }
-      if (path === '/erp-commercial/enrollment-plans') return {
+      if (path === '/erp-commercial/enrollment-plans?contract_id=31') return {
         data: [{ id: 73, slug: 'essencial', name: 'ERP Essencial', module_keys: ['purchases'] }],
-        eligibility: { can_provision: true, reasons: [], licence_limit: 2, used_licences: 1, available_module_keys: ['purchases'] }
+        eligibility: {
+          can_provision: false, reasons: ['licence_limit_reached'], licence_limit: 1, used_licences: 1, available_module_keys: ['purchases'],
+          trial_conversion: { eligible: true, capacity_mode: 'occupied_trial', reason: null }
+        }
       }
       if (path === '/erp-commercial/settings') return { data: { billing_timezone: 'America/Sao_Paulo' } }
       throw new Error(`Unexpected request ${path}`)
@@ -750,6 +793,9 @@ describe('Office ERP policy settings page', () => {
     try {
       await flush()
       assert.match(renderText(view.root), /Em teste/)
+      assert.doesNotMatch(renderText(view.root), /Ativar e emitir primeira fatura/)
+      assert.equal(find(view.root, node => node.tag === 'button' && renderText(node).includes('Ativar e emitir primeira fatura')).length, 0)
+      assert.equal(view.executeCalls.length, 0, 'the accepted trial detail has no legacy activate action')
       const start = find(view.root, node => node.tag === 'button' && renderText(node).includes('Iniciar cobrança paga'))[0]
       assert.ok(start)
       ;(start.props.onClick as () => void)()
@@ -773,7 +819,8 @@ describe('Office ERP policy settings page', () => {
         { erp_plan_id: 73, price: '149.90', currency: 'BRL', interval_months: 1, due_in_days: 0, start_on: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`, billing_timezone: 'America/Sao_Paulo' },
         'POST'
       ])
-      assert.equal(view.calls.includes('/erp-commercial/enrollment-plans'), true)
+      assert.equal(view.calls.includes('/erp-commercial/enrollment-plans?contract_id=31'), true)
+      assert.doesNotMatch(renderText(view.root), /capacidade ou plano elegível/)
     } finally {
       view.app.unmount()
     }
@@ -789,9 +836,12 @@ describe('Office ERP policy settings page', () => {
     }
     const view = trialContractFixture(async (path) => {
       if (path === '/erp-commercial/contracts/31') return { data: detail }
-      if (path === '/erp-commercial/enrollment-plans') return {
+      if (path === '/erp-commercial/enrollment-plans?contract_id=31') return {
         data: [{ id: 73, slug: 'essencial', name: 'ERP Essencial', module_keys: ['purchases'] }],
-        eligibility: { can_provision: false, reasons: ['licence_limit_reached'], licence_limit: 1, used_licences: 1, available_module_keys: ['purchases'] }
+        eligibility: {
+          can_provision: false, reasons: ['licence_limit_reached'], licence_limit: 1, used_licences: 1, available_module_keys: ['purchases'],
+          trial_conversion: { eligible: false, capacity_mode: null, reason: 'licence_capacity_reached' }
+        }
       }
       if (path === '/erp-commercial/settings') return { data: { billing_timezone: 'America/Sao_Paulo' } }
       throw new Error(`Unexpected request ${path}`)
