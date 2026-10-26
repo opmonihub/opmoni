@@ -7,8 +7,10 @@ use App\Models\AccountMembership;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpSubscription;
 use App\Models\Plan;
 use App\Models\Subscription;
+use App\Models\User;
 use App\Support\AccessSession;
 use App\Support\CurrentAccount;
 use Illuminate\Http\Request;
@@ -20,14 +22,15 @@ final class OfficeErpAdmission
         'maintenance' => [
             'contract.read', 'contract.activate', 'contract.renew', 'contract.amend.price', 'contract.suspend', 'contract.resume', 'contract.cancel',
             'invoice.read', 'invoice.issue', 'invoice.correct', 'receipt.read', 'receipt.record', 'receipt.reverse',
-            'policy.read', 'policy.configure', 'offer.archive', 'report.read', 'invitation.revoke',
+            'policy.read', 'policy.configure', 'offer.archive', 'report.read', 'invitation.revoke', 'owner.setup.issue',
         ],
         'new_sale' => [
             'contract.create', 'contract.send', 'invitation.issue', 'subscription.adopt', 'licence.add', 'modules.expand',
-            'offer.create', 'offer.publish',
+            'offer.create', 'offer.publish', 'customer.enroll', 'trial.link.configure', 'trial.link.rotate', 'trial.convert',
         ],
         'owner_only' => ['owner.accept', 'owner.reject'],
-        'system_only' => ['billing.generate', 'allocation.expire'],
+        'trial_registration' => ['trial.register'],
+        'system_only' => ['billing.generate', 'allocation.expire', 'trial.expire'],
     ];
 
     public function context(Request $request): OfficeErpExecutionContext
@@ -53,12 +56,35 @@ final class OfficeErpAdmission
                 $commercialEnabled = (bool) $allowance['enabled'];
                 $subscriptionActive = $subscription?->status === 'active';
                 $canMaintain = $canRead;
-                $canConfigure = $canRead && $subscriptionActive && $commercialEnabled;
+                $canConfigure = $canRead;
                 $limit = $allowance['licence_limit'];
                 $used = $counts['reserved'] + $counts['occupied'];
                 $hasCapacity = $limit === null || $used < $limit;
-                $canSellNew = $canConfigure && $hasCapacity;
+                $canProvision = $canRead && $subscriptionActive && $hasCapacity && $allowance['module_keys'] !== [];
+                $canManageTrialLink = $canRead && $subscriptionActive;
+                $trialRegistrationEnabled = (bool) config('erp.office_trial_enabled', false);
+                $canStartTrial = $canProvision && $trialRegistrationEnabled;
+                $canSellNew = $canRead && $subscriptionActive && $commercialEnabled && $hasCapacity;
 
+                $provisionReasons = [];
+                if (! $subscriptionActive) {
+                    $provisionReasons[] = 'subscription_inactive';
+                }
+                if (! $hasCapacity) {
+                    $provisionReasons[] = 'licence_capacity_reached';
+                }
+                if ($allowance['module_keys'] === []) {
+                    $provisionReasons[] = 'commercial_module_not_allowed';
+                }
+                $resaleReasons = $provisionReasons;
+                if (! $commercialEnabled) {
+                    $resaleReasons[] = 'commercial_resale_disabled';
+                }
+                $trialReasons = $provisionReasons;
+                if (! $trialRegistrationEnabled) {
+                    $trialReasons[] = 'trial_registration_disabled';
+                }
+                $linkReasons = $subscriptionActive ? [] : ['subscription_inactive'];
                 $reasons = [];
                 if (! $subscriptionActive) {
                     $reasons[] = 'subscription_inactive';
@@ -84,7 +110,7 @@ final class OfficeErpAdmission
                     'subscription_status' => $subscription?->status,
                     'plan_id' => (int) ($plan?->id ?? 0),
                     'allowance' => $identityAllowance,
-                    'capabilities' => [$canRead, $canMaintain, $canConfigure, $canSellNew],
+                    'capabilities' => [$canRead, $canMaintain, $canConfigure, $canSellNew, $canProvision, $canStartTrial, $canManageTrialLink],
                 ];
 
                 return [
@@ -92,6 +118,16 @@ final class OfficeErpAdmission
                     'can_maintain' => $canMaintain,
                     'can_configure' => $canConfigure,
                     'can_sell_new' => $canSellNew,
+                    'can_provision' => $canProvision,
+                    'can_start_trial' => $canStartTrial,
+                    'can_manage_trial_link' => $canManageTrialLink,
+                    'capability_reasons' => [
+                        'can_configure' => [],
+                        'can_sell_new' => array_values(array_unique($resaleReasons)),
+                        'can_provision' => array_values(array_unique($provisionReasons)),
+                        'can_start_trial' => array_values(array_unique($trialReasons)),
+                        'can_manage_trial_link' => $linkReasons,
+                    ],
                     'reasons' => array_combine(
                         array_values(array_unique($reasons)),
                         array_map(static fn (string $reason): array => [$reason], array_values(array_unique($reasons))),
@@ -171,6 +207,7 @@ final class OfficeErpAdmission
             ...self::ACTION_CLASSIFICATION['maintenance'],
             ...self::ACTION_CLASSIFICATION['new_sale'],
             ...self::ACTION_CLASSIFICATION['owner_only'],
+            ...self::ACTION_CLASSIFICATION['trial_registration'],
             ...self::ACTION_CLASSIFICATION['system_only'],
         ], true), 403);
     }
@@ -198,8 +235,30 @@ final class OfficeErpAdmission
             return;
         }
 
+        if ($action === 'trial.register') {
+            abort_unless($ctx->actorKind === 'owner' && $ctx->purpose === 'trial.register', 403);
+            abort_unless((bool) config('erp.office_trial_enabled', false), 403, 'trial_registration_disabled');
+            $this->assertCanProvision($subscription, $allowance);
+            $this->assertModulesAllowed($action, $modules, null, $allowance, true);
+            $counts = $this->usage($ctx);
+            $limit = $allowance['licence_limit'];
+            abort_if($limit !== null && $limit <= $counts['reserved'] + $counts['occupied'], 409, 'licence_capacity_reached');
+
+            return;
+        }
+
         $ownerAcceptance = $ctx->actorKind === 'owner' && $action === 'owner.accept';
-        $this->assertCanSell($subscription, $allowance);
+        $convertingCurrentTrial = $action === 'trial.convert' && $this->hasCurrentUnconvertedTrial($contract);
+        if (in_array($action, ['customer.enroll', 'trial.convert'], true) && ! $convertingCurrentTrial) {
+            $this->assertCanProvision($subscription, $allowance);
+        } elseif ($convertingCurrentTrial) {
+            abort_unless($subscription?->status === 'active', 403, 'subscription_inactive');
+            abort_unless($allowance['module_keys'] !== [], 403, 'commercial_module_not_allowed');
+        } elseif (in_array($action, ['trial.link.configure', 'trial.link.rotate'], true)) {
+            abort_unless($subscription?->status === 'active', 403, 'subscription_inactive');
+        } else {
+            $this->assertCanSell($subscription, $allowance);
+        }
         abort_unless($ctx->actorKind === 'office_admin' || $ownerAcceptance, 403);
         if ($ownerAcceptance) {
             abort_unless($contract?->agreement_status === 'awaiting_owner', 409, 'contract_not_awaiting_owner');
@@ -211,11 +270,36 @@ final class OfficeErpAdmission
         $ownUnexpiredReservation = $allocation?->state === 'reserved'
             && $allocation->expires_at !== null
             && $allocation->expires_at->isFuture();
+        $ownTrialAllocation = $convertingCurrentTrial && $allocation?->state === 'occupied';
         $capacityRequired = in_array($action, [
             'contract.create', 'contract.send', 'invitation.issue', 'subscription.adopt', 'licence.add', 'owner.accept',
-            'offer.create', 'offer.publish',
+            'offer.create', 'offer.publish', 'customer.enroll', 'trial.convert',
         ], true);
-        abort_if($capacityRequired && $limit !== null && $limit <= $counts['reserved'] + $counts['occupied'] - ($ownUnexpiredReservation ? 1 : 0), 409, 'licence_capacity_reached');
+        abort_if(
+            $capacityRequired
+                && $limit !== null
+                && $limit <= $counts['reserved'] + $counts['occupied'] - ($ownUnexpiredReservation ? 1 : 0) - ($ownTrialAllocation ? 1 : 0),
+            409,
+            'licence_capacity_reached',
+        );
+    }
+
+    private function hasCurrentUnconvertedTrial(?OfficeErpContract $contract): bool
+    {
+        if ($contract?->erp_company_id === null) {
+            return false;
+        }
+
+        return ErpSubscription::query()
+            ->where('erp_company_id', $contract->erp_company_id)
+            ->where('office_erp_contract_id', $contract->getKey())
+            ->where('status', 'trialing')
+            ->whereHas('trial', static fn ($trial) => $trial
+                ->where('erp_company_id', $contract->erp_company_id)
+                ->where('account_id', $contract->account_id)
+                ->whereNull('converted_at')
+                ->where('ends_at', '>', now()))
+            ->exists();
     }
 
     private function assertNewSaleTarget(string $action, ?OfficeErpContract $contract): void
@@ -265,9 +349,24 @@ final class OfficeErpAdmission
                     });
             });
 
+        $occupied = (clone $allocations)
+            ->where('state', 'occupied')
+            ->whereNotExists(function ($query): void {
+                $query->selectRaw('1')
+                    ->from('erp_subscriptions')
+                    ->join('erp_subscription_trials', 'erp_subscription_trials.erp_subscription_id', '=', 'erp_subscriptions.id')
+                    ->whereColumn('erp_subscriptions.erp_company_id', 'office_erp_licence_allocations.erp_company_id')
+                    ->whereColumn('erp_subscriptions.office_erp_contract_id', 'office_erp_licence_allocations.contract_id')
+                    ->whereColumn('erp_subscription_trials.erp_company_id', 'office_erp_licence_allocations.erp_company_id')
+                    ->whereColumn('erp_subscription_trials.account_id', 'office_erp_licence_allocations.account_id')
+                    ->whereIn('erp_subscriptions.status', ['trialing', 'trial_expired'])
+                    ->whereNull('erp_subscription_trials.converted_at')
+                    ->where('erp_subscription_trials.ends_at', '<=', now());
+            });
+
         return [
             'reserved' => (clone $allocations)->where('state', 'reserved')->count(),
-            'occupied' => (clone $allocations)->where('state', 'occupied')->count(),
+            'occupied' => $occupied->count(),
         ];
     }
 
@@ -407,6 +506,7 @@ final class OfficeErpAdmission
             'contract.activate' => $contract->agreement_status === 'accepted' && $allocation?->state === 'occupied',
             'contract.renew', 'contract.amend.price', 'contract.suspend', 'contract.resume', 'contract.cancel' => $active && $effectiveLicence,
             'invitation.revoke' => $contract->agreement_status === 'awaiting_owner' && $allocation?->state === 'reserved',
+            'owner.setup.issue' => $active && $effectiveLicence,
             default => false,
         };
     }
@@ -443,6 +543,14 @@ final class OfficeErpAdmission
         abort_unless($allowance['enabled'], 403, 'commercial_resale_disabled');
     }
 
+    /** @param array{enabled: bool, licence_limit: ?int, module_keys: list<string>} $allowance */
+    private function assertCanProvision(?Subscription $subscription, array $allowance): void
+    {
+        abort_unless($subscription?->status === 'active', 403, 'subscription_inactive');
+        abort_unless($allowance['licence_limit'] === null || $allowance['licence_limit'] > 0, 403, 'licence_capacity_reached');
+        abort_unless($allowance['module_keys'] !== [], 403, 'commercial_module_not_allowed');
+    }
+
     private function assertActorCanRunAction(OfficeErpExecutionContext $ctx, string $action): void
     {
         if ($ctx->actorKind === 'office_admin') {
@@ -457,6 +565,11 @@ final class OfficeErpAdmission
         }
 
         if ($ctx->actorKind === 'owner') {
+            if ($action === 'trial.register') {
+                abort_unless($ctx->purpose === 'trial.register' && $ctx->actor instanceof User, 403);
+
+                return;
+            }
             abort_unless(in_array($action, self::ACTION_CLASSIFICATION['owner_only'], true), 403);
 
             return;
