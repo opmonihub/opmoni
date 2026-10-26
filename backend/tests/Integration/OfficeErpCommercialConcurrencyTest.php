@@ -430,7 +430,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
             $trialCnpj,
             'catalog-trial-'.bin2hex(random_bytes(4)),
         ));
-        $this->assertWaitingOnAdvisoryLockHeldBy($trial, $legacy);
+        $this->assertWaitingOnAdvisoryLockHeldBy($trial, $legacy, 'erp-commercial-catalog');
 
         $this->release($legacy);
         $trialResult = $this->workerResult($trial);
@@ -500,7 +500,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
             $trialCnpj,
             'shared-plan-trial-'.bin2hex(random_bytes(4)),
         ));
-        $this->assertWaitingOnAdvisoryLockHeldBy($trial, $enrollment);
+        $this->assertWaitingOnAdvisoryLockHeldBy($trial, $enrollment, 'erp-commercial-catalog');
 
         $this->release($enrollment);
         $trialResult = $this->workerResult($trial);

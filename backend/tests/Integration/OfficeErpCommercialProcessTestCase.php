@@ -142,6 +142,9 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     /** @var array<int, array{process: Process, base: string, identity: array<string, mixed>}> */
     private array $workers = [];
 
+    /** @var array<int, array{phase: string, query_category: string, contender_pid: int, holder_pid: int, expected_lock: string}> */
+    private array $observedWaits = [];
+
     /** @var array<string, array{ids: list<int|string>, hash: string}> */
     private array $retainedRows = [];
 
@@ -739,8 +742,9 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         } while (true);
     }
 
-    protected function assertWaitingOnAdvisoryLockHeldBy(Process $contender, Process $holder): void
+    protected function assertWaitingOnAdvisoryLockHeldBy(Process $contender, Process $holder, string $expectedLock): void
     {
+        self::assertMatchesRegularExpression('/\Aer[p-][a-z-]+\z/', $expectedLock);
         $identity = $this->workers[spl_object_id($contender)]['identity'];
         $holderPid = $this->signalData($holder, 'ready')['database_pid'];
         $deadline = microtime(true) + 10;
@@ -753,6 +757,13 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             if ($activity?->wait_event_type === 'Lock') {
                 self::assertStringContainsString('pg_advisory_xact_lock', strtolower($activity->query));
                 self::assertSame(1, (int) $activity->blocked_by_holder);
+                $this->observedWaits[spl_object_id($contender)] = [
+                    'phase' => 'trial-registration-before-catalog-release',
+                    'query_category' => 'pg_advisory_xact_lock',
+                    'contender_pid' => $identity['database_pid'],
+                    'holder_pid' => $holderPid,
+                    'expected_lock' => $expectedLock,
+                ];
 
                 return;
             }
@@ -847,6 +858,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             $sqlState = self::workerSqlState($output);
             self::fail('Worker emitted invalid JSON (stdout bytes='.strlen($output).', json error='.$exception->getMessage()
                 .', sqlstate='.$sqlState.', query_category='.self::workerQueryCategory($output).', first line='.$firstLine
+                .'; observed_wait='.json_encode($this->observedWaits[spl_object_id($process)] ?? [], JSON_THROW_ON_ERROR)
                 .'; '.self::workerFailureFingerprint($process).').');
         }
         self::assertSame(0, $result['transaction_level']);
