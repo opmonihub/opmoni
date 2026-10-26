@@ -50,13 +50,17 @@ export function useOfficeErpContext() {
   const generation = useState('office-erp-context-generation', () => 0)
   const requestGeneration = useState('office-erp-context-request-generation', () => 0)
 
-  const authorityKey = computed(() => JSON.stringify([
-    user.value?.id ?? null,
-    sessionGeneration.value,
-    currentAccount.value?.id ?? null,
-    currentAccount.value?.status ?? null,
-    currentAccount.value?.role ?? null
-  ]))
+  const authorityKey = computed(() => {
+    const effectiveAccount = user.value?.accounts?.find(account => account.id === currentAccount.value?.id)
+    return JSON.stringify([
+      user.value?.id ?? null,
+      sessionGeneration.value,
+      currentAccount.value?.id ?? null,
+      currentAccount.value?.status ?? null,
+      currentAccount.value?.role ?? null,
+      effectiveAccount ? [effectiveAccount.id, effectiveAccount.status, effectiveAccount.role] : null
+    ])
+  })
   const authorityOwner = useState('office-erp-context-authority-owner', () => authorityKey.value)
   const confirmation = computed(() => {
     const value = confirmed.value

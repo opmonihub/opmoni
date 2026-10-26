@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { it } from 'node:test'
 import * as Vue from 'vue'
+import { refDebounced } from '@vueuse/core'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
@@ -19,8 +20,8 @@ const flush = async () => {
   await Vue.nextTick()
 }
 
-function harness(override?: (path: string, options?: Record<string, unknown>) => Promise<unknown>) {
-  const user = Vue.ref({ id: 1, current_account: { id: 8, status: 'active', role: 'admin' } })
+function harness(override?: (path: string, options?: Record<string, unknown>) => Promise<unknown>, realDebounce = false) {
+  const user = Vue.ref<{ id: number, current_account: { id: number, status: string, role: string }, accounts?: Array<{ id: number, status: string, role: string }> }>({ id: 1, current_account: { id: 8, status: 'active', role: 'admin' } })
   const states = new Map<string, Vue.Ref>()
   const route = Vue.reactive({ query: {} as Record<string, string>, params: { id: '12' } })
   const app = {}
@@ -43,7 +44,7 @@ function harness(override?: (path: string, options?: Record<string, unknown>) =>
       if (path === '/erp-commercial/trial-link') return { data: { configured: false, enabled: false, revision: null, url: null, erp_plan_id: null, plan: null, plans: [] } }
       return { data: [], meta: { total: 0, current_page: 1, last_page: 1, per_page: 25 } }
     } }),
-    refDebounced: (value: unknown) => value,
+    refDebounced: realDebounce ? refDebounced : (value: unknown) => value,
     useOfficeErpCommand: () => ({ pending: Vue.ref(false), recoveryKey: Vue.ref(null) }),
     useRoute: () => route,
     useToast: () => ({ add() {} }), definePageMeta() {}, useHead() {}
@@ -299,5 +300,77 @@ it('commercial grant loss and Account changes clear remembered criteria synchron
   h.user.value.current_account = { id: 9, status: 'active', role: 'admin' }
   assert.equal((page.state.query as Vue.Ref).value, '')
   await flush()
+  page.stop()
+})
+
+for (const field of ['role', 'status', 'removed'] as const) {
+  it(`effective membership ${field} clears default-filter rows, private editor and pending real-context reads synchronously`, async () => {
+    let changed = false
+    let pending = false
+    let resolve!: (value: unknown) => void
+    let obsoleteSignal: AbortSignal | undefined
+    const response = new Promise((done) => {
+      resolve = done
+    })
+    const h = harness(async (url, options) => {
+      if (url === '/erp-commercial/context') return { data: { ...caps(changed ? 'changed' : 'original'), can_read: !changed } }
+      if (pending) {
+        obsoleteSignal = options!.signal as AbortSignal
+        return response
+      }
+      return { data: [{ id: 12, name: 'Protected plan' }], meta: { total: 1, current_page: 1, last_page: 1, per_page: 25 } }
+    })
+    h.user.value.accounts = [{ id: 8, status: 'active', role: 'admin' }]
+    const page = h.mount('planos.vue')
+    await flush()
+    assert.equal((page.state.offers as Vue.Ref).value.length, 1)
+    ;(page.state.editorOpen as Vue.Ref).value = true
+    pending = true
+    const oldRead = (page.state.loadOffers as () => Promise<void>)()
+    await flush()
+    changed = true
+    if (field === 'removed') h.user.value.accounts = []
+    else h.user.value.accounts[0]![field] = field === 'role' ? 'user' : 'suspended'
+    assert.equal(obsoleteSignal!.aborted, true)
+    assert.deepEqual((page.state.offers as Vue.Ref).value, [])
+    assert.equal((page.state.editorOpen as Vue.Ref).value, false)
+    resolve({ data: [{ id: 13, name: 'Obsolete result' }], meta: { total: 1, current_page: 1, last_page: 1, per_page: 25 } })
+    await oldRead
+    await flush()
+    assert.deepEqual((page.state.offers as Vue.Ref).value, [])
+    assert.equal((page.state.query as Vue.Ref).value, '')
+    assert.equal((page.state.page as Vue.Ref).value, 1)
+    page.stop()
+  })
+}
+
+it('portfolio history applies q and pagina atomically with the real VueUse debounce', async () => {
+  const h = harness(async (url, options) => url === '/erp-commercial/context'
+    ? { data: caps() }
+    : {
+        data: [], meta: { total: 150, current_page: (options?.params as Record<string, number>)?.page ?? 1, last_page: 6, per_page: 25 }
+      }, true)
+  h.route.query = { q: 'Primeiro', pagina: '4' }
+  const page = h.mount('clientes/index.vue')
+  await flush()
+  const before = h.calls.length
+  h.route.query = { q: 'Histórico', pagina: '2' }
+  await flush()
+  await new Promise(resolve => setTimeout(resolve, 350))
+  await flush()
+  const reads = h.calls.slice(before).filter(call => call.path === '/erp-commercial/clients')
+  assert.equal(reads.length, 1)
+  assert.deepEqual(reads[0]!.options?.params, { q: 'Histórico', page: 2, per_page: 25 })
+  assert.equal((page.state.query as Vue.Ref).value, 'Histórico')
+  assert.equal((page.state.page as Vue.Ref).value, 2)
+  const beforeManual = h.calls.length
+  ;(page.state.query as Vue.Ref).value = 'Manual'
+  await flush()
+  assert.equal(h.calls.length, beforeManual)
+  await new Promise(resolve => setTimeout(resolve, 350))
+  await flush()
+  const manualReads = h.calls.slice(beforeManual).filter(call => call.path === '/erp-commercial/clients')
+  assert.equal(manualReads.length, 1)
+  assert.deepEqual(manualReads[0]!.options?.params, { q: 'Manual', page: 1, per_page: 25 })
   page.stop()
 })

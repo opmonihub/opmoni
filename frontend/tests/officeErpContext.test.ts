@@ -4,7 +4,7 @@ import * as Vue from 'vue'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 type Account = { id: number, status: 'active' | 'suspended', role: 'admin' | 'operador' | 'user' }
-type Identity = { id: number, current_account: Account | null }
+type Identity = { id: number, current_account: Account | null, accounts?: Account[] }
 type Capabilities = {
   can_read: boolean
   can_maintain: boolean
@@ -289,3 +289,45 @@ it('multiple authority watchers invalidate once before a reentrant new-authority
   await Promise.all([transition, joined])
   assert.equal(harness.context.capabilities.value?.capability_key, 'current')
 })
+
+for (const change of ['role', 'status', 'removed'] as const) {
+  it(`invalidates confirmed tokens when effective Account membership ${change} changes without selected snapshot changes`, async (t) => {
+    const harness = mountContext()
+    t.after(harness.stop)
+    harness.identity.value.accounts = [{ id: 8, status: 'active', role: 'admin' }]
+    await harness.context.refresh()
+    const token = harness.context.capture()
+    const selected = { ...harness.identity.value.current_account! }
+    if (change === 'role') harness.identity.value.accounts[0]!.role = 'user'
+    else if (change === 'status') harness.identity.value.accounts[0]!.status = 'suspended'
+    else harness.identity.value.accounts = []
+    assert.deepEqual(harness.identity.value.current_account, selected)
+    assert.equal(harness.context.isCurrent(token), false)
+    assert.equal(harness.context.capabilities.value, null)
+  })
+
+  it(`discards the old pending confirmation after effective Account membership ${change} changes across multiple consumers`, async (t) => {
+    const old = deferred<unknown>()
+    const current = deferred<unknown>()
+    let calls = 0
+    const harness = mountContext({ api: () => ++calls === 1 ? old.promise : current.promise })
+    t.after(harness.stop)
+    harness.identity.value.accounts = [{ id: 8, status: 'active', role: 'admin' }]
+    const consumer = harness.createConsumer()
+    const original = harness.context.refresh()
+    const token = harness.context.capture()
+    if (change === 'role') harness.identity.value.accounts[0]!.role = 'user'
+    else if (change === 'status') harness.identity.value.accounts[0]!.status = 'suspended'
+    else harness.identity.value.accounts = []
+    const replacement = consumer.refresh()
+    old.resolve({ data: fullCapabilities('obsolete') })
+    await original
+    assert.equal(harness.context.isCurrent(token), false)
+    assert.equal(harness.context.capabilities.value, null)
+    const joined = harness.context.refresh()
+    assert.equal(calls, 2)
+    current.resolve({ data: fullCapabilities('current') })
+    await Promise.all([replacement, joined])
+    assert.equal(harness.context.capabilities.value?.capability_key, 'current')
+  })
+}
