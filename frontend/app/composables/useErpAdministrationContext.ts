@@ -11,20 +11,29 @@ export interface ErpAdministrationContextToken {
 export function useErpAdministrationContext(extra: () => string | number | null = () => null) {
   const { user, currentCompany, currentAccount } = useAuth()
   const sessionGeneration = useState('access-session-generation', () => 0)
-  const key = computed(() => JSON.stringify([
-    user.value?.id ?? null,
-    sessionGeneration.value,
-    currentAccount.value?.id ?? null,
-    currentAccount.value?.status ?? null,
-    currentAccount.value?.role ?? null,
-    currentCompany.value?.id ?? null,
-    currentCompany.value?.status ?? null,
-    currentCompany.value?.access_kind ?? null,
-    currentCompany.value?.role ?? null,
-    currentCompany.value?.delegated_office_id ?? null,
-    [...(currentCompany.value?.permissions ?? [])].sort(),
-    extra()
-  ]))
+  const key = computed(() => {
+    const effectiveAccount = user.value?.accounts?.find(account => account.id === currentAccount.value?.id)
+    const effectiveCompany = user.value?.companies?.find(company => company.id === currentCompany.value?.id)
+    return JSON.stringify([
+      user.value?.id ?? null,
+      sessionGeneration.value,
+      currentAccount.value?.id ?? null,
+      currentAccount.value?.status ?? null,
+      currentAccount.value?.role ?? null,
+      currentCompany.value?.id ?? null,
+      currentCompany.value?.status ?? null,
+      currentCompany.value?.access_kind ?? null,
+      currentCompany.value?.role ?? null,
+      currentCompany.value?.delegated_office_id ?? null,
+      [...(currentCompany.value?.permissions ?? [])].sort(),
+      effectiveAccount ? [effectiveAccount.id, effectiveAccount.status, effectiveAccount.role] : null,
+      effectiveCompany
+        ? [effectiveCompany.id, effectiveCompany.status, effectiveCompany.role, effectiveCompany.access_kind,
+            effectiveCompany.delegated_office_id, [...effectiveCompany.permissions].sort()]
+        : null,
+      extra()
+    ])
+  })
   const generation = ref(0)
   watch(key, () => {
     generation.value++
