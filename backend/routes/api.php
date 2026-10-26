@@ -25,6 +25,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/login', [AccessController::class, 'login'])->name('access.login');
         Route::get('/first-access/status', [AccessController::class, 'activationStatus'])->name('access.activation-status');
         Route::post('/first-access', [AccessController::class, 'activate'])->name('access.activate');
+        require __DIR__.'/office-erp-trials.php';
         require __DIR__.'/office-erp-invitations.php';
         Route::middleware('auth')->group(function (): void {
             Route::get('/me', [AccessController::class, 'me'])->name('access.me');
