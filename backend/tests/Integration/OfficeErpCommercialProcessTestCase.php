@@ -251,7 +251,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     }
 
     /** @param array{code: string, link: OfficeErpTrialLink} $trialLink
-     *  @return array<string, mixed>
+     * @return array<string, mixed>
      */
     protected function trialRegistrationPayload(array $office, array $trialLink, string $cnpj, string $suffix, bool $holdAccountLock = false, ?string $holdAdvisoryLock = null, bool $holdProvider = false, ?string $frozenNow = null): array
     {
@@ -279,7 +279,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     }
 
     /** @param array{link: OfficeErpTrialLink} $trialLink
-     *  @return array<string, mixed>
+     * @return array<string, mixed>
      */
     protected function trialRotationPayload(array $office, array $trialLink, string $suffix, bool $holdTrialLinkLock = false): array
     {
@@ -294,7 +294,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     }
 
     /** @param array<string, mixed> $terms
-     *  @return array<string, mixed>
+     * @return array<string, mixed>
      */
     protected function trialConversionPayload(array $office, int $contractId, array $terms, string $suffix, bool $holdAccountLock = false, ?string $frozenNow = null): array
     {

@@ -25,6 +25,7 @@ use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\Commercial\OfficeErpReceipt;
+use App\Models\Erp\ErpSubscriptionTrial;
 use App\Models\Plan;
 use App\Models\User;
 use App\Support\CurrentAccount;
@@ -182,7 +183,7 @@ final class OfficeErpCommercialConcurrencyWorker
                 $result = app(OfficeErpTrialLinks::class)->rotate($context, (string) $input['idempotency_key']);
                 $result = ['status' => 201, ...$result];
             } elseif ($input['action'] === 'trial_expire') {
-                $trial = \App\Models\Erp\ErpSubscriptionTrial::query()->findOrFail($input['trial_id']);
+                $trial = ErpSubscriptionTrial::query()->findOrFail($input['trial_id']);
                 app(ErpTrialLifecycle::class)->expire($trial, CarbonImmutable::parse($input['now']));
                 $result = ['status' => 200, 'trial_id' => (int) $trial->id];
             } elseif ($input['action'] === 'trial_convert') {
