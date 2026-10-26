@@ -64,6 +64,7 @@ function setupList(path = '/erp/products', initial: {
   account?: Account | null
   actorId?: number | null
   sessionGeneration?: number
+  memory?: Map<string, Vue.Ref>
 } = {}) {
   const user = Vue.ref<{ id: number } | null>(initial.actorId === null ? null : { id: initial.actorId ?? 5 })
   const currentCompany = Vue.ref<Company | null>(initial.company === undefined ? company() : initial.company)
@@ -84,9 +85,12 @@ function setupList(path = '/erp/products', initial: {
       return authRefresh()
     }
   })
-  const useState = <T>(key: string, init: () => T) => key === 'access-session-generation'
-    ? sessionGeneration as Vue.Ref<T>
-    : Vue.ref(init())
+  const memory = initial.memory ?? new Map<string, Vue.Ref>()
+  const useState = <T>(key: string, init: () => T) => {
+    if (key === 'access-session-generation') return sessionGeneration as Vue.Ref<T>
+    if (!memory.has(key)) memory.set(key, Vue.ref(init()))
+    return memory.get(key) as Vue.Ref<T>
+  }
   const { useErpCatalogList } = loadAppComposable<{ useErpCatalogList(route: string): CatalogList }>(
     'composables/useErpCatalogList.ts',
     {
@@ -105,6 +109,7 @@ function setupList(path = '/erp/products', initial: {
 
   return {
     list,
+    memory,
     requests,
     user,
     currentCompany,
@@ -425,5 +430,35 @@ describe('shared ERP catalog list lifecycle', () => {
     await app.settle()
     assert.equal(app.list.state.value, null)
     assert.equal(app.list.pending.value, false)
+  })
+})
+
+describe('catalog navigation memory', () => {
+  it('restores supported criteria across a tab return and bounds a removed page with server metadata', async () => {
+    const first = setupList()
+    first.requests[0]!.resolve(response('Initial'))
+    await first.settle()
+    first.list.search.value = 'arroz'
+    const searched = first.list.refresh()
+    first.requests[1]!.resolve(response('Filtered'))
+    await searched
+    first.list.page.value = 3
+    first.requests[2]!.resolve(response('Third', 3))
+    await first.settle()
+    first.stop()
+    const returned = setupList('/erp/products', { memory: first.memory })
+    try {
+      assert.equal(returned.list.search.value, 'arroz')
+      assert.equal(returned.list.page.value, 3)
+      assert.equal(returned.requests[0]!.url, '/erp/products?page=3&search=arroz')
+      returned.requests[0]!.resolve({ data: [], meta: { current_page: 3, last_page: 1, per_page: 15, total: 1 } })
+      await returned.settle()
+      assert.equal(returned.requests[1]!.url, '/erp/products?page=1&search=arroz')
+      assert.equal(returned.list.state.value, null, 'an out-of-bounds response is never displayed as confirmed empty')
+      returned.requests[1]!.resolve({ data: [{ id: 1, name: 'Available' }], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } })
+      await returned.settle()
+      assert.equal(returned.list.state.value?.data[0]?.name, 'Available')
+      assert.equal(returned.list.state.value?.meta.total, 1)
+    } finally { returned.stop() }
   })
 })

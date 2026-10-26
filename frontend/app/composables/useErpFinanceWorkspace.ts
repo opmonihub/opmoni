@@ -1,3 +1,5 @@
+import { useErpListNavigation } from '~/composables/useErpListNavigation'
+import { useErpReadScope } from '~/composables/useErpReadScope'
 import type { ErpFinancePage, ErpFinancialAccount, ErpObligation, ErpPayment, ErpPaymentAllocation, ErpFinanceReceipt } from '#shared/types/erpBusiness'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '~/composables/useApiError'
 import { erpFinanceAllowed, type ErpFinanceAction } from '#shared/utils/erpFinance'
@@ -36,10 +38,13 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
   const { api, refreshCsrf } = useAccessApi()
   const { user, currentCompany, refreshWithStatus } = useAuth()
   const context = useErpAdministrationContext()
+  const reads = useErpReadScope()
   const tab = ref<Tab>(typeof initialTab === 'function' ? 'obligations' : initialTab)
   const rows = ref<Row[]>([])
   const meta = ref<FinanceMeta | null>(null)
   const filters = reactive<FinanceFilter>({ page: 1, per_page: 15, erp_establishment_id: '', erp_financial_account_id: '', direction: '', status: '', currency: '', date_from: '', date_to: '' })
+  const navigation = useErpListNavigation('erp-finance', filters, () => context.key.value, ['obligations', 'accounts', 'payments'])
+  navigation.restore(tab.value)
   const establishments = ref<ReferenceRow<'establishments'>[]>([])
   const accountOptions = ref<ReferenceRow<'accounts'>[]>([])
   const cashSessions = ref<ReferenceRow<'cashSessions'>[]>([])
@@ -155,6 +160,7 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
     canRetryExact.value = false
   }
   function clearPrivateState() {
+    reads.cancel()
     clearFinanceViews()
     establishments.value = []
     accountOptions.value = []
@@ -307,14 +313,21 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
     if (!canRead.value || !currentCompany.value) return
     const token = context.capture()
     const generation = ++requestGeneration
+    const signal = reads.start('list')
     const currentTab = tab.value
     const previousRows = rows.value
     const previousMeta = meta.value
     loading.value = true
     pageError.value = ''
     try {
-      const result = await api<ErpFinancePage<Row>>(`${paths[currentTab]}?${queryString()}`)
+      const result = await api<ErpFinancePage<Row>>(`${paths[currentTab]}?${queryString()}`, { signal })
       if (!isCurrent(token, generation)) return
+      if (filters.page > Math.max(1, result.meta.last_page)) {
+        filters.page = Math.max(1, result.meta.last_page)
+        await load()
+        return
+      }
+      filters.page = result.meta.current_page ?? filters.page
       rows.value = result.data
       meta.value = result.meta
     } catch (error) {
@@ -344,10 +357,11 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
     if (!allowed(config.action)) return
     const token = context.capture()
     const sequence = ++referenceSequences[kind]
+    const signal = reads.start(`reference:${kind}`)
     referenceLoading[kind] = true
     referenceErrors[kind] = ''
     try {
-      const result = await api<ErpFinancePage<ReferenceRow<K>>>(`${config.path}?per_page=100&page=${page}${config.suffix}`)
+      const result = await api<ErpFinancePage<ReferenceRow<K>>>(`${config.path}?per_page=100&page=${page}${config.suffix}`, { signal })
       if (!isAuthorityCurrent(token) || referenceSequences[kind] !== sequence) return
       if (kind === 'establishments') establishments.value = append ? appendUnique(establishments.value, result.data as ReferenceRow<'establishments'>[]) : result.data as ReferenceRow<'establishments'>[]
       if (kind === 'accounts') accountOptions.value = append ? appendUnique(accountOptions.value, result.data as ReferenceRow<'accounts'>[]) : result.data as ReferenceRow<'accounts'>[]
@@ -384,10 +398,7 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
   }
   function resetTabState(next: Tab) {
     tab.value = next
-    filters.page = 1
-    filters.status = ''
-    filters.direction = ''
-    filters.erp_financial_account_id = ''
+    navigation.restore(next)
     rows.value = []
     meta.value = null
     invalidateDetailSelection()

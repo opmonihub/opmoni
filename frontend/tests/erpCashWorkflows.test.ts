@@ -30,6 +30,8 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const moduleExports: Record<string, unknown> = {}
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
+    if (path === '~/composables/useErpListNavigation') return loadAppComposable('composables/useErpListNavigation.ts', { ...bindings, useState: bindings.useState ?? ((_key: string, init: () => unknown) => Vue.ref(init())) })
+    if (path === '~/composables/useErpReadScope') return loadAppComposable('composables/useErpReadScope.ts')
     if (path === '~/components/erp/erpPresentation') return loadAppComposable('components/erp/erpPresentation.ts')
     if (path === '~/utils/erpWorkspaceNav') return loadAppComposable('utils/erpWorkspaceNav.ts')
     const value = imports[path]

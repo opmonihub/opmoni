@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import { readFileSync } from 'node:fs'
@@ -100,7 +101,8 @@ async function flush() {
 function mount(
   apiHandler: (path: string, options?: Record<string, unknown>) => Promise<unknown> | unknown,
   permissions = ['erp.accounting-deliveries.index', 'erp.accounting-deliveries.show', 'erp.accounting-deliveries.retry', 'erp.accounting-deliveries.store'],
-  role = 'owner'
+  role = 'owner',
+  memory = new Map<string, Vue.Ref>()
 ) {
   const source = readFileSync(componentFile, 'utf8')
   const { descriptor } = parse(source, { filename: componentFile.pathname })
@@ -149,6 +151,10 @@ function mount(
   const exports = {} as { default: Record<string, unknown> }
   new Function('require', 'exports', ...Object.keys(globals), compiledScript.outputText)(
     (name: string) => {
+      if (name.startsWith('~/composables/use')) return loadAppComposable(name.slice(2) + '.ts', { ...globals, useState: (key: string, init: () => unknown) => {
+        if (!memory.has(key)) memory.set(key, Vue.ref(init()))
+        return memory.get(key)!
+      } })
       if (name === 'vue') return Vue
       if (name === '~/utils/erpModulesNav') return { erpCompanyHasPermission }
       if (name === '~/composables/useApiError') return { apiErrorMessage, apiStatus }
@@ -569,4 +575,22 @@ describe('ERP accounting delivery workspace', () => {
     assert.doesNotMatch(textOf(mounted.root), /A resposta atrasada da Empresa A falhou/)
     mounted.app.unmount()
   })
+})
+
+it('retains accounting status and counted page after the component is disposed and reopened', async () => {
+  const memory = new Map<string, Vue.Ref>()
+  const api = async (path: string) => ({ data: [], meta: { current_page: Number(new URL(path, 'http://test').searchParams.get('page') ?? 1), last_page: 5, per_page: 15, total: 70 } })
+  const first = mount(api, undefined, undefined, memory)
+  await flush()
+  const state = first.app._instance!.setupState as { statusFilter: string, page: number, load(page: number): Promise<boolean> }
+  state.statusFilter = 'failed'
+  await flush()
+  await state.load(3)
+  first.app.unmount()
+  const returned = mount(api, undefined, undefined, memory)
+  await flush()
+  try {
+    assert.equal(returned.calls.filter(read => read.path.startsWith('/erp/accounting-deliveries?')).length, 1)
+    assert.match(returned.calls[0]!.path, /page=3&per_page=15&status=failed/)
+  } finally { returned.app.unmount() }
 })

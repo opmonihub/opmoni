@@ -497,6 +497,7 @@ function loadWorkspaceComposable(api: (path: string, options?: Record<string, un
   const exports = {} as { useErpFiscalWorkspace: () => Record<string, unknown> }
   new Function('require', 'exports', ...Object.keys(globals), output)(
     (name: string) => {
+      if (name === '~/composables/useErpReadScope') return loadAppComposable('composables/useErpReadScope.ts')
       if (name === 'vue') return Vue
       if (name === './useAccessApi') return { useAccessApi: () => ({ api }) }
       if (name === './useErpAdministrationContext') return { useErpAdministrationContext: useContext }

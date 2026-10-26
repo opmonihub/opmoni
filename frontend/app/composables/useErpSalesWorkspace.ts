@@ -1,3 +1,4 @@
+import { useErpListNavigation } from '~/composables/useErpListNavigation'
 import { useErpReadScope } from '~/composables/useErpReadScope'
 import type { ErpOperationNatureRecord } from '#shared/types/erpCatalogs'
 import type {
@@ -67,6 +68,8 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes', initi
   const rows = reactive<Record<ErpSalesArea, SalesRow[]>>({ quotes: [], orders: [], sales: [], returns: [] })
   const metas = reactive<Record<ErpSalesArea, Page<unknown>['meta'] | null>>({ quotes: null, orders: null, sales: null, returns: null })
   const filters = reactive({ page: 1, per_page: 15, status: '' })
+  const navigation = useErpListNavigation('erp-sales', filters, () => context.key.value, ['quotes', 'orders', 'sales', 'returns'])
+  navigation.restore(initialArea)
   const loading = reactive<Record<ErpSalesArea, boolean>>({ quotes: false, orders: false, sales: false, returns: false })
   const stale = reactive<Record<ErpSalesArea, boolean>>({ quotes: false, orders: false, sales: false, returns: false })
   const listErrors = reactive<Record<ErpSalesArea, string>>({ quotes: '', orders: '', sales: '', returns: '' })
@@ -227,8 +230,12 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes', initi
         deniedActions.value = new Set()
         authorityNeedsRefresh.value = false
         restorePending()
-        void loadReferences()
-        if (canRead.value) void load(area.value)
+        if (initializeReads) {
+          void loadReferences()
+          if (canRead.value) void load(area.value)
+        } else {
+          authorityGeneration.value++
+        }
       } else if (authorityRefreshEpoch === refreshEpoch) {
         mutationError.value = 'A autorização ainda não foi confirmada. Os dados privados permanecem bloqueados.'
       }
@@ -266,10 +273,15 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes', initi
     try {
       const result = await api<Page<SalesRow>>(queryFor(areaName, page), { signal })
       if (!current(token, generation, intent) || sequence !== listSequence[areaName]) return
+      if (page > Math.max(1, result.meta.last_page)) {
+        filters.page = Math.max(1, result.meta.last_page)
+        await load(areaName, filters.page, intent)
+        return
+      }
       rows[areaName] = result.data
       metas[areaName] = result.meta ?? null
       stale[areaName] = false
-      if (areaName === area.value) filters.page = page
+      if (areaName === area.value) filters.page = result.meta.current_page ?? page
     } catch (error) {
       if (!current(token, generation, intent) || sequence !== listSequence[areaName]) return
       stale[areaName] = rows[areaName].length > 0
@@ -356,9 +368,8 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes', initi
     }
     const intent = claimIntent()
     area.value = next
-    filters.page = 1
-    filters.status = ''
-    await Promise.all([load(next, 1, intent), loadReferences(intent)])
+    navigation.restore(next)
+    await Promise.all([load(next, filters.page, intent), loadReferences(intent)])
   }
   function setPage(page: number) {
     const lastPage = metas[area.value]?.last_page ?? 1

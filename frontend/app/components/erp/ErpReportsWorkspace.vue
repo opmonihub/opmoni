@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import { useErpListNavigation } from '~/composables/useErpListNavigation'
+import { useErpReadScope } from '~/composables/useErpReadScope'
+import { useErpAdministrationContext } from '~/composables/useErpAdministrationContext'
 import type { ErpReportSnapshot } from '#shared/types/erpReports'
 import { erpCompanyHasPermission, erpRelatoriosContract } from '~/utils/erpModulesNav'
 import { apiErrorMessage } from '~/composables/useApiError'
 
 const route = useRoute()
 const { api } = useAccessApi()
-const { user, currentCompany } = useAuth()
+const { currentCompany } = useAuth()
+const reads = useErpReadScope()
 const contract = erpRelatoriosContract
 const activeTab = computed(() => contract.tabs.find(tab => `#${tab.id}` === route.hash) ?? contract.tabs[0]!)
 const category = computed(() => activeTab.value.apiPath.split('/').at(-1)!)
@@ -14,8 +18,9 @@ const canRead = computed(() => erpCompanyHasPermission(currentCompany.value?.per
 const canExport = computed(() => currentCompany.value?.access_kind === 'direct'
   && currentCompany.value.role !== 'viewer'
   && (currentCompany.value.permissions.some(grant => ['*', 'erp.write', 'erp.reports.exports.store', 'erp.reports.exports.*', 'erp.reports.exports.write'].includes(grant))))
-const contextKey = computed(() => JSON.stringify([user?.value?.id, currentCompany.value]))
+const { key: contextKey } = useErpAdministrationContext()
 const filters = reactive({ date_from: '', date_to: '', erp_establishment_id: '', currency: 'BRL', status: '', direction: '' })
+const navigation = useErpListNavigation('erp-reports', filters, () => contextKey.value, contract.tabs.map(tab => tab.apiPath.split('/').at(-1)!))
 function selectFilter(field: 'erp_establishment_id' | 'status' | 'direction') {
   return computed({
     get: () => filters[field] || 'all',
@@ -53,13 +58,14 @@ let establishmentGeneration = 0
 
 async function loadEstablishments() {
   const version = ++establishmentGeneration
+  const signal = reads.start('establishments')
   establishmentError.value = ''
   if (!canRead.value) return
   try {
     const collected: { id: number, name: string }[] = []
     let lastPage = 1
     for (let page = 1; page <= lastPage; page++) {
-      const payload = await api<{ data: { id: number, name: string }[], meta: { last_page: number } }>(`/erp/establishments?per_page=100&page=${page}`)
+      const payload = await api<{ data: { id: number, name: string }[], meta: { last_page: number } }>(`/erp/establishments?per_page=100&page=${page}`, { signal })
       if (version !== establishmentGeneration) return
       if (!Array.isArray(payload.data) || !Number.isInteger(payload.meta?.last_page)) throw new Error('Resposta de estabelecimentos inválida')
       collected.push(...payload.data)
@@ -73,6 +79,7 @@ async function loadEstablishments() {
 
 async function load() {
   const version = ++generation
+  const signal = reads.start('report')
   if (!canRead.value) return
   loading.value = true
   loadError.value = ''
@@ -85,7 +92,7 @@ async function load() {
   if (filters.status && statuses.value.length) params.set('status', filters.status)
   if (category.value === 'financial' && filters.direction) params.set('direction', filters.direction)
   try {
-    const payload = await api<{ data: ErpReportSnapshot }>(`${activeTab.value.apiPath}${params.size ? `?${params}` : ''}`)
+    const payload = await api<{ data: ErpReportSnapshot }>(`${activeTab.value.apiPath}${params.size ? `?${params}` : ''}`, { signal })
     if (version !== generation) return
     if (payload.data?.category !== requestedCategory || !payload.data.filters || (!payload.data.totals && !payload.data.sections)) throw new Error('Resposta do relatório inválida')
     report.value = payload.data
@@ -101,15 +108,12 @@ watch([contextKey, category], () => {
   report.value = null
   loadError.value = ''
   loading.value = false
-  filters.erp_establishment_id = ''
-  filters.status = ''
-  filters.direction = ''
+  navigation.restore(category.value)
   void load()
 }, { immediate: true, flush: 'sync' })
 watch(contextKey, () => {
   establishmentGeneration++
   establishments.value = []
-  filters.erp_establishment_id = ''
   void loadEstablishments()
 }, { immediate: true, flush: 'sync' })
 onScopeDispose(() => {

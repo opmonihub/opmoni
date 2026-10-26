@@ -147,8 +147,7 @@ function setSessionFilter(key: 'status' | 'erp_cash_register_id' | 'erp_establis
   void cash.loadList('sessions')
 }
 function selectRegister(register: ErpCashRegister) {
-  cash.filters.erp_cash_register_id = String(register.id)
-  void cash.setPage('sessions')
+  void cash.setPage('sessions', { erp_cash_register_id: String(register.id) })
 }
 function selectSession(session: ErpCashSession) {
   void cash.inspectSession(session.id)
