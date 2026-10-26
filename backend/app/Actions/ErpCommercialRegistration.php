@@ -70,6 +70,35 @@ class ErpCommercialRegistration
         }));
     }
 
+    /**
+     * Create the owner identity for an office-attributed trial without provisioning a second Company.
+     * The caller owns the surrounding transaction and creates the Company, Client and trial atomically.
+     *
+     * @param  array{name: string, email: string, password: string}  $data
+     */
+    public function createTrialOwner(array $data): User
+    {
+        $email = mb_strtolower(trim($data['email']));
+        $hash = Hash::make($data['password']);
+
+        return DB::transaction(function () use ($data, $email, $hash): User {
+            AccessTransaction::boundLockWaits();
+            $this->identities->advisory('email:'.$email);
+            if (User::query()->where('email', $email)->exists()) {
+                abort(response()->json([
+                    'code' => 'login_required',
+                    'message' => 'Entre com sua conta para continuar o cadastro.',
+                ], 409));
+            }
+
+            return User::query()->create([
+                'name' => trim($data['name']),
+                'email' => $email,
+                'password' => $hash,
+            ]);
+        });
+    }
+
     /** @param  array{name: string, cnpj: string, establishment_name?: string|null}  $data */
     public function createCompanyForAuthenticated(User $user, array $data): ErpCompany
     {

@@ -20,6 +20,10 @@ class ErpTrialController extends Controller
             'tax_regime' => ['required', 'string', 'in:mei,simple_national,presumed_profit,actual_profit,other'],
             'establishment_name' => ['nullable', 'string', 'max:255'],
             'confirm_existing_association' => ['sometimes', 'boolean'],
+            'client_id' => ['prohibited'],
+            'account_id' => ['prohibited'],
+            'company_id' => ['prohibited'],
+            'owner_user_id' => ['prohibited'],
         ]);
 
         return response()->json($registration->register(
