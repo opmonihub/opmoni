@@ -2,6 +2,7 @@
 
 namespace App\Erp\Commercial;
 
+use App\Erp\ErpCommercialCatalog;
 use App\Erp\ErpCompanyProvisioning;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
@@ -27,6 +28,7 @@ final class OfficeErpCustomerEnrollment
 {
     public function __construct(
         private readonly OfficeErpAdmission $admission,
+        private readonly ErpCommercialCatalog $catalog,
         private readonly OfficeErpOperations $operations,
         private readonly ClientManager $clients,
         private readonly ErpCompanyProvisioning $companies,
@@ -128,6 +130,7 @@ final class OfficeErpCustomerEnrollment
                     return DB::transaction(function () use ($ctx, $data, $prepared, $key): array {
                         [$account, $officeSubscription, , $allowance] = $this->admission->lockCommercialAggregate($ctx);
                         abort_unless($officeSubscription?->status === 'active', 403, 'subscription_inactive');
+                        $this->catalog->advisory();
                         $plan = ErpPlan::query()->with('modules')->whereKey($data['erp_plan_id'])->lockForUpdate()->firstOrFail();
                         $modules = $plan->modules->pluck('module_key')->sort()->values()->all();
                         abort_unless($modules !== [] && array_diff($modules, $allowance['module_keys']) === [], 403, 'commercial_module_not_allowed');
