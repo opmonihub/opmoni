@@ -24,7 +24,15 @@ function explicitCriteria() {
 }
 const navigation = useOfficeErpListNavigation('clients', { q: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context, {}, explicitCriteria)
 const query = listNavigationField(navigation, 'q')
-const debouncedQuery = refDebounced(query, 300)
+const delayedQuery = refDebounced(query, 300)
+const debouncedQuery = ref(query.value)
+watch(delayedQuery, (value) => {
+  debouncedQuery.value = value
+}, { flush: 'sync' })
+watch(explicitCriteria, (criteria) => {
+  // URL/history criteria are one applied snapshot; only manual input waits for debounce.
+  if (criteria) debouncedQuery.value = criteria.q
+}, { flush: 'sync' })
 const page = listNavigationField(navigation, 'page')
 const perPage = listNavigationField(navigation, 'perPage')
 const clients = ref<OfficeErpPortfolioClient[]>([])

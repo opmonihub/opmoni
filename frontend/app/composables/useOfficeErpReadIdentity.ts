@@ -3,8 +3,10 @@ import type { ComputedRef } from 'vue'
 
 /** First confirmation belongs to the current read; later grant changes invalidate it. */
 export function useOfficeErpReadIdentity(authority: () => unknown[], capabilityKey: () => string | null | undefined): ComputedRef<string> {
+  const { user, currentAccount } = useAuth()
   const snapshot = computed<{ authority: string, capability: string | null, revision: number }>((previous) => {
-    const owner = JSON.stringify(authority())
+    const effectiveAccount = user.value?.accounts?.find(account => account.id === currentAccount.value?.id)
+    const owner = JSON.stringify([authority(), effectiveAccount ? [effectiveAccount.id, effectiveAccount.status, effectiveAccount.role] : null])
     const capability = capabilityKey() ?? null
     return {
       authority: owner,
