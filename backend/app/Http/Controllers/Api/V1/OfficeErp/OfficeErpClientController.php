@@ -3,22 +3,53 @@
 namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpAdmission;
+use App\Erp\Commercial\OfficeErpContracts;
 use App\Erp\Commercial\OfficeErpOwnerInvitations;
 use App\Erp\Commercial\OfficeErpQueries;
+use App\Erp\Commercial\OfficeErpRecords;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\OfficeErp\ListCommercialRequest;
 use App\Models\Client;
+use App\Models\Erp\Commercial\OfficeErpContract;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 final class OfficeErpClientController extends Controller
 {
-    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpOwnerInvitations $invitations, OfficeErpQueries $queries): JsonResponse
+    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpOwnerInvitations $invitations, OfficeErpQueries $queries, OfficeErpContracts $contracts): JsonResponse
     {
         $filters = ListCommercialRequest::validateFilters('clients', $request->query());
         $ctx = $admission->context($request);
         $invitations->expireDueInvitationsForOfficeRead($ctx);
         $page = $queries->clients($ctx, $filters);
+        $clientIds = array_map(static fn (Client $client): int => (int) $client->id, $page->items());
+        $subscriptionSummaries = [];
+
+        if ($clientIds !== []) {
+            $latestContractIds = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+                ->selectRaw('MAX(id)')
+                ->whereIn('client_id', $clientIds)
+                ->groupBy('client_id');
+            $latestContracts = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+                ->with([
+                    'company.subscription.trial',
+                    'company.subscription.plan',
+                    'currentRevision',
+                    'pendingRevision',
+                    'licenceAllocation',
+                ])
+                ->whereIn('client_id', $clientIds)
+                ->whereIn('id', $latestContractIds)
+                ->get();
+
+            foreach ($latestContracts as $contract) {
+                $subscriptionSummaries[(int) $contract->client_id] = [
+                    'contract_id' => (int) $contract->id,
+                    'agreement_status' => (string) $contract->agreement_status,
+                    ...$contracts->linkedSubscriptionSummary($contract, $contract->company?->subscription),
+                ];
+            }
+        }
 
         return response()->json([
             'data' => array_map(static fn (Client $client): array => [
@@ -26,6 +57,7 @@ final class OfficeErpClientController extends Controller
                 'name' => (string) $client->name,
                 'trade_name' => $client->trade_name,
                 'tax_id' => (string) $client->tax_id,
+                'subscription' => $subscriptionSummaries[(int) $client->id] ?? null,
             ], $page->items()),
             'meta' => [
                 'current_page' => $page->currentPage(),
