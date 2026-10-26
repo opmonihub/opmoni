@@ -2,16 +2,22 @@
 
 namespace Tests\Integration;
 
+use App\Actions\ErpCommercialRegistration;
+use App\Erp\Commercial\ErpTrialLifecycle;
 use App\Erp\Commercial\OfficeErpContracts;
+use App\Erp\Commercial\OfficeErpCustomerEnrollment;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpInvitationContinuation;
 use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpLicenceAllocator;
 use App\Erp\Commercial\OfficeErpOwnerAcceptance;
+use App\Erp\Commercial\OfficeErpOwnerSetup;
 use App\Erp\Commercial\OfficeErpReceiptProofs;
 use App\Erp\Commercial\OfficeErpReceipts;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Erp\Commercial\OfficeErpRecurringBilling;
+use App\Erp\Commercial\OfficeErpTrialLinks;
+use App\Erp\Commercial\OfficeErpTrialRegistration;
 use App\Http\Controllers\Api\V1\Admin\PlanController;
 use App\Http\Requests\Admin\UpdatePlanRequest;
 use App\Models\Account;
@@ -21,6 +27,7 @@ use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\Commercial\OfficeErpReceipt;
+use App\Models\Erp\ErpSubscriptionTrial;
 use App\Models\Plan;
 use App\Models\User;
 use App\Support\CurrentAccount;
@@ -55,11 +62,33 @@ final class OfficeErpCommercialConcurrencyWorker
 
         $request = Request::create('http://localhost:3000');
         app()->instance('request', $request);
-        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'remove_allowance', 'cancel_contract', 'generate_recurring'], true)) {
+        $querySequence = 0;
+        $catalogAdvisorySequence = null;
+        $technicalPlanLockSequence = null;
+        if ($input['action'] === 'trial_register') {
+            DB::listen(function (QueryExecuted $query) use (&$querySequence, &$catalogAdvisorySequence, &$technicalPlanLockSequence): void {
+                $sequence = ++$querySequence;
+                $sql = strtolower($query->sql);
+                if ($catalogAdvisorySequence === null
+                    && str_contains($sql, 'pg_advisory_xact_lock')
+                    && str_contains(strtolower(json_encode($query->bindings, JSON_THROW_ON_ERROR)), 'erp-commercial-catalog')) {
+                    $catalogAdvisorySequence = $sequence;
+                }
+                if ($technicalPlanLockSequence === null
+                    && str_contains($sql, 'from "erp_plans"')
+                    && str_contains($sql, 'for update')) {
+                    $technicalPlanLockSequence = $sequence;
+                }
+            });
+        }
+        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'owner_setup_accept', 'owner_setup_issue', 'remove_allowance', 'cancel_contract', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'trial_convert', 'erp_register', 'customer_enroll'], true)) {
             throw new RuntimeException('Unsupported action in the accepted commercial race subset: '.$input['action']);
         }
+        if (isset($input['hold_row_lock']) && (! is_string($input['hold_row_lock']) || preg_match('/\A[a-z_]+\z/', $input['hold_row_lock']) !== 1)) {
+            throw new RuntimeException('Invalid table name for the commercial row-lock barrier.');
+        }
         $context = null;
-        if (! in_array($input['action'], ['owner_accept', 'remove_allowance', 'generate_recurring'], true)) {
+        if (! in_array($input['action'], ['owner_accept', 'owner_setup_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_expire', 'erp_register'], true)) {
             $account = Account::query()->findOrFail($input['account_id']);
             $actor = User::query()->findOrFail($input['actor_id']);
             $membership = AccountMembership::query()
@@ -69,14 +98,21 @@ final class OfficeErpCommercialConcurrencyWorker
                 ->where('role', 'admin')
                 ->firstOrFail();
             $request->attributes->set(CurrentAccount::class, new CurrentAccount($account, $membership));
-            $context = OfficeErpExecutionContext::officeAdmin($account, $actor, 'commercial-race-worker:'.$input['contract_id']);
+            $resourceId = $input['contract_id'] ?? $input['trial_link_id'] ?? 0;
+            $context = OfficeErpExecutionContext::officeAdmin($account, $actor, 'commercial-race-worker:'.$resourceId);
         }
 
-        if (($input['hold_account_lock'] ?? false) || ($input['hold_invoice_lock'] ?? false) || ($input['hold_proof_lock'] ?? false) || ($input['hold_after_proof_claim'] ?? false) || ($input['hold_owner_lock'] ?? false) || ($input['hold_plan_lock'] ?? false)) {
+        if (($input['hold_account_lock'] ?? false) || ($input['hold_invoice_lock'] ?? false) || ($input['hold_proof_lock'] ?? false) || ($input['hold_after_proof_claim'] ?? false) || ($input['hold_owner_lock'] ?? false) || ($input['hold_plan_lock'] ?? false) || isset($input['hold_row_lock']) || ($input['hold_advisory_lock'] ?? false)) {
             $paused = false;
             DB::listen(function (QueryExecuted $query) use ($base, &$paused, $input): void {
                 $sql = strtolower($query->sql);
-                $target = ($input['hold_plan_lock'] ?? false)
+                $target = ($input['hold_advisory_lock'] ?? false)
+                    ? str_contains($sql, 'pg_advisory_xact_lock')
+                        && (! is_string($input['hold_advisory_lock'])
+                            || str_contains(strtolower(json_encode($query->bindings, JSON_THROW_ON_ERROR)), strtolower($input['hold_advisory_lock'])))
+                    : (isset($input['hold_row_lock'])
+                    ? str_contains($sql, 'from "'.$input['hold_row_lock'].'"')
+                    : (($input['hold_plan_lock'] ?? false)
                     ? str_contains($sql, 'from "plans"')
                     : (($input['hold_owner_lock'] ?? false)
                     ? str_contains($sql, 'from "users"')
@@ -86,8 +122,8 @@ final class OfficeErpCommercialConcurrencyWorker
                         ? str_contains($sql, 'insert into "office_erp_receipt_allocations"')
                         : (($input['hold_invoice_lock'] ?? false)
                             ? str_contains($sql, 'from "office_erp_invoices"')
-                            : str_contains($sql, 'from "accounts"')))));
-                $requiresForUpdate = ! ($input['hold_after_proof_claim'] ?? false);
+                            : str_contains($sql, 'from "accounts"')))))));
+                $requiresForUpdate = ! ($input['hold_after_proof_claim'] ?? false) && ! ($input['hold_advisory_lock'] ?? false);
                 if ($paused || ! $target || ($requiresForUpdate && ! str_contains($sql, 'for update'))) {
                     return;
                 }
@@ -111,12 +147,133 @@ final class OfficeErpCommercialConcurrencyWorker
                 Carbon::setTestNow($frozenNow);
             }
             $contract = null;
-            if (! in_array($input['action'], ['owner_accept', 'remove_allowance', 'generate_recurring'], true)) {
+            if (! in_array($input['action'], ['owner_accept', 'owner_setup_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'erp_register', 'customer_enroll'], true)) {
                 $contract = OfficeErpRecords::query($context, OfficeErpContract::class)
                     ->whereKey($input['contract_id'])
                     ->firstOrFail();
             }
-            if ($input['action'] === 'reserve') {
+            if ($input['action'] === 'customer_enroll') {
+                $outcome = app(OfficeErpCustomerEnrollment::class)->enroll(
+                    $context,
+                    $input['enrollment'],
+                    (string) $input['idempotency_key'],
+                );
+                $result = ['status' => 201, ...$outcome];
+            } elseif ($input['action'] === 'erp_register') {
+                config(['erp.registration_enabled' => true]);
+                [$legacyOwner, $legacyCompany] = app(ErpCommercialRegistration::class)->registerNewOwner($input['registration']);
+                $legacySubscription = $legacyCompany->subscription;
+                $result = [
+                    'status' => 201,
+                    'owner_id' => (int) $legacyOwner->id,
+                    'company_id' => (int) $legacyCompany->id,
+                    'subscription_id' => (int) $legacySubscription->id,
+                    'plan_id' => (int) $legacySubscription->erp_plan_id,
+                ];
+            } elseif ($input['action'] === 'trial_register') {
+                config(['erp.office_trial_enabled' => true]);
+                $cnpj = preg_replace('/\D/', '', (string) $input['registration']['cnpj']);
+                if (! is_string($cnpj) || strlen($cnpj) !== 14) {
+                    throw new RuntimeException('Trial race fixture requires a normalized 14-digit CNPJ.');
+                }
+                $lookup = [
+                    'razao_social' => 'Trial race company '.$cnpj,
+                    'estabelecimento' => [
+                        'cnpj' => $cnpj,
+                        'nome_fantasia' => 'Trial race company '.$cnpj,
+                        'situacao_cadastral' => 'Ativa',
+                        'data_situacao_cadastral' => '2020-01-01',
+                        'data_inicio_atividade' => '2020-01-01',
+                        'atividade_principal' => ['id' => '0000000', 'descricao' => 'Atividade de teste'],
+                        'tipo_logradouro' => 'Rua',
+                        'logradouro' => 'Teste',
+                        'numero' => '1',
+                        'cep' => '01001000',
+                        'cidade' => ['nome' => 'São Paulo'],
+                        'estado' => ['sigla' => 'SP'],
+                    ],
+                    'porte' => ['descricao' => 'Demais'],
+                    'natureza_juridica' => ['descricao' => 'Sociedade Empresária Limitada'],
+                    'simples' => ['mei' => 'Não', 'simples' => 'Sim'],
+                ];
+                Http::fake([
+                    'https://publica.cnpj.ws/cnpj/'.$cnpj => function () use ($base, $input, $lookup) {
+                        if ($input['hold_provider'] ?? false) {
+                            self::signal($base.'.provider-held', ['provider' => 'cnpj-ws']);
+                            self::await($base.'.provider-release');
+                        }
+
+                        return Http::response($lookup);
+                    },
+                ]);
+                $session = app('session')->driver();
+                $session->setId(bin2hex(random_bytes(20)));
+                $session->start();
+                $trialRequest = Request::create('http://localhost:3000/api/v1/erp/trials/'.$input['code'].'/register', 'POST', $input['registration']);
+                $trialRequest->setLaravelSession($session);
+                $sessionLock = Cache::lock('access-session:'.hash('sha256', $session->getId()), (int) config('access.lock_seconds', 30));
+                if (! $sessionLock->get()) {
+                    throw new RuntimeException('Unable to acquire the isolated trial registration session lock.');
+                }
+                $trialRequest->attributes->set('access.session_lock', $sessionLock);
+                $request = $trialRequest;
+                app()->instance('request', $trialRequest);
+                if (isset($input['owner_id'])) {
+                    $owner = User::query()->findOrFail($input['owner_id']);
+                    $trialRequest->setUserResolver(static fn (): User => $owner);
+                }
+                $result = app(OfficeErpTrialRegistration::class)->register(
+                    $trialRequest,
+                    (string) $input['code'],
+                    $input['registration'],
+                    (string) $input['idempotency_key'],
+                );
+                $result = ['status' => 201, ...$result];
+            } elseif ($input['action'] === 'trial_rotate') {
+                $result = app(OfficeErpTrialLinks::class)->rotate($context, (string) $input['idempotency_key']);
+                $result = ['status' => 201, ...$result];
+            } elseif ($input['action'] === 'trial_expire') {
+                $trial = ErpSubscriptionTrial::query()->findOrFail($input['trial_id']);
+                app(ErpTrialLifecycle::class)->expire($trial, CarbonImmutable::parse($input['now']));
+                $result = ['status' => 200, 'trial_id' => (int) $trial->id];
+            } elseif ($input['action'] === 'trial_convert') {
+                $contract = OfficeErpRecords::query($context, OfficeErpContract::class)->whereKey($input['contract_id'])->firstOrFail();
+                $result = app(OfficeErpCustomerEnrollment::class)->convertTrial(
+                    $context,
+                    $contract,
+                    $input['terms'],
+                    (string) $input['idempotency_key'],
+                );
+                $result = ['status' => 201, ...$result];
+            } elseif ($input['action'] === 'owner_setup_issue') {
+                $setup = app(OfficeErpOwnerSetup::class)->issue(
+                    $context,
+                    $contract,
+                    $input['owner'],
+                    (string) $input['idempotency_key'],
+                );
+                $result = [
+                    'status' => 201,
+                    'contract_id' => (int) $input['contract_id'],
+                    'invitation_id' => (int) $setup['invitation_id'],
+                ];
+            } elseif ($input['action'] === 'owner_setup_accept') {
+                $request = self::ownerSetupRequest($input);
+                $continuation = app(OfficeErpInvitationContinuation::class)->current($request);
+                abort_unless(($continuation['state'] ?? null) === 'valid'
+                    && ($continuation['purpose'] ?? null) === 'access_setup'
+                    && is_string($continuation['operation_key'] ?? null), 410, 'invitation_continuation_required');
+                $contract = app(OfficeErpOwnerSetup::class)->accept(
+                    $request,
+                    ['password' => (string) $input['password']],
+                    $continuation['operation_key'],
+                );
+                $result = [
+                    'status' => 201,
+                    'contract_id' => (int) $contract->id,
+                    'company_id' => (int) $contract->erp_company_id,
+                ];
+            } elseif ($input['action'] === 'reserve') {
                 $allocation = $context->run(fn () => app(OfficeErpLicenceAllocator::class)->reserve(
                     $context,
                     $contract,
@@ -237,6 +394,13 @@ final class OfficeErpCommercialConcurrencyWorker
             $accessLock->release();
         }
 
+        if ($input['action'] === 'trial_register') {
+            $result['test_lock_order'] = [
+                'catalog_advisory_sequence' => $catalogAdvisorySequence,
+                'technical_plan_for_update_sequence' => $technicalPlanLockSequence,
+            ];
+        }
+
         echo json_encode([
             ...$identity,
             ...$result,
@@ -264,6 +428,29 @@ final class OfficeErpCommercialConcurrencyWorker
         $guard->setRequest($request);
         $guard->login($owner);
         $request->setUserResolver(static fn (): ?User => $guard->user());
+
+        return $request;
+    }
+
+    /** @param array<string, mixed> $input */
+    private static function ownerSetupRequest(array $input): Request
+    {
+        $session = app('session')->driver();
+        $session->setId(bin2hex(random_bytes(20)));
+        $session->start();
+        $request = Request::create('http://localhost:3000/api/v1/erp-invitations/accept', 'POST');
+        $request->setLaravelSession($session);
+        $lock = Cache::lock('access-session:'.hash('sha256', $session->getId()), (int) config('access.lock_seconds', 30));
+        if (! $lock->get()) {
+            throw new RuntimeException('Unable to acquire the isolated owner setup session lock.');
+        }
+        $request->attributes->set('access.session_lock', $lock);
+        app()->instance('request', $request);
+
+        $continuation = app(OfficeErpInvitationContinuation::class)->exchange($request, (string) $input['token']);
+        abort_unless(($continuation['state'] ?? null) === 'valid'
+            && ($continuation['purpose'] ?? null) === 'access_setup'
+            && is_string($continuation['operation_key'] ?? null), 410, 'invitation_continuation_required');
 
         return $request;
     }
