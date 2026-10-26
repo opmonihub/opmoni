@@ -2,6 +2,7 @@
 
 namespace Tests\Integration;
 
+use App\Actions\ErpCommercialRegistration;
 use App\Erp\Commercial\ErpTrialLifecycle;
 use App\Erp\Commercial\OfficeErpContracts;
 use App\Erp\Commercial\OfficeErpCustomerEnrollment;
@@ -61,14 +62,14 @@ final class OfficeErpCommercialConcurrencyWorker
 
         $request = Request::create('http://localhost:3000');
         app()->instance('request', $request);
-        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'owner_setup_accept', 'owner_setup_issue', 'remove_allowance', 'cancel_contract', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'trial_convert'], true)) {
+        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'owner_setup_accept', 'owner_setup_issue', 'remove_allowance', 'cancel_contract', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'trial_convert', 'erp_register'], true)) {
             throw new RuntimeException('Unsupported action in the accepted commercial race subset: '.$input['action']);
         }
         if (isset($input['hold_row_lock']) && (! is_string($input['hold_row_lock']) || preg_match('/\A[a-z_]+\z/', $input['hold_row_lock']) !== 1)) {
             throw new RuntimeException('Invalid table name for the commercial row-lock barrier.');
         }
         $context = null;
-        if (! in_array($input['action'], ['owner_accept', 'owner_setup_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_expire'], true)) {
+        if (! in_array($input['action'], ['owner_accept', 'owner_setup_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_expire', 'erp_register'], true)) {
             $account = Account::query()->findOrFail($input['account_id']);
             $actor = User::query()->findOrFail($input['actor_id']);
             $membership = AccountMembership::query()
@@ -132,7 +133,18 @@ final class OfficeErpCommercialConcurrencyWorker
                     ->whereKey($input['contract_id'])
                     ->firstOrFail();
             }
-            if ($input['action'] === 'trial_register') {
+            if ($input['action'] === 'erp_register') {
+                config(['erp.registration_enabled' => true]);
+                [$legacyOwner, $legacyCompany] = app(ErpCommercialRegistration::class)->registerNewOwner($input['registration']);
+                $legacySubscription = $legacyCompany->subscription;
+                $result = [
+                    'status' => 201,
+                    'owner_id' => (int) $legacyOwner->id,
+                    'company_id' => (int) $legacyCompany->id,
+                    'subscription_id' => (int) $legacySubscription->id,
+                    'plan_id' => (int) $legacySubscription->erp_plan_id,
+                ];
+            } elseif ($input['action'] === 'trial_register') {
                 config(['erp.office_trial_enabled' => true]);
                 $cnpj = preg_replace('/\D/', '', (string) $input['registration']['cnpj']);
                 if (! is_string($cnpj) || strlen($cnpj) !== 14) {
@@ -168,7 +180,18 @@ final class OfficeErpCommercialConcurrencyWorker
                         return Http::response($lookup);
                     },
                 ]);
+                $session = app('session')->driver();
+                $session->setId(bin2hex(random_bytes(20)));
+                $session->start();
                 $trialRequest = Request::create('http://localhost:3000/api/v1/erp/trials/'.$input['code'].'/register', 'POST', $input['registration']);
+                $trialRequest->setLaravelSession($session);
+                $sessionLock = Cache::lock('access-session:'.hash('sha256', $session->getId()), (int) config('access.lock_seconds', 30));
+                if (! $sessionLock->get()) {
+                    throw new RuntimeException('Unable to acquire the isolated trial registration session lock.');
+                }
+                $trialRequest->attributes->set('access.session_lock', $sessionLock);
+                $request = $trialRequest;
+                app()->instance('request', $trialRequest);
                 if (isset($input['owner_id'])) {
                     $owner = User::query()->findOrFail($input['owner_id']);
                     $trialRequest->setUserResolver(static fn (): User => $owner);

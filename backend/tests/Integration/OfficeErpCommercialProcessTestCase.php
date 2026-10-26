@@ -106,6 +106,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Models/AccountMembership.php',
         'app/Models/Client.php',
         'app/Actions/AccessAccounts.php',
+        'app/Actions/ErpCommercialRegistration.php',
         'app/Services/ClientManager.php',
         'app/Services/CnpjWsLookup.php',
         'app/Models/User.php',
@@ -238,10 +239,12 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     }
 
     /** @return array{link: OfficeErpTrialLink, code: string, plan_id: int} */
-    protected function trialLinkFixture(array $office): array
+    protected function trialLinkFixture(array $office, ?ErpPlan $selectedPlan = null): array
     {
-        $plan = ErpPlan::factory()->create();
-        $plan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
+        $plan = $selectedPlan ?? ErpPlan::factory()->create();
+        if (! $plan->modules()->where('module_key', 'purchases')->exists()) {
+            $plan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
+        }
         $code = (string) Str::uuid();
         $link = OfficeErpTrialLink::query()->create([
             'account_id' => $office['account_id'],

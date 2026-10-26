@@ -19,7 +19,10 @@ use App\Models\Erp\Commercial\OfficeErpReceiptProof;
 use App\Models\Erp\Commercial\OfficeErpReceiptReversal;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpPlan;
 use App\Models\Erp\ErpSubscription;
+use App\Models\Plan;
+use App\Models\Subscription;
 use App\Models\User;
 use App\Services\BrazilianTaxId;
 use Carbon\CarbonImmutable;
@@ -377,6 +380,66 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame(0, DB::table('erp_subscription_trials')->where('cnpj', $loserCnpj)->count());
     }
 
+    public function test_trial_catalog_lock_serializes_legacy_basic_registration_without_deadlock(): void
+    {
+        $office = $this->commercialFixture(1);
+        $basicPlan = ErpPlan::query()->firstOrCreate(
+            ['slug' => 'basic'],
+            ['name' => 'Basic race plan', 'quotas' => null],
+        );
+        if (! $basicPlan->modules()->where('module_key', 'purchases')->exists()) {
+            $basicPlan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
+        }
+        $basicModules = $basicPlan->modules()->orderBy('module_key')->pluck('module_key')->all();
+        self::assertContains('purchases', $basicModules);
+        $officeSubscription = Subscription::query()->where('account_id', $office['account_id'])->firstOrFail();
+        $officePlan = Plan::query()->findOrFail($officeSubscription->plan_id);
+        $allowance = $officePlan->erp_commercial;
+        $allowance['module_keys'] = $basicModules;
+        $officePlan->forceFill(['erp_commercial' => $allowance])->save();
+        $trialLink = $this->trialLinkFixture($office, $basicPlan);
+        $trialCnpj = $this->uniqueCnpj();
+        $legacyCnpj = $this->uniqueCnpj();
+
+        $trial = $this->worker('trial_register', $this->trialRegistrationPayload(
+            $office,
+            $trialLink,
+            $trialCnpj,
+            'catalog-trial-'.bin2hex(random_bytes(4)),
+            holdAdvisoryLock: 'erp-commercial-catalog',
+        ));
+        $this->waitFor($trial, 'held');
+        $this->assertWorkerHeldAdvisoryLock($trial);
+
+        $legacy = $this->worker('erp_register', [
+            'registration' => [
+                'name' => 'Legacy race owner',
+                'email' => 'legacy-race-'.bin2hex(random_bytes(5)).'@example.test',
+                'password' => 'Legacy-Race-Password-123',
+                'company_name' => 'Legacy race company',
+                'cnpj' => $legacyCnpj,
+            ],
+        ]);
+        $this->assertWaitingOnAdvisoryLock($legacy);
+
+        $this->release($trial);
+        $trialResult = $this->workerResult($trial);
+        $legacyResult = $this->workerResult($legacy);
+
+        self::assertSame(201, $trialResult['status']);
+        self::assertSame(201, $legacyResult['status']);
+        self::assertSame((int) $basicPlan->id, $legacyResult['plan_id']);
+        self::assertSame(1, DB::table('erp_subscription_trials')->where('cnpj', $trialCnpj)->count());
+        self::assertSame(1, DB::table('erp_companies')->where('cnpj', $trialCnpj)->count());
+        self::assertSame(1, DB::table('erp_companies')->where('cnpj', $legacyCnpj)->count());
+        self::assertSame((int) $basicPlan->id, (int) DB::table('erp_subscriptions')
+            ->where('erp_company_id', DB::table('erp_companies')->where('cnpj', $trialCnpj)->value('id'))
+            ->value('erp_plan_id'));
+        self::assertSame((int) $basicPlan->id, (int) DB::table('erp_subscriptions')
+            ->where('erp_company_id', DB::table('erp_companies')->where('cnpj', $legacyCnpj)->value('id'))
+            ->value('erp_plan_id'));
+    }
+
     public function test_same_cnpj_across_offices_has_one_trial(): void
     {
         $firstOffice = $this->commercialFixture(1);
@@ -427,6 +490,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $clientCount = DB::table('clients')->where('account_id', $office['account_id'])->count();
         $contractCount = DB::table('office_erp_contracts')->where('account_id', $office['account_id'])->count();
         $allocationCount = DB::table('office_erp_licence_allocations')->where('account_id', $office['account_id'])->count();
+        $invoiceCount = DB::table('office_erp_invoices')->where('account_id', $office['account_id'])->count();
         $registration = $this->worker('trial_register', $this->trialRegistrationPayload(
             $office,
             $trialLink,
@@ -459,7 +523,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame($allocationCount, DB::table('office_erp_licence_allocations')->where('account_id', $office['account_id'])->count());
         self::assertSame(0, DB::table('erp_companies')->where('cnpj', $cnpj)->count());
         self::assertSame(0, DB::table('erp_subscription_trials')->where('cnpj', $cnpj)->count());
-        self::assertSame(0, DB::table('office_erp_invoices')->whereIn('erp_company_id', DB::table('erp_companies')->select('id')->where('cnpj', $cnpj))->count());
+        self::assertSame($invoiceCount, DB::table('office_erp_invoices')->where('account_id', $office['account_id'])->count());
     }
 
     public function test_expiry_and_paid_conversion_serialize(): void
