@@ -8,6 +8,7 @@ use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
 use App\Erp\Accounting\ErpAccountingDispatchOutbox;
 use App\Erp\Accounting\ErpAccountingHandoffService;
+use App\Erp\ErpCommercialCatalog;
 use App\Erp\Fiscal\ErpFiscalArtifactStore;
 use App\Erp\Fiscal\ErpFiscalAttemptService;
 use App\Erp\Fiscal\ErpFiscalEventRegistry;
@@ -19,6 +20,7 @@ use App\Models\Erp\Accounting\ErpAccountingDeliveryDispatch;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOfficeDelegation;
+use App\Models\Erp\ErpSubscription;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Fiscal\ErpFiscalEvent;
 use App\Models\FiscalDocument;
@@ -219,6 +221,8 @@ class ErpAccountingEventProjectionTest extends TestCase
     {
         $account = Account::factory()->create();
         $company = ErpCompany::factory()->create(['cnpj' => '30288513000100']);
+        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        ErpSubscription::factory()->create(['erp_company_id' => $company->id, 'erp_plan_id' => $plan->id, 'status' => 'active']);
         $issuer = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => '30288513000100']);
         $client = app(CurrentTenant::class)->run($account->id, fn () => Client::factory()->company()->create(['account_id' => $account->id]));
         $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $account->id]);
