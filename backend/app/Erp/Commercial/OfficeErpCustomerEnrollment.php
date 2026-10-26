@@ -34,7 +34,6 @@ final class OfficeErpCustomerEnrollment
     public function plans(OfficeErpExecutionContext $ctx): array
     {
         $capabilities = $this->admission->capabilities($ctx);
-        $officeSubscription = $ctx->account->subscription()->first();
         $allowedModules = $capabilities['allowance']['module_keys'];
         $plans = ErpPlan::query()->with('modules')->orderBy('name')->get()
             ->map(function (ErpPlan $plan) use ($allowedModules): ?array {
@@ -51,23 +50,15 @@ final class OfficeErpCustomerEnrollment
 
         $used = $capabilities['usage']['reserved'] + $capabilities['usage']['occupied'];
         $limit = $capabilities['allowance']['licence_limit'];
-        $reasons = [];
-        if ($officeSubscription?->status !== 'active') {
-            $reasons['subscription_inactive'] = ['subscription_inactive'];
-        }
-        if ($limit !== null && $used >= $limit) {
-            $reasons['licence_capacity_reached'] = ['licence_capacity_reached'];
-        }
+        $reasons = $capabilities['capability_reasons']['can_provision'];
         if ($plans === []) {
-            $reasons['no_eligible_erp_plan'] = ['no_eligible_erp_plan'];
+            $reasons[] = 'no_eligible_erp_plan';
         }
 
         return [
             'data' => $plans,
             'eligibility' => [
-                'can_provision' => $officeSubscription?->status === 'active'
-                    && ($limit === null || $used < $limit)
-                    && $plans !== [],
+                'can_provision' => $capabilities['can_provision'] && $plans !== [],
                 'reasons' => $reasons,
                 'licence_limit' => $limit,
                 'used_licences' => $used,

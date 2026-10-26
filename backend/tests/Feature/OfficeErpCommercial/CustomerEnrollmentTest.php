@@ -81,6 +81,8 @@ class CustomerEnrollmentTest extends OfficeErpCommercialTestCase
         $this->assertDatabaseCount('office_erp_invoices', 1);
         $this->assertDatabaseCount('office_erp_contracts', 1);
         $this->assertDatabaseCount('office_erp_licence_allocations', 1);
+        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/operations/enroll-replay', ['Idempotency-Key' => 'enroll-replay'])
+            ->assertOk()->assertExactJson(['data' => $first->json('data')]);
     }
 
     public function test_foreign_or_inactive_client_is_not_enrolled(): void
@@ -111,6 +113,15 @@ class CustomerEnrollmentTest extends OfficeErpCommercialTestCase
         $invalidPrice['price'] = '01.999';
         $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-invalid-price')
             ->postJson('/api/v1/erp-commercial/enrollments', $invalidPrice)->assertUnprocessable();
+        $foreignModulePlan = ErpPlan::factory()->create();
+        ErpPlanModule::factory()->create(['erp_plan_id' => $foreignModulePlan->id, 'module_key' => 'sales']);
+        $foreignModule = $this->payload($client->id, $foreignModulePlan->id);
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-forbidden-module')
+            ->postJson('/api/v1/erp-commercial/enrollments', $foreignModule)->assertForbidden();
+        $bothSources = $this->payload($client->id, $plan->id);
+        $bothSources['new_client'] = ['tax_id' => '27865757000102', 'tax_regime' => 'presumed_profit', 'name' => 'Empresa'];
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-conflicting-sources')
+            ->postJson('/api/v1/erp-commercial/enrollments', $bothSources)->assertUnprocessable();
         $this->assertDatabaseCount('office_erp_contracts', 0);
         $this->assertDatabaseCount('office_erp_invoices', 0);
     }
