@@ -846,7 +846,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             $firstLine = substr($firstLine, 0, 240);
             $sqlState = self::workerSqlState($output);
             self::fail('Worker emitted invalid JSON (stdout bytes='.strlen($output).', json error='.$exception->getMessage()
-                .', sqlstate='.$sqlState.', first line='.$firstLine.').');
+                .', sqlstate='.$sqlState.', first line='.$firstLine.'; '.self::workerFailureFingerprint($process).').');
         }
         self::assertSame(0, $result['transaction_level']);
 
@@ -855,12 +855,13 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
 
     private static function workerFailureFingerprint(Process $process): string
     {
-        $stderr = $process->getErrorOutput();
         $stdout = $process->getOutput();
-        $type = preg_match('/^([A-Za-z_\\\\][A-Za-z0-9_\\\\]*(?:Exception|Error)):/m', $stderr, $matches) === 1
+        $stderr = $process->getErrorOutput();
+        $diagnostic = $stderr."\n".$stdout;
+        $type = preg_match('/^([A-Za-z_\\\\][A-Za-z0-9_\\\\]*(?:Exception|Error)):/m', $diagnostic, $matches) === 1
             ? $matches[1]
             : 'unknown';
-        preg_match_all('/^#\\d+\\s+(.+?)(?:\\([^\\n]*\\))?:\\s+(?:.+)$/m', $stderr, $frames);
+        preg_match_all('/^#\\d+\\s+(.+?)(?:\\([^\\n]*\\))?:\\s+(?:.+)$/m', $diagnostic, $frames);
         $locations = array_slice($frames[1] ?? [], 0, 4);
         $locations = array_map(static function (string $location): string {
             $location = preg_replace('/\\b\\d{14}\\b/', '[cnpj]', $location) ?? $location;
@@ -893,7 +894,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         $message = preg_replace('/\\b\\d{14}\\b/', '[cnpj]', $message) ?? $message;
         $message = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i', '[email]', $message) ?? $message;
 
-        return $matches[1].' '.substr($message, 0, 160);
+        return $matches[1].' '.substr($message, 0, 240);
     }
 
     /** @return array{pid: int, database_pid: int, checkout: string, source_hashes: array<string, string>} */
