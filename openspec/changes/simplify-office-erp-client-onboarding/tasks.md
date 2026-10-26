@@ -20,7 +20,7 @@
 ## 4. Customer-first Nuxt flows
 
 - [x] 4.1 Replace invitation-centric customer screens with new-client/portfolio enrollment, technical plan/terms, truthful subscription/trial states and optional owner access; verify real rendered handlers, errors, pagination and context invalidation in `officeErpOnboarding.test.ts`/`officeErpContracts.test.ts`.
-- [x] 4.2 Add office trial-link controls, `/erp/testar/[code]`, owner trial details and explicit conversion UI using existing transport/recovery; verify anonymous access, known-email login, validation correction, unknown result/no password replay, refresh failure and access-boundary changes in rendered SFC/transport tests.
+- [ ] 4.2 Add office trial-link controls, `/erp/testar/[code]`, owner trial details and explicit conversion UI using existing transport/recovery; verify anonymous access, known-email login, validation correction, unknown result/no password replay, refresh failure and access-boundary changes in rendered SFC/transport tests.
 - [x] 4.3 Defer Offers from primary navigation, remove duplicate office header text and align settings permissions/feedback with the backend, preserving legacy routes, actual office selection and print isolation; verify navigation/settings tests and keyboard/light/dark layouts at 320px, 390px and 1366px.
 
 ## 5. Integrated acceptance and handoff
