@@ -163,7 +163,6 @@ function loadSearch() {
     }
   })
 }
-watch(searchPage, loadSearch)
 const loadLogsError = ref<unknown>(null)
 const logsLoaded = ref(false)
 const { showError: showLogsError, retry: retryLogs } = useRetryableLoad({
@@ -214,12 +213,11 @@ onBeforeUnmount(() => {
 watch(accountQuery, () => {
   logsPage.value = 1
 }, { flush: 'sync' })
-watch(() => [logsPage.value, accountQuery.value], loadLogs)
 
 function actionMeta(action: string) {
   return ACTION_META[action] ?? { label: action, color: 'neutral' as const }
 }
-useAdminReadAuthority(() => {
+const readAuthority = useAdminReadAuthority(() => {
   runSearch.invalidate()
   runLogs.invalidate()
   found.value = []
@@ -233,6 +231,10 @@ useAdminReadAuthority(() => {
   searching.value = false
   loadingLogs.value = false
   accountQuery.value = ''
+})
+watch(() => [logsPage.value, accountQuery.value, readAuthority.value], loadLogs)
+watch([searchPage, readAuthority], () => {
+  if (appliedQuery.value) void loadSearch()
 })
 </script>
 

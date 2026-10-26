@@ -12,7 +12,8 @@ import { apiFailure } from '#shared/utils/access'
 const { user, accounts, switchAccount } = useAuth()
 const switching = ref(false)
 const { api } = useAccessApi()
-const { q, status, page, filter, clearFilters } = useAccountFilters(load)
+const readAuthority = useAdminReadAuthority(invalidateAuthority)
+const { q, status, page, filter, clearFilters } = useAccountFilters(load, readAuthority)
 const result = ref<AccountPage | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -141,6 +142,7 @@ async function save() {
   if (busy.value || !detailLoaded.value)
     return
   const version = operationId
+  const authority = readAuthority.value
   if (mode.value === 'edit' && form.status !== target.value?.status && !confirmed.value) {
     operationError.value = 'Confirme a alteração de situação da conta.'
     return
@@ -171,7 +173,7 @@ async function save() {
     operationError.value = failure.message
     fieldErrors.value = failure.errors || {}
   } finally {
-    busy.value = false
+    if (authority === readAuthority.value) busy.value = false
   }
 }
 async function copy() {
@@ -204,7 +206,8 @@ onBeforeUnmount(() => {
   runDetail.invalidate()
   operationId++
 })
-useAdminReadAuthority(() => {
+function invalidateAuthority() {
+  busy.value = false
   runList.invalidate()
   runDetail.invalidate()
   operationId++
@@ -219,7 +222,7 @@ useAdminReadAuthority(() => {
   fieldErrors.value = {}
   operationError.value = ''
   Object.assign(form, { name: '', owner_name: '', login_email: '', status: 'active', phone: '', phone_whatsapp: false, state: '', city: '' })
-})
+}
 </script>
 
 <template>

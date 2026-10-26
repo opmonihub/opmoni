@@ -1,7 +1,7 @@
-import { watch } from 'vue'
+import { watch, type Ref } from 'vue'
 import { adminListNavigationOptions } from '~/utils/adminListFilters'
 
-export function useAccountFilters(load: () => unknown) {
+export function useAccountFilters(load: () => unknown, authority?: Readonly<Ref<unknown>>) {
   const navigation = useListNavigationState('admin:contas', adminListNavigationOptions(['all', 'active', 'suspended']))
   const q = listNavigationField(navigation, 'q')
   const status = listNavigationField(navigation, 'filter')
@@ -10,7 +10,7 @@ export function useAccountFilters(load: () => unknown) {
   watch(status, () => {
     page.value = 1
   }, { flush: 'sync' })
-  watch([page, status], load)
+  watch([page, status, ...(authority ? [authority] : [])], load)
 
   function filter() {
     if (page.value === 1)

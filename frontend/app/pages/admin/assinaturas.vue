@@ -111,7 +111,6 @@ onBeforeUnmount(() => {
 watch([debouncedQ, statusFilter], () => {
   page.value = 1
 }, { flush: 'sync' })
-watch(listParams, load)
 const editOpen = ref(false)
 watch(editOpen, (open) => {
   if (open) return
@@ -157,26 +156,28 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
     return
   fieldErrors.value = {}
   saving.value = true
+  const authority = readAuthority.value
   try {
     await $api(`/admin/subscriptions/${editTarget.value.id}`, {
       method: 'PUT',
       body: { plan_id: event.data.plan_id, status: event.data.status }
     })
-    if (!active)
+    if (!active || authority !== readAuthority.value)
       return
     toast.add({ title: 'Assinatura atualizada', color: 'success' })
     editOpen.value = false
     await load()
   } catch (error) {
-    if (!active)
+    if (!active || authority !== readAuthority.value)
       return
     fieldErrors.value = apiFailure(error).errors || {}
     toast.add({ title: 'Não foi possível atualizar a assinatura', color: 'error' })
   } finally {
-    saving.value = false
+    if (authority === readAuthority.value) saving.value = false
   }
 }
-useAdminReadAuthority(() => {
+const readAuthority = useAdminReadAuthority(() => {
+  saving.value = false
   runLatestLoad.invalidate()
   runCatalog.invalidate()
   subscriptions.value = []
@@ -192,8 +193,8 @@ useAdminReadAuthority(() => {
   editTarget.value = null
   Object.assign(editState, { plan_id: undefined, status: undefined })
   fieldErrors.value = {}
-  active = false
 })
+watch([listParams, readAuthority], load)
 </script>
 
 <template>
