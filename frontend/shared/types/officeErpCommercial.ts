@@ -14,6 +14,10 @@ export interface OfficeErpCapabilities {
   can_maintain: boolean
   can_configure: boolean
   can_sell_new: boolean
+  can_provision: boolean
+  can_start_trial: boolean
+  can_manage_trial_link: boolean
+  capability_reasons: Record<string, string[]>
   capability_key: string
   reasons: Record<string, string[]>
   allowance: OfficeErpAllowance

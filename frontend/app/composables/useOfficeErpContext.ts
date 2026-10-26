@@ -6,12 +6,25 @@ function isCapabilities(value: unknown): value is OfficeErpCapabilities {
   const candidate = value as Partial<OfficeErpCapabilities>
   const allowance = candidate.allowance
   const usage = candidate.usage
+  const capabilityReasons = candidate.capability_reasons
+  const hasCapabilityReasons = !!capabilityReasons
+    && typeof capabilityReasons === 'object'
+    && !Array.isArray(capabilityReasons)
+    && ['can_configure', 'can_sell_new', 'can_provision', 'can_start_trial', 'can_manage_trial_link'].every((key) => {
+      const reasons = capabilityReasons[key]
+
+      return Array.isArray(reasons) && reasons.every(reason => typeof reason === 'string')
+    })
   return typeof candidate.can_read === 'boolean'
     && typeof candidate.can_maintain === 'boolean'
     && typeof candidate.can_configure === 'boolean'
     && typeof candidate.can_sell_new === 'boolean'
+    && typeof candidate.can_provision === 'boolean'
+    && typeof candidate.can_start_trial === 'boolean'
+    && typeof candidate.can_manage_trial_link === 'boolean'
     && typeof candidate.capability_key === 'string' && candidate.capability_key.length > 0
     && !!candidate.reasons && typeof candidate.reasons === 'object' && !Array.isArray(candidate.reasons)
+    && hasCapabilityReasons
     && !!allowance && typeof allowance.enabled === 'boolean'
     && (allowance.licence_limit === null || (Number.isSafeInteger(allowance.licence_limit) && allowance.licence_limit >= 0))
     && Array.isArray(allowance.module_keys) && allowance.module_keys.every(key => typeof key === 'string')
