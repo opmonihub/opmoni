@@ -1,0 +1,9 @@
+{
+  "status": "in_progress",
+  "browserSession": "navigation-browser-qa",
+  "origin": "http://localhost:3354",
+  "isolation": {"verified": true, "database": "opmoni_test", "redisDatabases": [13,14,15], "syntheticFixturesOnly": true},
+  "baseline": [{"task":"2.2","route":"/work/modelos/1","source":"4afa3a8","loaderBlob":"6f92846263125f8ff0b91775698806cfefb8e27d","method":"GET","apiPath":"/api/v1/process-templates/1","requestCount":2,"timesUtc":["2026-10-26T14:19:00Z","2026-10-26T14:19:49Z"],"hydrationCompleted":true,"verdict":"duplicate_reproduced"}],
+  "finalSourceAcceptance": null,
+  "unverified": ["final integrated source", "dynamic-ID remount", "Company and delegated UI", "responsive and themes", "error and retry matrix", "PostgreSQL concurrency", "provider delivery"]
+}
