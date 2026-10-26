@@ -5,7 +5,7 @@ import type { ErpPurchase, ErpPurchaseDraftPayload, ErpPurchaseReturn } from '#s
 import { formatPurchaseDecimal } from '#shared/utils/erpPurchase'
 import { useErpPurchaseWorkspace } from '~/composables/useErpPurchaseWorkspace'
 
-const purchase = useErpPurchaseWorkspace()
+const purchase = useErpPurchaseWorkspace(false)
 type PurchaseArea = 'purchases' | 'xml-preview' | 'returns'
 const route = useRoute()
 const router = useRouter()
@@ -410,6 +410,8 @@ watch(purchase.authorityGeneration, () => {
   if (!areaAllowed(selectedArea.value)) {
     const fallback: PurchaseArea = areaAllowed('purchases') ? 'purchases' : areaAllowed('returns') ? 'returns' : 'xml-preview'
     void setArea(fallback)
+  } else {
+    void setArea(selectedArea.value, false)
   }
 })
 watch(() => purchase.selected.value?.id, (id, previous) => {

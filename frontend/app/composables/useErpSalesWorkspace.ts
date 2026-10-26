@@ -1,3 +1,4 @@
+import { useErpReadScope } from '~/composables/useErpReadScope'
 import type { ErpOperationNatureRecord } from '#shared/types/erpCatalogs'
 import type {
   ErpCommercialDraftPayload,
@@ -56,11 +57,12 @@ function operationMethod(operation: string): PendingSalesOperation['method'] {
   return operation.endsWith('.update') ? 'PATCH' : 'POST'
 }
 const areaOf = (path: string): ErpSalesArea => path.includes('/sale-returns') ? 'returns' : path.includes('/quotes') ? 'quotes' : path.includes('/orders') ? 'orders' : 'sales'
-export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
+export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes', initializeReads = true) {
   const { api: requestApi, refreshCsrf } = useAccessApi()
   const { user, currentCompany, refreshWithStatus } = useAuth()
   const sessionGeneration = useState('access-session-generation', () => 0)
   const context = useErpAdministrationContext()
+  const reads = useErpReadScope()
   const area = ref<ErpSalesArea>(initialArea)
   const rows = reactive<Record<ErpSalesArea, SalesRow[]>>({ quotes: [], orders: [], sales: [], returns: [] })
   const metas = reactive<Record<ErpSalesArea, Page<unknown>['meta'] | null>>({ quotes: null, orders: null, sales: null, returns: null })
@@ -159,6 +161,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     } catch { /* Invalid session data is not trusted. */ }
   }
   function clearPrivateState() {
+    reads.cancel()
     closeTaxReview()
     closeRepresentation()
     requestGeneration++
@@ -257,10 +260,11 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     const token = context.capture()
     const generation = requestGeneration
     const sequence = ++listSequence[areaName]
+    const signal = reads.start(`list:${areaName}`)
     loading[areaName] = true
     listErrors[areaName] = ''
     try {
-      const result = await api<Page<SalesRow>>(queryFor(areaName, page))
+      const result = await api<Page<SalesRow>>(queryFor(areaName, page), { signal })
       if (!current(token, generation, intent) || sequence !== listSequence[areaName]) return
       rows[areaName] = result.data
       metas[areaName] = result.meta ?? null
@@ -275,13 +279,13 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
       if (current(token, generation, intent) && sequence === listSequence[areaName]) loading[areaName] = false
     }
   }
-  async function loadAllPages<T>(path: string, action: string, token: ReturnType<typeof context.capture>, generation: number): Promise<T[]> {
+  async function loadAllPages<T>(path: string, action: string, token: ReturnType<typeof context.capture>, generation: number, signal: AbortSignal): Promise<T[]> {
     if (!allowed(action)) return []
     const data: T[] = []
     let page = 1
     let lastPage = 1
     while (page <= lastPage) {
-      const result = await api<Page<T>>(`${path}?${new URLSearchParams({ status: 'active', page: String(page), per_page: '100' })}`)
+      const result = await api<Page<T>>(`${path}?${new URLSearchParams({ status: 'active', page: String(page), per_page: '100' })}`, { signal })
       if (!authorityCurrent(token, generation)) return []
       data.push(...result.data)
       lastPage = result.meta.last_page
@@ -294,6 +298,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     const token = context.capture()
     const generation = requestGeneration
     const sequence = ++referenceSequence
+    const signal = reads.start('references')
     referenceLoading.value = true
     referenceError.value = ''
     operationNatureState.permitted = allowed('erp.operation-natures.index')
@@ -303,7 +308,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
       ['/erp/establishments', 'erp.establishments.index'], ['/erp/contacts', 'erp.contacts.index'], ['/erp/units', 'erp.units.index'],
       ['/erp/tax-settings/operation-natures', 'erp.operation-natures.index']
     ] as const
-    const results = await Promise.allSettled(configs.map(([path, action]) => loadAllPages<Record<string, unknown>>(path, action, token, generation)))
+    const results = await Promise.allSettled(configs.map(([path, action]) => loadAllPages<Record<string, unknown>>(path, action, token, generation, signal)))
     if (!authorityCurrent(token, generation) || sequence !== referenceSequence) return
     const failures = results.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
     for (let index = 0; index < results.length; index++) {
@@ -335,6 +340,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     closeRepresentation()
     operationIntentSequence.value++
     for (const key of Object.keys(loading) as ErpSalesArea[]) {
+      reads.cancel(`list:${key}`)
       listSequence[key]++
       loading[key] = false
     }
@@ -343,6 +349,11 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     return operationIntentSequence.value
   }
   async function selectArea(next: ErpSalesArea) {
+    if (!allowed(indexActions[next])) {
+      claimIntent()
+      area.value = next
+      return
+    }
     const intent = claimIntent()
     area.value = next
     filters.page = 1
@@ -873,12 +884,14 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     authorityNeedsRefresh.value = false
     clearPrivateState()
     restorePending()
-    if (currentCompany.value) void loadReferences()
+    if (initializeReads && currentCompany.value) void loadReferences()
   }, { flush: 'sync' })
   onMounted(() => {
     restorePending()
-    void loadReferences()
-    if (canRead.value) void load(area.value)
+    if (initializeReads) {
+      void loadReferences()
+      if (canRead.value) void load(area.value)
+    }
   })
   onScopeDispose(clearPrivateState)
 

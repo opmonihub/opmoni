@@ -28,6 +28,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
     if (path === '~/components/erp/erpPresentation') return loadAppComposable('components/erp/erpPresentation.ts')
+    if (path === '~/composables/useErpReadScope') return loadAppComposable('composables/useErpReadScope.ts')
     if (!(path in imports)) throw new Error(`Unexpected test import ${path}`)
     return imports[path]
   }, exports, ...Object.values(bindings))
