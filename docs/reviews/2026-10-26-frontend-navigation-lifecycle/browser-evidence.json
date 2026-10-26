@@ -1,9 +1,2444 @@
 {
-  "status": "in_progress",
-  "browserSession": "navigation-browser-qa",
-  "origin": "http://localhost:3354",
-  "isolation": {"verified": true, "database": "opmoni_test", "redisDatabases": [13,14,15], "syntheticFixturesOnly": true},
-  "baseline": [{"task":"2.2","route":"/work/modelos/1","source":"4afa3a8","loaderBlob":"6f92846263125f8ff0b91775698806cfefb8e27d","method":"GET","apiPath":"/api/v1/process-templates/1","requestCount":2,"timesUtc":["2026-10-26T14:19:00Z","2026-10-26T14:19:49Z"],"hydrationCompleted":true,"verdict":"duplicate_reproduced"}],
-  "finalSourceAcceptance": null,
-  "unverified": ["final integrated source", "dynamic-ID remount", "Company and delegated UI", "responsive and themes", "error and retry matrix", "PostgreSQL concurrency", "provider delivery"]
+  "status": "checkpoint_final_artifact_pending",
+  "scope": "Representative real browser acceptance; not all 105 routes or all error states at every viewport.",
+  "artifacts": [
+    {
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "serverIndexSha256": "ee075118ea0e1d9f857f9160a33bef55992ef6e2beb79bbea3352d7bd37b677f",
+      "outputTreeSha256": "5f0dd750b6332fe049e312984cdc751bc18a52c83b0fd7ed2de580f162cd5299"
+    },
+    {
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "serverIndexSha256": "ee075118ea0e1d9f857f9160a33bef55992ef6e2beb79bbea3352d7bd37b677f",
+      "outputTreeSha256": "f80a2df479969abbb955c0a3d4a81e97399486c80874a3abbf7c600f0dcf3434"
+    }
+  ],
+  "baseline": [
+    {
+      "task": "2.2",
+      "route": "/work/modelos/1",
+      "source": "4afa3a8",
+      "loaderBlob": "6f92846263125f8ff0b91775698806cfefb8e27d",
+      "method": "GET",
+      "apiPath": "/api/v1/process-templates/1",
+      "requestCount": 2,
+      "timesUtc": [
+        "2026-10-26T14:19:00Z",
+        "2026-10-26T14:19:49Z"
+      ],
+      "hydrationCompleted": true,
+      "verdict": "duplicate_reproduced"
+    },
+    {
+      "task": "2.2",
+      "route": "/customers/empresa/1",
+      "source": "77d07d6",
+      "loaderBlob": "3fad18044005c1e3eccd96cfff44fd5242d096a4",
+      "method": "GET",
+      "apiPath": "/api/v1/clients/1",
+      "requestCount": 2,
+      "timesUtc": [
+        "2026-10-26T14:25:55Z",
+        "2026-10-26T14:26:34Z"
+      ],
+      "hydrationCompleted": true,
+      "verdict": "duplicate_reproduced"
+    }
+  ],
+  "runtime": {
+    "origin": "http://localhost:3354",
+    "database": "opmoni_test",
+    "redisDatabases": [
+      13,
+      14,
+      15
+    ],
+    "exclusiveStoresVerified": true,
+    "syntheticFixturesOnly": true,
+    "providerActions": 0,
+    "financialUiCommands": 0
+  },
+  "observations": [
+    {
+      "name": "direct/monitoring",
+      "at": "2026-10-26T15:22:21.145802+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/monitoring/overview",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "serpro-monitoring-overview"
+        ],
+        "monitoring": {
+          "portfolio_total": 1,
+          "attentionKeys": 16
+        }
+      },
+      "route": {
+        "path": "/monitoring",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "direct/settings/certificado",
+      "at": "2026-10-26T15:22:34.234180+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/account-certificate",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/enablement",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/obligation-schedules",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "serpro-account-certificate"
+        ],
+        "certificatePresent": true
+      },
+      "route": {
+        "path": "/settings/certificado",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "direct/settings/whatsapp",
+      "at": "2026-10-26T15:22:44.137128+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/whatsapp/channel",
+          "status": "404",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "whatsapp-channel"
+        ],
+        "channelStatus": null
+      },
+      "route": {
+        "path": "/settings/whatsapp",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "direct/customers/empresa/1",
+      "at": "2026-10-26T15:22:54.835480+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/clients/1",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/clients/1/dispatch-contacts",
+          "status": "404",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": []
+      },
+      "route": {
+        "path": "/customers/empresa/1",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "direct/work/modelos/1",
+      "at": "2026-10-26T15:23:11.244738+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/account/members/directory",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/process-templates/1",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/tags",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/process-templates/1/preview",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": []
+      },
+      "route": {
+        "path": "/work/modelos/1",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "commercial_real_nodes_start",
+      "at": "2026-10-26T15:25:24.839884+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp"
+      ]
+    },
+    {
+      "name": "commercial_real_nodes/gestao-erp/faturas",
+      "at": "2026-10-26T15:25:29.740269+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp/faturas"
+      ]
+    },
+    {
+      "name": "commercial_real_nodes/gestao-erp/assinaturas",
+      "at": "2026-10-26T15:25:33.434720+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp/assinaturas"
+      ]
+    },
+    {
+      "name": "commercial_real_nodes/gestao-erp/planos",
+      "at": "2026-10-26T15:25:37.246763+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp/planos"
+      ]
+    },
+    {
+      "name": "commercial_real_nodes/gestao-erp/clientes",
+      "at": "2026-10-26T15:25:42.843021+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp/clientes"
+      ]
+    },
+    {
+      "name": "commercial_real_nodes/gestao-erp/recebimentos",
+      "at": "2026-10-26T15:25:46.630093+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp/recebimentos"
+      ]
+    },
+    {
+      "name": "commercial_real_nodes/gestao-erp/configuracoes",
+      "at": "2026-10-26T15:25:51.918637+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp/configuracoes"
+      ]
+    },
+    {
+      "name": "commercial_real_nodes/gestao-erp",
+      "at": "2026-10-26T15:25:55.935628+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp"
+      ]
+    },
+    {
+      "name": "commercial_real_nodes_back",
+      "at": "2026-10-26T15:26:01.640779+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp/configuracoes"
+      ]
+    },
+    {
+      "name": "commercial_real_nodes_forward",
+      "at": "2026-10-26T15:26:06.437384+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp"
+      ]
+    },
+    {
+      "name": "dynamic_entity/work/modelos/",
+      "at": "2026-10-26T15:26:56.034493+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "documentStable": true,
+      "oldNodeConnected": false,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/process-templates/2",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/work/modelos/2",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "direct/customers/empresa/2",
+      "at": "2026-10-26T15:27:07.337476+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/clients/2",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/clients/2/dispatch-contacts",
+          "status": "404",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": []
+      },
+      "route": {
+        "path": "/customers/empresa/2",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "direct/work/modelos/2",
+      "at": "2026-10-26T15:27:22.419330+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/account/members/directory",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/process-templates/2",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/tags",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/process-templates/2/preview",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": []
+      },
+      "route": {
+        "path": "/work/modelos/2",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "commercial_nested_authorized/gestao-erp/assinaturas/1",
+      "at": "2026-10-26T15:30:39.336703+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/context",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/contracts/1",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/gestao-erp/assinaturas/1",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "commercial_nested_authorized/gestao-erp/faturas/1",
+      "at": "2026-10-26T15:30:48.229088+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/context",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/invoices/1",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/gestao-erp/faturas/1",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "client_native_id_remount",
+      "at": "2026-10-26T15:31:15.634151+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "documentStable": true,
+      "oldNodeConnected": false,
+      "oldNodePresent": true,
+      "record2": true,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/clients/2",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/clients/2/dispatch-contacts",
+          "status": "404",
+          "injected": false,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "name": "work_month/work/tarefas?qa=keep",
+      "at": "2026-10-26T15:31:38.626403+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/account/members/directory",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/grouped",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/tasks/unscoped",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "finalSearch": "?qa=keep&reference_month=2026-10",
+      "monthChangingReplacements": [
+        {
+          "method": "replaceState",
+          "path": "/work/tarefas",
+          "query": "?qa=keep&reference_month=2026-10"
+        }
+      ],
+      "route": {
+        "path": "/work/tarefas",
+        "search": "?qa=keep&reference_month=2026-10",
+        "hash": ""
+      }
+    },
+    {
+      "name": "work_month/work/clientes?reference_month=invalid&qa=keep",
+      "at": "2026-10-26T15:31:54.127319+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/account/members/directory",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/grouped",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "finalSearch": "?reference_month=2026-10&qa=keep",
+      "monthChangingReplacements": [
+        {
+          "method": "replaceState",
+          "path": "/work/clientes",
+          "query": "?reference_month=2026-10&qa=keep"
+        }
+      ],
+      "route": {
+        "path": "/work/clientes",
+        "search": "?reference_month=2026-10&qa=keep",
+        "hash": ""
+      }
+    },
+    {
+      "name": "work_month/work/tarefas?reference_month=2026-08&qa=keep",
+      "at": "2026-10-26T15:32:12.516621+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/account/members/directory",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/grouped",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/tasks/unscoped",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "finalSearch": "?reference_month=2026-08&qa=keep",
+      "monthChangingReplacements": [],
+      "route": {
+        "path": "/work/tarefas",
+        "search": "?reference_month=2026-08&qa=keep",
+        "hash": ""
+      }
+    },
+    {
+      "name": "commercial_filter_set",
+      "at": "2026-10-26T15:32:50.238898+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/context",
+          "status": 200,
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/clients",
+          "status": 200,
+          "query": {
+            "page": "1",
+            "per_page": "25"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/context",
+          "status": 200,
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/clients",
+          "status": 200,
+          "query": {
+            "page": "1",
+            "per_page": "25",
+            "q": "Navigation QA Client 2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "commercial_filter_roundtrip",
+      "at": "2026-10-26T15:33:01.636329+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/context",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/clients",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/gestao-erp/clientes",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "commercial_explicit_filter",
+      "at": "2026-10-26T15:33:09.634768+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "route": {
+        "path": "/gestao-erp/clientes",
+        "search": "?q=Navigation%20QA%20Client%201",
+        "hash": ""
+      }
+    },
+    {
+      "name": "admin_filter_roundtrip",
+      "at": "2026-10-26T15:33:31.835129+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/admin/users",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/admin/usuarios",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "authorized_nested_final/gestao-erp/assinaturas/1",
+      "at": "2026-10-26T15:33:39.139414+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "route": {
+        "path": "/gestao-erp/assinaturas/1",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "authorized_nested_final/gestao-erp/faturas/1",
+      "at": "2026-10-26T15:33:46.936779+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "route": {
+        "path": "/gestao-erp/faturas/1",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "print_isolation",
+      "at": "2026-10-26T15:33:57.916563+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "hasSidebar": false,
+      "hasCommercialNav": false,
+      "hasInvoice": true,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/context",
+          "status": "200",
+          "injected": false,
+          "count": 2
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/invoices/1/print",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/gestao-erp/faturas/1/imprimir",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "company_query_hash_draft",
+      "at": "2026-10-26T15:37:53.125943+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "documentStable": true,
+      "sameInput": true,
+      "reads": [],
+      "route": {
+        "path": "/erp/configuracoes/empresa",
+        "search": "?qa=anchor",
+        "hash": "#review"
+      }
+    },
+    {
+      "name": "company_operational/erp/compras#returns",
+      "at": "2026-10-26T15:38:08.922143+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/contacts",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/establishments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/units",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/purchase-returns",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/compras",
+        "search": "",
+        "hash": "#returns"
+      }
+    },
+    {
+      "name": "company_operational/erp/vendas#orders",
+      "at": "2026-10-26T15:38:20.836995+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/orders",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/establishments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/contacts",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/units",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/tax-settings/operation-natures",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/vendas",
+        "search": "",
+        "hash": "#orders"
+      }
+    },
+    {
+      "name": "company_operational/erp/vendas#sales",
+      "at": "2026-10-26T15:38:30.435475+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/sales",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/establishments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/contacts",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/units",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/tax-settings/operation-natures",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/vendas",
+        "search": "",
+        "hash": "#sales"
+      }
+    },
+    {
+      "name": "company_operational/erp/compras",
+      "at": "2026-10-26T15:38:43.220797+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/contacts",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/establishments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/units",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/purchases",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/compras",
+        "search": "",
+        "hash": "#purchases"
+      }
+    },
+    {
+      "name": "company_catalog_filter_roundtrip",
+      "at": "2026-10-26T15:39:02.714527+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/products",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/cadastros/produtos",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "injected_whatsapp_populated_hydration",
+      "at": "2026-10-26T15:39:20.931804+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "injected": true,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/whatsapp/channel",
+          "status": "200",
+          "injected": true,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "whatsapp-channel"
+        ],
+        "channelStatus": "connected"
+      },
+      "route": {
+        "path": "/settings/whatsapp",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "injected_transient_ssr/monitoring",
+      "at": "2026-10-26T15:39:28.436675+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "injected": true,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/monitoring/overview",
+          "status": "503",
+          "injected": true,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [
+          "serpro-monitoring-overview"
+        ],
+        "dataKeys": []
+      },
+      "route": {
+        "path": "/monitoring",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "transient_retry/monitoring",
+      "at": "2026-10-26T15:39:33.620469+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/monitoring/overview",
+          "status": "503",
+          "injected": true,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/monitoring/overview",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "serpro-monitoring-overview"
+        ],
+        "monitoring": {
+          "portfolio_total": 1,
+          "attentionKeys": 16
+        }
+      },
+      "route": {
+        "path": "/monitoring",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "injected_transient_ssr/settings/certificado",
+      "at": "2026-10-26T15:39:43.335884+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "injected": true,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/account-certificate",
+          "status": "503",
+          "injected": true,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/enablement",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/obligation-schedules",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [
+          "serpro-account-certificate"
+        ],
+        "dataKeys": []
+      },
+      "route": {
+        "path": "/settings/certificado",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "transient_retry/settings/certificado",
+      "at": "2026-10-26T15:39:46.037359+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/account-certificate",
+          "status": "503",
+          "injected": true,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/enablement",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/obligation-schedules",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/account-certificate",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "serpro-account-certificate"
+        ],
+        "certificatePresent": true
+      },
+      "route": {
+        "path": "/settings/certificado",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "injected_transient_ssr/settings/whatsapp",
+      "at": "2026-10-26T15:39:54.136495+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "injected": true,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/whatsapp/channel",
+          "status": "503",
+          "injected": true,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [
+          "whatsapp-channel"
+        ],
+        "dataKeys": []
+      },
+      "route": {
+        "path": "/settings/whatsapp",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "transient_retry/settings/whatsapp",
+      "at": "2026-10-26T15:39:56.922633+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/whatsapp/channel",
+          "status": "503",
+          "injected": true,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/whatsapp/channel",
+          "status": "404",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "whatsapp-channel"
+        ],
+        "channelStatus": null
+      },
+      "route": {
+        "path": "/settings/whatsapp",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "injected_company_denial403",
+      "at": "2026-10-26T15:40:10.132879+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "injected": true,
+      "enabledFields": 0,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/company/settings",
+          "status": "403",
+          "injected": true,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/configuracoes/empresa",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "injected_company_denial409",
+      "at": "2026-10-26T15:40:18.327368+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "injected": true,
+      "enabledFields": 0,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/company/settings",
+          "status": "409",
+          "injected": true,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/configuracoes/empresa",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "company_before_authority_change",
+      "at": "2026-10-26T15:40:39.725825+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf"
+    },
+    {
+      "name": "delegated_read_only",
+      "at": "2026-10-26T15:41:11.626329+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "draftPresent": false,
+      "enabledInputs": 0,
+      "saveButtons": 1,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/company/settings",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/configuracoes/empresa",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "delegated_direct_area",
+      "at": "2026-10-26T15:41:23.223303+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/contacts",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/establishments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/units",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/purchase-returns",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/compras",
+        "search": "",
+        "hash": "#returns"
+      }
+    },
+    {
+      "name": "empty_office/monitoring",
+      "at": "2026-10-26T15:41:53.125003+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/monitoring/overview",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "serpro-monitoring-overview"
+        ],
+        "monitoring": {
+          "portfolio_total": 0,
+          "attentionKeys": 16
+        }
+      },
+      "route": {
+        "path": "/monitoring",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "empty_office/settings/certificado",
+      "at": "2026-10-26T15:42:07.330406+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/account-certificate",
+          "status": "404",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/enablement",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/obligation-schedules",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "serpro-account-certificate"
+        ],
+        "certificatePresent": false
+      },
+      "route": {
+        "path": "/settings/certificado",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "empty_office/settings/whatsapp",
+      "at": "2026-10-26T15:42:22.110337+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/whatsapp/channel",
+          "status": "404",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "whatsapp-channel"
+        ],
+        "channelStatus": null
+      },
+      "route": {
+        "path": "/settings/whatsapp",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "monitoring_later_visit_freshness",
+      "at": "2026-10-26T15:43:14.533960+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/clients/summary",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/clients/analytics",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/monitoring/overview",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "portfolioBefore": 1,
+      "portfolioAfter": 2,
+      "route": {
+        "path": "/monitoring",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "admin_departed_read_cancellation",
+      "at": "2026-10-26T15:44:43.812954+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/admin/subscriptions",
+          "status": "200",
+          "injected": true,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/admin/users",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "browserReads": [
+        {
+          "aborted": true,
+          "at": 15402.90000000596,
+          "method": "GET",
+          "path": "/api/v1/admin/subscriptions",
+          "query": {
+            "page": "1"
+          },
+          "status": null
+        },
+        {
+          "aborted": false,
+          "at": 18991.29999998212,
+          "method": "GET",
+          "path": "/api/v1/admin/users",
+          "query": {
+            "page": "1"
+          },
+          "status": 200
+        }
+      ],
+      "route": {
+        "path": "/admin/usuarios",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "rapid_commercial_transitions",
+      "at": "2026-10-26T15:45:06.925614+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "current": [
+        "/gestao-erp/clientes"
+      ],
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/context",
+          "status": "200",
+          "injected": false,
+          "count": 3
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/invoices",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/plans",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/clients",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/gestao-erp/clientes",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "commercial_filter_page_reset",
+      "at": "2026-10-26T15:45:35.207112+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/context",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/clients",
+          "status": 200,
+          "injected": false,
+          "query": {
+            "page": [
+              "1"
+            ],
+            "per_page": [
+              "25"
+            ],
+            "q": [
+              "Navigation QA Client 03"
+            ]
+          }
+        }
+      ],
+      "route": {
+        "path": "/gestao-erp/clientes",
+        "search": "?page=2",
+        "hash": ""
+      }
+    },
+    {
+      "name": "viewport_320_light_/monitoring",
+      "at": "2026-10-26T15:46:32.232996+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 320,
+        "dark": false,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/monitoring",
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_320_light_/gestao-erp/clientes",
+      "at": "2026-10-26T15:46:45.109455+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 320,
+        "dark": false,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/gestao-erp/clientes",
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_320_light_/erp/configuracoes/empresa",
+      "at": "2026-10-26T15:46:55.527893+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 320,
+        "dark": false,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/erp/configuracoes/empresa",
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "companySettingsContext": "no_selected_company_fallback"
+    },
+    {
+      "name": "viewport_320_dark_/monitoring",
+      "at": "2026-10-26T15:47:12.429739+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 320,
+        "dark": true,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/monitoring",
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_320_dark_/gestao-erp/clientes",
+      "at": "2026-10-26T15:47:29.228505+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 320,
+        "dark": true,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/gestao-erp/clientes",
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_320_dark_/erp/configuracoes/empresa",
+      "at": "2026-10-26T15:47:39.913496+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 320,
+        "dark": true,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/erp/configuracoes/empresa",
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "companySettingsContext": "no_selected_company_fallback"
+    },
+    {
+      "name": "viewport_390_light_/monitoring",
+      "at": "2026-10-26T15:47:50.918962+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 390,
+        "dark": false,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/monitoring",
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_390_light_/gestao-erp/clientes",
+      "at": "2026-10-26T15:48:06.032720+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 390,
+        "dark": false,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/gestao-erp/clientes",
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_390_light_/erp/configuracoes/empresa",
+      "at": "2026-10-26T15:48:17.421001+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 390,
+        "dark": false,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/erp/configuracoes/empresa",
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "companySettingsContext": "no_selected_company_fallback"
+    },
+    {
+      "name": "viewport_390_dark_/monitoring",
+      "at": "2026-10-26T15:48:35.629864+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 390,
+        "dark": true,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/monitoring",
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_390_dark_/gestao-erp/clientes",
+      "at": "2026-10-26T15:48:51.418997+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 390,
+        "dark": true,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/gestao-erp/clientes",
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_390_dark_/erp/configuracoes/empresa",
+      "at": "2026-10-26T15:48:59.622612+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 390,
+        "dark": true,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/erp/configuracoes/empresa",
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "companySettingsContext": "no_selected_company_fallback"
+    },
+    {
+      "name": "viewport_1440_light_/monitoring",
+      "at": "2026-10-26T15:49:17.808296+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 1440,
+        "dark": false,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/monitoring",
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_1440_light_/gestao-erp/clientes",
+      "at": "2026-10-26T15:49:33.015308+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 1440,
+        "dark": false,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/gestao-erp/clientes",
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_1440_light_/erp/configuracoes/empresa",
+      "at": "2026-10-26T15:49:42.129096+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 1440,
+        "dark": false,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/erp/configuracoes/empresa",
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "companySettingsContext": "no_selected_company_fallback"
+    },
+    {
+      "name": "viewport_1440_dark_/monitoring",
+      "at": "2026-10-26T15:49:56.704168+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 1440,
+        "dark": true,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/monitoring",
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_1440_dark_/gestao-erp/clientes",
+      "at": "2026-10-26T15:50:12.814262+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 1440,
+        "dark": true,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/gestao-erp/clientes",
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "companySettingsContext": "selected_office"
+    },
+    {
+      "name": "viewport_1440_dark_/erp/configuracoes/empresa",
+      "at": "2026-10-26T15:50:26.812448+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "geometry": {
+        "bodyWidth": 1440,
+        "dark": true,
+        "dialog": false,
+        "horizontalOverflow": false,
+        "loading": false,
+        "path": "/erp/configuracoes/empresa",
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "companySettingsContext": "no_selected_company_fallback"
+    },
+    {
+      "name": "mobile_erp_open",
+      "at": "2026-10-26T15:51:28.828517+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "dialog": true
+    },
+    {
+      "name": "mobile_escape_focus",
+      "at": "2026-10-26T15:51:29.430137+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf"
+    },
+    {
+      "name": "mobile_hash_navigation_focus",
+      "at": "2026-10-26T15:52:24.425845+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "isTrigger": true,
+      "dialog": false
+    },
+    {
+      "name": "mobile_cross_module_focus",
+      "at": "2026-10-26T15:53:21.010662+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "dialog": false
+    },
+    {
+      "name": "mobile_keyboard_trap",
+      "at": "2026-10-26T15:53:32.907692+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "focusInDialog": true
+    },
+    {
+      "name": "mobile_320_escape_focus",
+      "at": "2026-10-26T15:53:33.921640+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "isTrigger": true
+    },
+    {
+      "name": "mobile_error_320_light",
+      "at": "2026-10-26T15:53:39.322792+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "injected": true,
+      "overflow": false,
+      "retryVisible": true,
+      "route": {
+        "path": "/monitoring",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "mobile_error_390_dark",
+      "at": "2026-10-26T15:53:44.717368+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "injected": true,
+      "overflow": false,
+      "retryVisible": true,
+      "route": {
+        "path": "/monitoring",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "work_dispatch_route_ownership",
+      "at": "2026-10-26T15:54:39.605196+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "dispatches": [
+        {
+          "at": 1793030064828,
+          "location": "/work/clientes?reference_month=2026-09&qa=dispatch",
+          "path": "/api/v1/work/grouped",
+          "query": "?reference_month=2026-09",
+          "routerMonth": "2026-09",
+          "routerPath": "/work/clientes"
+        },
+        {
+          "at": 1793030066116,
+          "location": "/work/clientes?reference_month=2026-09&qa=dispatch",
+          "path": "/api/v1/work/grouped",
+          "query": "?reference_month=2026-09",
+          "routerMonth": "2026-09",
+          "routerPath": "/work/clientes"
+        },
+        {
+          "at": 1793030066810,
+          "location": "/work/clientes?reference_month=2026-09&qa=dispatch",
+          "path": "/api/v1/work/tasks/unscoped",
+          "query": "?reference_month=2026-09&include_undated=1",
+          "routerMonth": "2026-09",
+          "routerPath": "/work/clientes"
+        },
+        {
+          "at": 1793030071404,
+          "location": "/work/tarefas?reference_month=2026-08&qa=dispatch",
+          "path": "/api/v1/work/grouped",
+          "query": "?reference_month=2026-08",
+          "routerMonth": "2026-08",
+          "routerPath": "/work/tarefas"
+        },
+        {
+          "at": 1793030073111,
+          "location": "/work/tarefas?reference_month=2026-08&qa=dispatch",
+          "path": "/api/v1/work/tasks/unscoped",
+          "query": "?reference_month=2026-08&include_undated=1",
+          "routerMonth": "2026-08",
+          "routerPath": "/work/tarefas"
+        },
+        {
+          "at": 1793030074807,
+          "location": "/work/tarefas?reference_month=2026-08&qa=dispatch",
+          "path": "/api/v1/work/grouped",
+          "query": "?reference_month=2026-08",
+          "routerMonth": "2026-08",
+          "routerPath": "/work/tarefas"
+        }
+      ],
+      "verdict": "reproduced_before_followup_fix_pending_final_artifact",
+      "route": {
+        "path": "/work/tarefas",
+        "search": "?reference_month=2026-08&qa=dispatch",
+        "hash": ""
+      }
+    },
+    {
+      "name": "injected_401_session_clear",
+      "at": "2026-10-26T15:56:24.719085+00:00",
+      "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "injected": true,
+      "protectedTextVisible": false,
+      "actor": null,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/admin/users",
+          "status": "401",
+          "injected": true,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/admin/users",
+          "status": "200",
+          "injected": false,
+          "count": 2
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/registration-status",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "verdict": "actor_cleared_but_two_followup_reads_reproduced_before_admin_fix"
+    },
+    {
+      "name": "stage1_company_authorized",
+      "at": "2026-10-26T15:59:47.514548+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "route": {
+        "path": "/erp/configuracoes/empresa",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "fixed_profile_selector_present",
+      "at": "2026-10-26T16:00:09.934857+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "unknownTag": false,
+      "route": {
+        "path": "/erp/configuracoes/empresa",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "company_adjacent_actual_save",
+      "at": "2026-10-26T16:01:59.640085+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "injected": false,
+      "unknownSelector": false,
+      "dirtyIePreserved": true
+    },
+    {
+      "name": "company_final_queryhash",
+      "at": "2026-10-26T16:02:03.618850+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "sameInput": true,
+      "reads": [],
+      "dirtyIePreserved": true
+    },
+    {
+      "name": "company_real_revision_409",
+      "at": "2026-10-26T16:03:44.146007+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "injected": false,
+      "reads": [
+        {
+          "method": "PATCH",
+          "path": "/api/v1/erp/company/settings",
+          "status": "409",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "dirtyIePreserved": true,
+      "route": {
+        "path": "/erp/configuracoes/empresa",
+        "search": "?qa=profile",
+        "hash": "#review"
+      }
+    },
+    {
+      "name": "company_remote_dirty_conflict",
+      "at": "2026-10-26T16:04:16.426082+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "notice": true,
+      "hasDiscard": true,
+      "dirtyIePreserved": true,
+      "route": {
+        "path": "/erp/configuracoes/empresa",
+        "search": "?qa=profile",
+        "hash": "#review"
+      }
+    },
+    {
+      "name": "company_actual_viewport_320_light",
+      "at": "2026-10-26T16:04:34.637168+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "company": 1,
+        "dark": false,
+        "fieldEnabled": true,
+        "overflow": false,
+        "scrollWidth": 320,
+        "selector": true,
+        "unresolved": false,
+        "width": 320
+      }
+    },
+    {
+      "name": "company_actual_viewport_320_dark",
+      "at": "2026-10-26T16:04:47.043464+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "company": 1,
+        "dark": true,
+        "fieldEnabled": true,
+        "overflow": false,
+        "scrollWidth": 320,
+        "selector": true,
+        "unresolved": false,
+        "width": 320
+      }
+    },
+    {
+      "name": "company_actual_viewport_390_light",
+      "at": "2026-10-26T16:05:06.432082+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "company": 1,
+        "dark": false,
+        "fieldEnabled": true,
+        "overflow": false,
+        "scrollWidth": 390,
+        "selector": true,
+        "unresolved": false,
+        "width": 390
+      }
+    },
+    {
+      "name": "company_actual_viewport_390_dark",
+      "at": "2026-10-26T16:05:26.245053+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "company": 1,
+        "dark": true,
+        "fieldEnabled": true,
+        "overflow": false,
+        "scrollWidth": 390,
+        "selector": true,
+        "unresolved": false,
+        "width": 390
+      }
+    },
+    {
+      "name": "company_actual_viewport_1440_light",
+      "at": "2026-10-26T16:05:45.650529+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "company": 1,
+        "dark": false,
+        "fieldEnabled": true,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "selector": true,
+        "unresolved": false,
+        "width": 1440
+      }
+    },
+    {
+      "name": "company_actual_viewport_1440_dark",
+      "at": "2026-10-26T16:06:11.051263+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "company": 1,
+        "dark": true,
+        "fieldEnabled": true,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "selector": true,
+        "unresolved": false,
+        "width": 1440
+      }
+    }
+  ],
+  "knownFindings": [
+    {
+      "finding": "Unresolved tax-profile selector",
+      "reproducedSource": "36370d2",
+      "fixedAndBrowserVerifiedSource": "a51f4ee",
+      "status": "resolved"
+    },
+    {
+      "finding": "Work outgoing view duplicates month reads",
+      "reproducedSource": "36370d2",
+      "fixReportedSource": "aaafa97",
+      "status": "pending_final_artifact_browser_recheck"
+    },
+    {
+      "finding": "Admin invalidation admits extra reads after injected 401",
+      "reproducedSource": "36370d2",
+      "status": "pending_final_guard_artifact_browser_recheck"
+    }
+  ],
+  "pending": [
+    "Final product artifact source and SHA256",
+    "Work actual router transition read counts after followup fix",
+    "Admin 401 zero followup protected reads after guard fix",
+    "Representative final artifact smoke across affected and unchanged families",
+    "Final browser session cleanup"
+  ],
+  "unverified": [
+    "Live provider delivery and consent",
+    "PostgreSQL concurrency",
+    "Every inventoried route in browser",
+    "Every error state at all six viewport/theme combinations"
+  ]
 }
