@@ -1,6 +1,6 @@
 {
-  "status": "checkpoint_final_artifact_pending",
-  "scope": "Representative real browser acceptance; not all 105 routes or all error states at every viewport.",
+  "status": "final_artifact_browser_acceptance_complete",
+  "scope": "Representative browser acceptance composed across source-bound production artifacts, with final affected-family rechecks; not all 105 routes.",
   "artifacts": [
     {
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
@@ -11,6 +11,11 @@
       "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
       "serverIndexSha256": "ee075118ea0e1d9f857f9160a33bef55992ef6e2beb79bbea3352d7bd37b677f",
       "outputTreeSha256": "f80a2df479969abbb955c0a3d4a81e97399486c80874a3abbf7c600f0dcf3434"
+    },
+    {
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "serverIndexSha256": "ee075118ea0e1d9f857f9160a33bef55992ef6e2beb79bbea3352d7bd37b677f",
+      "outputTreeSha256": "8a4a5d610376999016a729524f78b7cb9203387619244c583603af80fdbd14de"
     }
   ],
   "baseline": [
@@ -286,7 +291,10 @@
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
       "current": [
         "/gestao-erp"
-      ]
+      ],
+      "path": "/gestao-erp",
+      "panelPresent": true,
+      "headerPresent": true
     },
     {
       "name": "commercial_real_nodes/gestao-erp/faturas",
@@ -294,7 +302,14 @@
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
       "current": [
         "/gestao-erp/faturas"
-      ]
+      ],
+      "path": "/gestao-erp/faturas",
+      "document": true,
+      "header": true,
+      "nav": true,
+      "panel": true,
+      "panelPresent": true,
+      "headerPresent": true
     },
     {
       "name": "commercial_real_nodes/gestao-erp/assinaturas",
@@ -302,7 +317,14 @@
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
       "current": [
         "/gestao-erp/assinaturas"
-      ]
+      ],
+      "path": "/gestao-erp/assinaturas",
+      "document": true,
+      "header": true,
+      "nav": true,
+      "panel": true,
+      "panelPresent": true,
+      "headerPresent": true
     },
     {
       "name": "commercial_real_nodes/gestao-erp/planos",
@@ -310,7 +332,14 @@
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
       "current": [
         "/gestao-erp/planos"
-      ]
+      ],
+      "path": "/gestao-erp/planos",
+      "document": true,
+      "header": true,
+      "nav": true,
+      "panel": true,
+      "panelPresent": true,
+      "headerPresent": true
     },
     {
       "name": "commercial_real_nodes/gestao-erp/clientes",
@@ -318,7 +347,14 @@
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
       "current": [
         "/gestao-erp/clientes"
-      ]
+      ],
+      "path": "/gestao-erp/clientes",
+      "document": true,
+      "header": true,
+      "nav": true,
+      "panel": true,
+      "panelPresent": true,
+      "headerPresent": true
     },
     {
       "name": "commercial_real_nodes/gestao-erp/recebimentos",
@@ -326,7 +362,14 @@
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
       "current": [
         "/gestao-erp/recebimentos"
-      ]
+      ],
+      "path": "/gestao-erp/recebimentos",
+      "document": true,
+      "header": true,
+      "nav": true,
+      "panel": true,
+      "panelPresent": true,
+      "headerPresent": true
     },
     {
       "name": "commercial_real_nodes/gestao-erp/configuracoes",
@@ -334,7 +377,14 @@
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
       "current": [
         "/gestao-erp/configuracoes"
-      ]
+      ],
+      "path": "/gestao-erp/configuracoes",
+      "document": true,
+      "header": true,
+      "nav": true,
+      "panel": true,
+      "panelPresent": true,
+      "headerPresent": true
     },
     {
       "name": "commercial_real_nodes/gestao-erp",
@@ -342,7 +392,14 @@
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
       "current": [
         "/gestao-erp"
-      ]
+      ],
+      "path": "/gestao-erp",
+      "document": true,
+      "header": true,
+      "nav": true,
+      "panel": true,
+      "panelPresent": true,
+      "headerPresent": true
     },
     {
       "name": "commercial_real_nodes_back",
@@ -350,7 +407,14 @@
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
       "current": [
         "/gestao-erp/configuracoes"
-      ]
+      ],
+      "path": "/gestao-erp/configuracoes",
+      "document": true,
+      "header": true,
+      "nav": true,
+      "panel": true,
+      "panelPresent": true,
+      "headerPresent": true
     },
     {
       "name": "commercial_real_nodes_forward",
@@ -358,7 +422,14 @@
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
       "current": [
         "/gestao-erp"
-      ]
+      ],
+      "path": "/gestao-erp",
+      "document": true,
+      "header": true,
+      "nav": true,
+      "panel": true,
+      "panelPresent": true,
+      "headerPresent": true
     },
     {
       "name": "dynamic_entity/work/modelos/",
@@ -713,6 +784,7 @@
       "name": "commercial_filter_set",
       "at": "2026-10-26T15:32:50.238898+00:00",
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
+      "path": "/gestao-erp/clientes",
       "reads": [
         {
           "method": "GET",
@@ -2114,7 +2186,8 @@
       "name": "mobile_cross_module_focus",
       "at": "2026-10-26T15:53:21.010662+00:00",
       "source": "36370d295470567cb547518b1e0a6da52eb72abf",
-      "dialog": false
+      "dialog": false,
+      "path": "/erp/vendas"
     },
     {
       "name": "mobile_keyboard_trap",
@@ -2208,7 +2281,7 @@
           "routerPath": "/work/tarefas"
         }
       ],
-      "verdict": "reproduced_before_followup_fix_pending_final_artifact",
+      "verdict": "reproduced_before_fix_resolved_by_final_work_transition_counts",
       "route": {
         "path": "/work/tarefas",
         "search": "?reference_month=2026-08&qa=dispatch",
@@ -2222,6 +2295,7 @@
       "injected": true,
       "protectedTextVisible": false,
       "actor": null,
+      "path": "/login",
       "reads": [
         {
           "method": "GET",
@@ -2407,6 +2481,1261 @@
         "unresolved": false,
         "width": 1440
       }
+    },
+    {
+      "name": "company_actual_named_validation",
+      "at": "2026-10-26T17:26:17.789321+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "fieldInvalid": "true",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/csrf",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "PATCH",
+          "path": "/api/v1/erp/company/settings",
+          "status": "422",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/configuracoes/empresa",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "company_named_feedback_adjacent_save",
+      "at": "2026-10-26T17:26:56.286613+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "invalidIeRetained": true,
+      "fieldInvalid": "true",
+      "namedMessageRetained": true,
+      "reads": [
+        {
+          "method": "PATCH",
+          "path": "/api/v1/erp/company/settings",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/configuracoes/empresa",
+        "search": "",
+        "hash": ""
+      }
+    },
+    {
+      "name": "company_own_exact_save",
+      "at": "2026-10-26T17:27:34.404552+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "code": "01",
+      "rate": "1.6500",
+      "reads": [
+        {
+          "method": "PATCH",
+          "path": "/api/v1/erp/company/settings",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "name": "company_own_exact_reload",
+      "at": "2026-10-26T17:27:46.497286+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "code": "01",
+      "rate": "1.6500"
+    },
+    {
+      "name": "state_matrix_company_denial403_320_light",
+      "at": "2026-10-26T17:31:28.181704+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial403_320_dark",
+      "at": "2026-10-26T17:31:28.385589+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial403_390_light",
+      "at": "2026-10-26T17:31:28.679541+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial403_390_dark",
+      "at": "2026-10-26T17:31:28.901105+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial403_1440_light",
+      "at": "2026-10-26T17:31:29.092316+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial403_1440_dark",
+      "at": "2026-10-26T17:31:29.200582+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial409_320_light",
+      "at": "2026-10-26T17:31:31.708180+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial409_320_dark",
+      "at": "2026-10-26T17:31:31.906888+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial409_390_light",
+      "at": "2026-10-26T17:31:32.296309+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial409_390_dark",
+      "at": "2026-10-26T17:31:32.412175+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial409_1440_light",
+      "at": "2026-10-26T17:31:32.905416+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_company_denial409_1440_dark",
+      "at": "2026-10-26T17:31:33.120812+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient503_320_light",
+      "at": "2026-10-26T17:31:37.048231+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient503_320_dark",
+      "at": "2026-10-26T17:31:37.095779+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient503_390_light",
+      "at": "2026-10-26T17:31:37.390727+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient503_390_dark",
+      "at": "2026-10-26T17:31:37.503803+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient503_1440_light",
+      "at": "2026-10-26T17:31:37.692511+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient503_1440_dark",
+      "at": "2026-10-26T17:31:37.806970+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient_retry_actual200_320_light",
+      "at": "2026-10-26T17:31:39.133868+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient_retry_actual200_320_dark",
+      "at": "2026-10-26T17:31:39.219701+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient_retry_actual200_390_light",
+      "at": "2026-10-26T17:31:39.386217+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient_retry_actual200_390_dark",
+      "at": "2026-10-26T17:31:39.505099+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient_retry_actual200_1440_light",
+      "at": "2026-10-26T17:31:39.805864+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_transient_retry_actual200_1440_dark",
+      "at": "2026-10-26T17:31:39.982131+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_empty_actual200_320_light",
+      "at": "2026-10-26T17:31:46.290867+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_empty_actual200_320_dark",
+      "at": "2026-10-26T17:31:46.331414+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_empty_actual200_390_light",
+      "at": "2026-10-26T17:31:46.411330+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_empty_actual200_390_dark",
+      "at": "2026-10-26T17:31:46.488271+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_empty_actual200_1440_light",
+      "at": "2026-10-26T17:31:46.603710+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_empty_actual200_1440_dark",
+      "at": "2026-10-26T17:31:46.719695+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_missing_certificate_actual404_320_light",
+      "at": "2026-10-26T17:31:49.704672+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_missing_certificate_actual404_320_dark",
+      "at": "2026-10-26T17:31:49.886962+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_missing_certificate_actual404_390_light",
+      "at": "2026-10-26T17:31:50.084899+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_missing_certificate_actual404_390_dark",
+      "at": "2026-10-26T17:31:50.302822+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_missing_certificate_actual404_1440_light",
+      "at": "2026-10-26T17:31:50.608368+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "state_matrix_missing_certificate_actual404_1440_dark",
+      "at": "2026-10-26T17:31:50.785542+00:00",
+      "source": "a51f4ee68853772e8422b84f571edbcf5f80ea3f",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": false,
+      "stateCorrect": true
+    },
+    {
+      "name": "final_work_direct",
+      "at": "2026-10-26T17:33:14.709416+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/account/members/directory",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/grouped",
+          "status": 200,
+          "injected": false,
+          "query": {
+            "reference_month": [
+              "2026-08"
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/tasks/unscoped",
+          "status": 200,
+          "injected": false,
+          "query": {
+            "reference_month": [
+              "2026-08"
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        }
+      ],
+      "route": {
+        "path": "/work/tarefas",
+        "search": "?reference_month=2026-08&qa=final",
+        "hash": ""
+      }
+    },
+    {
+      "name": "final_work_to_clients",
+      "at": "2026-10-26T17:33:19.488297+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/work/grouped",
+          "status": 200,
+          "injected": false,
+          "query": {
+            "reference_month": [
+              "2026-09"
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        }
+      ],
+      "route": {
+        "path": "/work/clientes",
+        "search": "?reference_month=2026-09&qa=final",
+        "hash": ""
+      }
+    },
+    {
+      "name": "final_work_back_tasks",
+      "at": "2026-10-26T17:33:26.680253+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/work/grouped",
+          "status": 200,
+          "injected": false,
+          "query": {
+            "reference_month": [
+              "2026-08"
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/tasks/unscoped",
+          "status": 200,
+          "injected": false,
+          "query": {
+            "reference_month": [
+              "2026-08"
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        }
+      ],
+      "route": {
+        "path": "/work/tarefas",
+        "search": "?reference_month=2026-08&qa=final",
+        "hash": ""
+      }
+    },
+    {
+      "name": "final_work_normalization/work/tarefas?qa=final",
+      "at": "2026-10-26T17:33:38.689443+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/account/members/directory",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/grouped",
+          "status": 200,
+          "injected": false,
+          "query": {
+            "reference_month": [
+              "2026-10"
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/tasks/unscoped",
+          "status": 200,
+          "injected": false,
+          "query": {
+            "reference_month": [
+              "2026-10"
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        }
+      ],
+      "finalSearch": "?qa=final&reference_month=2026-10",
+      "monthChangingReplacements": [
+        {
+          "method": "replaceState",
+          "path": "/work/tarefas",
+          "query": "?qa=final&reference_month=2026-10"
+        }
+      ],
+      "route": {
+        "path": "/work/tarefas",
+        "search": "?qa=final&reference_month=2026-10",
+        "hash": ""
+      }
+    },
+    {
+      "name": "final_work_normalization/work/clientes?reference_month=invalid&qa=final",
+      "at": "2026-10-26T17:33:50.602504+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/account/members/directory",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/work/grouped",
+          "status": 200,
+          "injected": false,
+          "query": {
+            "reference_month": [
+              "2026-10"
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        }
+      ],
+      "finalSearch": "?reference_month=2026-10&qa=final",
+      "monthChangingReplacements": [
+        {
+          "method": "replaceState",
+          "path": "/work/clientes",
+          "query": "?reference_month=2026-10&qa=final"
+        }
+      ],
+      "route": {
+        "path": "/work/clientes",
+        "search": "?reference_month=2026-10&qa=final",
+        "hash": ""
+      }
+    },
+    {
+      "name": "final_direct_smoke/monitoring",
+      "at": "2026-10-26T17:34:01.502468+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/serpro/monitoring/overview",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": [
+          "serpro-monitoring-overview"
+        ],
+        "monitoring": {
+          "portfolio_total": 2,
+          "attentionKeys": 16
+        }
+      },
+      "route": {
+        "path": "/monitoring",
+        "search": "",
+        "hash": ""
+      },
+      "browserReads": []
+    },
+    {
+      "name": "final_direct_smoke/customers/empresa/2",
+      "at": "2026-10-26T17:34:13.794785+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/clients/2",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/clients/2/dispatch-contacts",
+          "status": "404",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": []
+      },
+      "route": {
+        "path": "/customers/empresa/2",
+        "search": "",
+        "hash": ""
+      },
+      "browserReads": []
+    },
+    {
+      "name": "final_direct_smoke/work/modelos/2",
+      "at": "2026-10-26T17:34:26.783014+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/account/members/directory",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/process-templates/2",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/tags",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/departments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/process-templates/2/preview",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "hydration": {
+        "serverRendered": true,
+        "hydrating": false,
+        "errorKeys": [],
+        "dataKeys": []
+      },
+      "route": {
+        "path": "/work/modelos/2",
+        "search": "",
+        "hash": ""
+      },
+      "browserReads": []
+    },
+    {
+      "name": "final_commercial_nodes",
+      "at": "2026-10-26T17:34:35.897527+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "current": [
+        "/gestao-erp/faturas"
+      ],
+      "path": "/gestao-erp/faturas",
+      "panelPresent": true,
+      "headerPresent": true
+    },
+    {
+      "name": "final_commercial_transition",
+      "at": "2026-10-26T17:34:41.283431+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "current": [
+        "/gestao-erp/assinaturas"
+      ],
+      "path": "/gestao-erp/assinaturas",
+      "document": true,
+      "header": true,
+      "nav": true,
+      "panel": true,
+      "panelPresent": true,
+      "headerPresent": true
+    },
+    {
+      "name": "final_configuration_coalescing",
+      "at": "2026-10-26T17:34:46.580049+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "identity": {
+        "current": [
+          "/gestao-erp/configuracoes"
+        ],
+        "document": true,
+        "header": true,
+        "headerPresent": true,
+        "nav": true,
+        "panel": true,
+        "panelPresent": true,
+        "path": "/gestao-erp/configuracoes"
+      },
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/context",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/settings",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp-commercial/trial-link",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ]
+    },
+    {
+      "name": "final_admin_401",
+      "at": "2026-10-26T17:34:58.883096+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "injected": true,
+      "protectedTextVisible": false,
+      "actor": null,
+      "path": "/login",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/admin/users",
+          "status": 401,
+          "injected": true,
+          "query": {
+            "page": [
+              "1"
+            ],
+            "q": [
+              "final expired"
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/registration-status",
+          "status": 200,
+          "injected": false,
+          "query": {}
+        }
+      ]
+    },
+    {
+      "name": "final_login_401_320_light",
+      "at": "2026-10-26T17:36:10.602426+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "final_login_401_320_dark",
+      "at": "2026-10-26T17:36:11.104525+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "final_login_401_390_light",
+      "at": "2026-10-26T17:36:11.702668+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "final_login_401_390_dark",
+      "at": "2026-10-26T17:36:12.289802+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "final_login_401_1440_light",
+      "at": "2026-10-26T17:36:13.097941+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "geometry": {
+        "dark": false,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "final_login_401_1440_dark",
+      "at": "2026-10-26T17:36:14.082179+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "geometry": {
+        "dark": true,
+        "overflow": false,
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "injected": true,
+      "stateCorrect": true
+    },
+    {
+      "name": "final_company_selector_draft",
+      "at": "2026-10-26T17:36:58.996580+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "sameInput": true,
+      "draftPresent": true,
+      "enabledInputs": 27,
+      "unknownTag": false,
+      "selector": true,
+      "reads": []
+    },
+    {
+      "name": "final_valid_operational/erp/compras#returns",
+      "at": "2026-10-26T17:38:01.299810+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/contacts",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/establishments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/units",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/purchase-returns",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/compras",
+        "search": "",
+        "hash": "#returns"
+      }
+    },
+    {
+      "name": "final_valid_operational/erp/vendas#orders",
+      "at": "2026-10-26T17:38:15.006609+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/orders",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/establishments",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/contacts",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/units",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/erp/tax-settings/operation-natures",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        }
+      ],
+      "route": {
+        "path": "/erp/vendas",
+        "search": "",
+        "hash": "#orders"
+      }
+    },
+    {
+      "name": "final_actual_logout_unauthenticated",
+      "at": "2026-10-26T17:38:57.685906+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "injected": false,
+      "actor": null,
+      "path": "/login",
+      "status": 401,
+      "reads": [
+        {
+          "method": "GET",
+          "path": "/api/v1/csrf",
+          "status": "200",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/logout",
+          "status": "204",
+          "injected": false,
+          "count": 1
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/me",
+          "status": "401",
+          "injected": false,
+          "count": 2
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/registration-status",
+          "status": "200",
+          "injected": false,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "final_cleanup",
+      "at": "2026-10-26T17:39:00.207601+00:00",
+      "source": "3948e62f7ec7337c8aa6b8d8d60465e07eec2ad5",
+      "browserSessionClosed": true,
+      "injectionControlsEmpty": true
     }
   ],
   "knownFindings": [
@@ -2419,26 +3748,22 @@
     {
       "finding": "Work outgoing view duplicates month reads",
       "reproducedSource": "36370d2",
-      "fixReportedSource": "aaafa97",
-      "status": "pending_final_artifact_browser_recheck"
+      "fixedAndBrowserVerifiedSource": "3948e62",
+      "status": "resolved"
     },
     {
       "finding": "Admin invalidation admits extra reads after injected 401",
       "reproducedSource": "36370d2",
-      "status": "pending_final_guard_artifact_browser_recheck"
+      "fixedAndBrowserVerifiedSource": "3948e62",
+      "status": "resolved"
     }
   ],
-  "pending": [
-    "Final product artifact source and SHA256",
-    "Work actual router transition read counts after followup fix",
-    "Admin 401 zero followup protected reads after guard fix",
-    "Representative final artifact smoke across affected and unchanged families",
-    "Final browser session cleanup"
-  ],
+  "pending": [],
   "unverified": [
     "Live provider delivery and consent",
     "PostgreSQL concurrency",
     "Every inventoried route in browser",
-    "Every error state at all six viewport/theme combinations"
+    "Every possible error state at all six viewport/theme combinations",
+    "Actual backend session revocation following injected read401"
   ]
 }
