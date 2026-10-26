@@ -25,6 +25,7 @@ const canSave = computed(() => settings.canWrite.value
 
 let hydratedAuthority: string | null = null
 let draftInitialized = false
+let baselineProfileId: number | null = null
 
 function clearFeedback() {
   loadError.value = ''
@@ -38,6 +39,7 @@ function clearFeedback() {
 watch([settings.authorityKey, settings.canRead, settings.canWrite], ([authority, canRead, canWrite]) => {
   hydratedAuthority = authority
   draftInitialized = false
+  baselineProfileId = null
   selectedProfileId.value = null
   selectedProfileValid.value = false
   savePending.value = false
@@ -45,14 +47,22 @@ watch([settings.authorityKey, settings.canRead, settings.canWrite], ([authority,
   clearFeedback()
   if ((canRead || canWrite) && settings.state.value) {
     selectedProfileId.value = currentProfileId.value
+    baselineProfileId = currentProfileId.value
     draftInitialized = true
   }
 }, { flush: 'sync', immediate: true })
 
 watch(settings.state, (state) => {
-  if (!state || draftInitialized || hydratedAuthority !== settings.authorityKey.value)
+  if (!state || !settings.canRead.value || hydratedAuthority !== settings.authorityKey.value)
     return
-  selectedProfileId.value = currentProfileId.value
+  const current = currentProfileId.value
+  if (!draftInitialized || selectedProfileId.value === baselineProfileId || selectedProfileId.value === current) {
+    selectedProfileId.value = current
+  } else if (current !== baselineProfileId) {
+    reviewConflict.value = true
+    reviewNotice.value = 'O padrão tributário foi atualizado. Sua escolha em rascunho foi mantida.'
+  }
+  baselineProfileId = current
   loadError.value = ''
   draftInitialized = true
 }, { flush: 'sync', immediate: true })
@@ -69,10 +79,12 @@ watch(selectedProfileId, (id, previous) => {
 
 onMounted(async () => {
   if (!settings.state.value && settings.canRead.value && !settings.pending.value) {
+    const authority = settings.authorityKey.value
     try {
       await settings.refresh()
     } catch {
-      loadError.value = 'Não foi possível carregar o perfil padrão da empresa.'
+      if (authority === settings.authorityKey.value && settings.canRead.value)
+        loadError.value = 'Não foi possível carregar o perfil padrão da empresa.'
     }
   }
 })
@@ -88,17 +100,23 @@ async function saveDefault() {
     return
 
   const authority = settings.authorityKey.value
+  const submitted = selectedProfileId.value
   saveError.value = ''
   reviewNotice.value = ''
   fieldErrors.value = {}
   savePending.value = true
   try {
     const response = await settings.save({
-      default_product_tax_profile_id: selectedProfileId.value,
+      default_product_tax_profile_id: submitted,
       expected_tax_default_revision: current.tax_default_revision ?? 0
     })
     if (!response || authority !== settings.authorityKey.value || !settings.canWrite.value)
       return
+    if (selectedProfileId.value === submitted)
+      selectedProfileId.value = currentProfileId.value
+    baselineProfileId = currentProfileId.value
+    reviewConflict.value = false
+    reviewNotice.value = ''
   } catch (failure) {
     if (authority !== settings.authorityKey.value || !settings.canWrite.value)
       return
@@ -141,10 +159,12 @@ async function refreshSettings() {
   if (!settings.canRead.value || settings.pending.value)
     return
   loadError.value = ''
+  const authority = settings.authorityKey.value
   try {
     await settings.refresh()
   } catch {
-    loadError.value = 'Não foi possível carregar o perfil padrão da empresa.'
+    if (authority === settings.authorityKey.value && settings.canRead.value)
+      loadError.value = 'Não foi possível carregar o perfil padrão da empresa.'
   }
 }
 </script>

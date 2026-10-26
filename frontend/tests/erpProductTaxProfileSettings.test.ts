@@ -11,12 +11,12 @@ function walk(root: TreeNode): TreeNode[] {
   return [root, ...root.children.flatMap(walk)]
 }
 
-function mountDefaultProfile(options: { initialProfileId: number | null, revision: number, rejectSaveCount?: number, failRefreshCount?: number }) {
+function mountDefaultProfile(options: { initialProfileId: number | null, revision: number, rejectSaveCount?: number, failRefreshCount?: number, canonicalProfileId?: number }) {
   const state = Vue.ref<Record<string, unknown> | null>({ default_product_tax_profile_id: options.initialProfileId, tax_default_revision: options.revision })
   const pending = Vue.ref(false)
   const authorityKey = Vue.ref('account-1:company-41:session-1')
-  const canRead = Vue.computed(() => true)
-  const canWrite = Vue.computed(() => true)
+  const canRead = Vue.ref(true)
+  const canWrite = Vue.ref(true)
   const saves: Record<string, unknown>[] = []
   let refreshCount = 0
   let successfulRefreshCount = 0
@@ -36,7 +36,7 @@ function mountDefaultProfile(options: { initialProfileId: number | null, revisio
         throw { status: 409, data: { code: 'product_tax_default_changed', message: 'O padrão tributário mudou. Revise a configuração novamente.' } }
       state.value = {
         ...state.value,
-        default_product_tax_profile_id: patch.default_product_tax_profile_id,
+        default_product_tax_profile_id: options.canonicalProfileId ?? patch.default_product_tax_profile_id,
         tax_default_revision: Number(state.value?.tax_default_revision ?? 0) + 1
       }
       return { data: state.value, meta: {} }
@@ -114,6 +114,9 @@ function mountDefaultProfile(options: { initialProfileId: number | null, revisio
   return {
     root,
     state,
+    authorityKey,
+    canRead,
+    canWrite,
     saves,
     refreshCount: () => refreshCount,
     unmount: () => app.unmount(),
@@ -170,6 +173,51 @@ describe('ERP company product tax profile default settings integration', () => {
     await form.save()
     assert.deepEqual(form.saves, [{ default_product_tax_profile_id: 24, expected_tax_default_revision: 5 }])
     assert.equal(form.state.value?.tax_default_revision, 6)
+  })
+
+  it('reconciles an untouched default after a same-company remote change', async (t) => {
+    const form = mountDefaultProfile({ initialProfileId: null, revision: 5 })
+    t.after(form.unmount)
+    form.state.value = { default_product_tax_profile_id: 12, tax_default_revision: 6 }
+    await Vue.nextTick()
+    assert.equal(form.selected(), 12)
+    assert.deepEqual(form.saves, [])
+    assert.doesNotMatch(form.text(), /Esta escolha está em rascunho/)
+  })
+
+  it('accepts its canonical save response and advances the selection baseline', async (t) => {
+    const form = mountDefaultProfile({ initialProfileId: null, revision: 5, canonicalProfileId: 12 })
+    t.after(form.unmount)
+    await form.chooseProfile('24')
+    await form.save()
+    assert.equal(form.selected(), 12)
+    assert.doesNotMatch(form.text(), /Esta escolha está em rascunho|Revise a configuração atual/)
+    form.state.value = { default_product_tax_profile_id: null, tax_default_revision: 7 }
+    await Vue.nextTick()
+    assert.equal(form.selected(), '')
+  })
+
+  it('keeps an adjacent-update draft and requires explicit review for a changed default', async (t) => {
+    const form = mountDefaultProfile({ initialProfileId: null, revision: 5 })
+    t.after(form.unmount)
+    await form.chooseProfile('24')
+    form.state.value = { ...form.state.value, name: 'Empresa atualizada' }
+    await Vue.nextTick()
+    assert.equal(form.selected(), 24)
+    assert.doesNotMatch(form.text(), /Revise a configuração atual/)
+    form.state.value = { ...form.state.value, default_product_tax_profile_id: 12, tax_default_revision: 6 }
+    await Vue.nextTick()
+    assert.equal(form.selected(), 24)
+    assert.match(form.text(), /Revise a configuração atual/)
+    await form.click('Salvar perfil padrão')
+    assert.deepEqual(form.saves, [], 'a remote conflict blocks submission until explicit review')
+    await form.click('Recarregar e revisar')
+    assert.equal(form.selected(), 24)
+    await form.save()
+    assert.equal(form.saves[0]?.expected_tax_default_revision, 6)
+    form.state.value = { ...form.state.value, default_product_tax_profile_id: 12, tax_default_revision: 8 }
+    await Vue.nextTick()
+    assert.equal(form.selected(), 12, 'own success advances the baseline for later untouched remote values')
   })
 
   it('preserves the draft profile choice and reports a stale revision conflict', async (t) => {
