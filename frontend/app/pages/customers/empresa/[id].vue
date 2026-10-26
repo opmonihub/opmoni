@@ -20,8 +20,6 @@ import {
 
 definePageMeta({ middleware: 'auth' })
 
-const readLifecycle = useOfficeReadLifecycle()
-
 const route = useRoute()
 const toast = useToast()
 const { canManageClients } = useAuth()
@@ -75,12 +73,11 @@ watch(readAuthority, () => {
   confirmedClient.value = null
 }, { flush: 'sync' })
 const clientReadKey = computed(() => `client-detail-${readAuthority.value}-${activeId.value}`)
-const { data: client, status: clientStatus, error: clientError, refresh: refreshClient, clear: clearOffice0 } = await useAsyncData<Client | null>(
+const { data: client, status: clientStatus, error: clientError, refresh: refreshClient } = await useAsyncData<Client | null>(
   clientReadKey,
   (_nuxtApp, { signal }) => show(activeId.value, { signal }),
   { default: () => confirmedClient.value, getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined }
 )
-readLifecycle.own({ clear: clearOffice0, refresh: refreshClient })
 if (clientError.value) throw createError({ statusCode: 404, statusMessage: 'Cliente não encontrado' })
 const loading = computed(() => clientStatus.value === 'pending')
 watch(readAuthority, () => {
@@ -515,7 +512,7 @@ watch(readAuthority, () => {
   confirmedContacts.value = []
 }, { flush: 'sync' })
 const contactsReadKey = computed(() => `client-dispatch-contacts-${readAuthority.value}-${activeId.value}`)
-const { data: dispatchContacts, status: contactsStatus, error: contactsError, refresh: loadDispatchContacts, clear: clearOffice1 } = await useAsyncData<ClientDispatchContact[]>(
+const { data: dispatchContacts, status: contactsStatus, error: contactsError, refresh: loadDispatchContacts } = await useAsyncData<ClientDispatchContact[]>(
   contactsReadKey,
   async (_nuxtApp, { signal }) => {
     try {
@@ -528,7 +525,6 @@ const { data: dispatchContacts, status: contactsStatus, error: contactsError, re
   },
   { default: () => confirmedContacts.value, getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined }
 )
-readLifecycle.own({ clear: clearOffice1, refresh: loadDispatchContacts })
 watch(dispatchContacts, (value) => {
   confirmedContacts.value = value
 }, { immediate: true, flush: 'sync' })
