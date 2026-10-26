@@ -438,6 +438,12 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
 
         self::assertSame(201, $trialResult['status']);
         self::assertSame(201, $legacyResult['status']);
+        self::assertIsInt($trialResult['test_lock_order']['catalog_advisory_sequence']);
+        self::assertIsInt($trialResult['test_lock_order']['technical_plan_for_update_sequence']);
+        self::assertLessThan(
+            $trialResult['test_lock_order']['technical_plan_for_update_sequence'],
+            $trialResult['test_lock_order']['catalog_advisory_sequence'],
+        );
         self::assertSame((int) $basicPlan->id, $legacyResult['plan_id']);
         self::assertSame(1, DB::table('erp_subscription_trials')->where('cnpj', $trialCnpj)->count());
         self::assertSame(1, DB::table('erp_companies')->where('cnpj', $trialCnpj)->count());
@@ -502,6 +508,12 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
 
         self::assertSame(201, $trialResult['status']);
         self::assertSame(201, $enrollmentResult['status']);
+        self::assertIsInt($trialResult['test_lock_order']['catalog_advisory_sequence']);
+        self::assertIsInt($trialResult['test_lock_order']['technical_plan_for_update_sequence']);
+        self::assertLessThan(
+            $trialResult['test_lock_order']['technical_plan_for_update_sequence'],
+            $trialResult['test_lock_order']['catalog_advisory_sequence'],
+        );
         self::assertSame((int) $technicalPlan->id, (int) DB::table('erp_subscriptions')
             ->where('erp_company_id', DB::table('erp_companies')->where('cnpj', $trialCnpj)->value('id'))
             ->value('erp_plan_id'));
@@ -698,7 +710,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $contractId = (int) $subscription->office_erp_contract_id;
         $allocation = DB::table('office_erp_licence_allocations')->where('contract_id', $contractId)->firstOrFail();
         $endsAt = CarbonImmutable::parse($trial->ends_at);
-        $conversionAt = $endsAt->subSeconds(1);
+        $conversionAt = $endsAt->subMicroseconds(1);
         $expiryNow = $endsAt->addSecond();
         $terms = [
             'erp_plan_id' => $trialLink['plan_id'],

@@ -62,6 +62,25 @@ final class OfficeErpCommercialConcurrencyWorker
 
         $request = Request::create('http://localhost:3000');
         app()->instance('request', $request);
+        $querySequence = 0;
+        $catalogAdvisorySequence = null;
+        $technicalPlanLockSequence = null;
+        if ($input['action'] === 'trial_register') {
+            DB::listen(function (QueryExecuted $query) use (&$querySequence, &$catalogAdvisorySequence, &$technicalPlanLockSequence): void {
+                $sequence = ++$querySequence;
+                $sql = strtolower($query->sql);
+                if ($catalogAdvisorySequence === null
+                    && str_contains($sql, 'pg_advisory_xact_lock')
+                    && str_contains(strtolower(json_encode($query->bindings, JSON_THROW_ON_ERROR)), 'erp-commercial-catalog')) {
+                    $catalogAdvisorySequence = $sequence;
+                }
+                if ($technicalPlanLockSequence === null
+                    && str_contains($sql, 'from "erp_plans"')
+                    && str_contains($sql, 'for update')) {
+                    $technicalPlanLockSequence = $sequence;
+                }
+            });
+        }
         if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'owner_setup_accept', 'owner_setup_issue', 'remove_allowance', 'cancel_contract', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'trial_convert', 'erp_register', 'customer_enroll'], true)) {
             throw new RuntimeException('Unsupported action in the accepted commercial race subset: '.$input['action']);
         }
@@ -373,6 +392,13 @@ final class OfficeErpCommercialConcurrencyWorker
         $accessLock = $request->attributes->get('access.session_lock');
         if (is_object($accessLock) && method_exists($accessLock, 'release')) {
             $accessLock->release();
+        }
+
+        if ($input['action'] === 'trial_register') {
+            $result['test_lock_order'] = [
+                'catalog_advisory_sequence' => $catalogAdvisorySequence,
+                'technical_plan_for_update_sequence' => $technicalPlanLockSequence,
+            ];
         }
 
         echo json_encode([
