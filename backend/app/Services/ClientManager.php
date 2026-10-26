@@ -48,29 +48,72 @@ class ClientManager
     public function create(Account $account, array $data): Client
     {
         PlanLimits::assertCanCreate($account, 'clients');
-
         // A consulta à Receita sai antes de abrir a transação: nenhuma trava de
         // linha fica presa enquanto o provedor responde, e uma falha não deixa
         // escrita nenhuma pela metade.
-        $companyPayload = $data['person_type'] === ClientPersonType::Company->value
-            ? $this->lookupCompany($data['tax_id'])
-            : null;
+        $prepared = $data['person_type'] === ClientPersonType::Company->value
+            ? $this->prepareCompanyRegistration($data)
+            : ['data' => $data, 'company_payload' => null];
 
-        return DB::transaction(function () use ($account, $data, $companyPayload): Client {
+        return $this->persistPreparedRegistration($account, $prepared, true);
+    }
+
+    /**
+     * Resolve required official CNPJ data before opening a caller's aggregate transaction.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{data: array<string, mixed>, company_payload: array<string, mixed>|null}
+     */
+    public function prepareCompanyRegistration(array $data): array
+    {
+        if (($data['person_type'] ?? null) !== ClientPersonType::Company->value) {
+            throw ValidationException::withMessages(['person_type' => 'O cadastro ERP exige uma pessoa jurídica.']);
+        }
+
+        return [
+            'data' => $data,
+            'company_payload' => $this->lookupCompany((string) ($data['tax_id'] ?? '')),
+        ];
+    }
+
+    /**
+     * Persist a company registration prepared before the caller acquired aggregate locks.
+     * Existing office Clients are deliberately never restored or silently reused here.
+     *
+     * @param  array{data: array<string, mixed>, company_payload: array<string, mixed>|null}  $prepared
+     */
+    public function createPreparedCompany(Account $account, array $prepared): Client
+    {
+        abort_unless(($prepared['data']['person_type'] ?? null) === ClientPersonType::Company->value, 422);
+
+        return $this->persistPreparedRegistration($account, $prepared, false);
+    }
+
+    /** @param array{data: array<string,mixed>,company_payload: array<string,mixed>|null} $prepared */
+    private function persistPreparedRegistration(Account $account, array $prepared, bool $restoreArchived): Client
+    {
+        $data = $prepared['data'];
+        $companyPayload = $prepared['company_payload'];
+        PlanLimits::assertCanCreate($account, 'clients');
+
+        return DB::transaction(function () use ($account, $data, $companyPayload, $restoreArchived): Client {
             $existing = Client::withoutGlobalScopes()
                 ->withTrashed()
                 ->where('account_id', $account->getKey())
                 ->where('tax_id', $data['tax_id'])
                 ->lockForUpdate()
                 ->first();
-
             $attributes = $this->attributesFor($data, $companyPayload);
 
             if ($existing !== null && ! $existing->trashed()) {
+                if (! $restoreArchived) {
+                    abort(409, 'client_association_required');
+                }
+
                 throw ValidationException::withMessages(['tax_id' => 'Este CPF/CNPJ já está cadastrado nesta carteira.']);
             }
-
             if ($existing !== null) {
+                abort_unless($restoreArchived, 409, 'client_association_required');
                 $existing->restore();
                 $existing->fill($attributes)->save();
 
