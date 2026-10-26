@@ -11,6 +11,7 @@ import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelTableUi }
 definePageMeta({
   middleware: ['auth', 'super-admin']
 })
+const adminReadAllowed = useAdminReadAllowed()
 const { $api } = useNuxtApp()
 const toast = useToast()
 const plans = ref<Plan[]>([])
@@ -56,6 +57,8 @@ const { isLoading, showError, retry } = useRetryableLoad({
 const runLatestLoad = createLatestRequestRunner()
 onBeforeUnmount(runLatestLoad.invalidate)
 function load() {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   loading.value = true
   loadError.value = null
   return runLatestLoad(signal => $api<Plan[]>('/admin/plans', { signal }), {

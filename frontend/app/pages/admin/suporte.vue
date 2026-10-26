@@ -18,6 +18,7 @@ const ACTION_META: Record<string, {
   update: { label: 'Edição', color: 'warning' },
   delete: { label: 'Exclusão', color: 'error' }
 }
+const adminReadAllowed = useAdminReadAllowed()
 const { $api } = useNuxtApp()
 const toast = useToast()
 const { accounts, switchAccount } = useAuth()
@@ -115,6 +116,8 @@ function search() {
   return loadSearch()
 }
 function loadSearch() {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   const term = appliedQuery.value
   searchError.value = null
   if (!term) {
@@ -173,6 +176,8 @@ const { showError: showLogsError, retry: retryLogs } = useRetryableLoad({
   refreshErrorTitle: 'Não foi possível atualizar os logs'
 })
 async function loadLogs() {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   loadLogsError.value = null
   if (accountQuery.value.trim() && !logsAccountId.value) {
     runLogs.invalidate()

@@ -11,6 +11,7 @@ import { apiFailure } from '#shared/utils/access'
 
 const { user, accounts, switchAccount } = useAuth()
 const switching = ref(false)
+const adminReadAllowed = useAdminReadAllowed()
 const { api } = useAccessApi()
 const readAuthority = useAdminReadAuthority(invalidateAuthority)
 const { q, status, page, filter, clearFilters } = useAccountFilters(load, readAuthority)
@@ -77,6 +78,8 @@ const runList = createLatestRequestRunner()
 const runDetail = createLatestRequestRunner()
 let operationId = 0
 async function load() {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   if (!user.value?.is_super_admin)
     return
   loading.value = true
@@ -100,6 +103,8 @@ async function load() {
 }
 
 async function begin(action: typeof mode.value, account?: ExtendedPlatformAccount) {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   if (busy.value)
     return
   const version = ++operationId

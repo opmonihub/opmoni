@@ -18,6 +18,7 @@ const ACTION_META: Record<string, {
   update: { label: 'Edição', color: 'warning' },
   delete: { label: 'Exclusão', color: 'error' }
 }
+const adminReadAllowed = useAdminReadAllowed()
 const { $api } = useNuxtApp()
 const runLatestLoad = createLatestRequestRunner()
 onBeforeUnmount(runLatestLoad.invalidate)
@@ -56,6 +57,8 @@ const { isLoading, showError, retry } = useRetryableLoad({
   refreshErrorTitle: 'Não foi possível atualizar o resumo'
 })
 function load() {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   loading.value = true
   loadError.value = null
   return runLatestLoad(signal => $api<DetailResponse<AdminSummary>>('/admin/summary', { signal }), {

@@ -46,7 +46,7 @@ async function page(request: (path: string, options?: Runtime) => Promise<Runtim
     useRequestFetch: () => request, useRequestEvent: () => undefined,
     useState: (key: string, initial: () => unknown) => {
       if (!states.has(key))
-        states.set(key, Vue.ref(key === 'access-csrf' ? 'test-csrf' : initial()))
+        states.set(key, Vue.ref(key === 'access-csrf' ? 'test-csrf' : key === 'access-user' ? { id: 1, is_super_admin: true, accounts: [], current_account: null, companies: [], current_company: null } : initial()))
       return states.get(key)
     }, useNuxtApp: () => nuxtApp
 
@@ -71,7 +71,7 @@ async function page(request: (path: string, options?: Runtime) => Promise<Runtim
     return exports
   }
   Object.assign(globals, evaluate(readFileSync(new URL('../app/composables/useListNavigationState.ts', import.meta.url), 'utf8')))
-  globals.useAdminReadAuthority = evaluate(readFileSync(new URL('../app/composables/useAdminReadAuthority.ts', import.meta.url), 'utf8')).useAdminReadAuthority
+  Object.assign(globals, evaluate(readFileSync(new URL('../app/composables/useAdminReadAuthority.ts', import.meta.url), 'utf8')))
   globals.useAccessApi = evaluate(readFileSync(new URL('../app/composables/useAccessApi.ts', import.meta.url), 'utf8')).useAccessApi
   nuxtApp.$api = globals.useAccessApi().api
   globals.useSerpro = evaluate(readFileSync(new URL('../app/composables/useSerpro.ts', import.meta.url), 'utf8')).useSerpro
@@ -575,3 +575,29 @@ it('Admin SERPRO revalidates the same mounted route after authority loss and acc
   assert.equal(view.state.editing.value, false)
   view.stop()
 })
+
+for (const loss of ['actor', 'super-admin'])
+  it(`Admin SERPRO suppresses every GET after ${loss} loss and revalidates once after recovery`, async () => {
+    const states = new Map()
+    const calls: string[] = []
+    const view = await page(async (path) => {
+      calls.push(path)
+      return standard(path)
+    }, states)
+    await view.start()
+    const actor = states.get('access-user').value
+    calls.length = 0
+    states.get('access-user').value = loss === 'actor' ? null : { ...actor, is_super_admin: false }
+    await flush()
+    await flush()
+    await view.state.load()
+    await view.state.loadAccounts()
+    await view.state.selectAccount(27)
+    assert.deepEqual(calls, [])
+    assert.equal(view.state.metadata.value, null)
+    assert.deepEqual(view.state.accountResults.value, [])
+    states.get('access-user').value = actor
+    for (let attempt = 0; attempt < 12; attempt++) await flush()
+    assert.deepEqual(calls, ['/api/v1/serpro/connection'])
+    view.stop()
+  })

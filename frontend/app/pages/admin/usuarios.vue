@@ -8,6 +8,7 @@ import { adminListNavigationOptions, adminListParams, createLatestRequestRunner,
 definePageMeta({
   middleware: ['auth', 'super-admin']
 })
+const adminReadAllowed = useAdminReadAllowed()
 const { $api } = useNuxtApp()
 const users = ref<PlatformUser[]>([])
 const total = ref(0)
@@ -51,6 +52,8 @@ const { isLoading, showError, retry } = useRetryableLoad({
   refreshErrorTitle: 'Não foi possível atualizar os usuários'
 })
 function load() {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   loading.value = true
   loadError.value = null
   return runLatestLoad(signal => $api<ResourceListResponse<PlatformUser>>('/admin/users', { params: listParams.value, signal }), {

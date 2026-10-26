@@ -15,6 +15,7 @@ import {
 
 // The parent Admin route owns authorization; all reads here are safe metadata only.
 const toast = useToast()
+const adminReadAllowed = useAdminReadAllowed()
 const { $api } = useNuxtApp()
 const { connection, saveConnection, testConnectivity, contractingCertificate, uploadContractingCertificate } = useSerpro()
 const metadata = ref<SerproConnectionMetadata | null>(null)
@@ -154,6 +155,8 @@ function cancelEditing() {
   resetForm()
 }
 function load() {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   if (submitting.value || testing.value)
     return
   runDiagnostic.invalidate()
@@ -175,6 +178,8 @@ function load() {
   })
 }
 function loadAccounts() {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   if (busy.value)
     return
   catalogLoading.value = true
@@ -211,6 +216,8 @@ function searchAccounts() {
   return loadAccounts()
 }
 function selectAccount(id: number) {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   if (busy.value || (sourceLoading.value && sourceAccountId.value === id))
     return
   sourceAccountId.value = id
