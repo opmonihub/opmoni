@@ -56,7 +56,7 @@ export function useListNavigationState<T extends { [K in keyof T]: ListNavigatio
   options: ListNavigationOptions<T>
 ): Ref<T> {
   const { current } = useListNavigationRegistry()
-  const normalize = (value: unknown): T => {
+  const normalize = (value: unknown, previous?: Record<string, ListNavigationValue>): T => {
     const normalized = options.normalize(value)
     const result: Record<string, ListNavigationValue> = {}
     // Defaults define the allowlist; the codec validates the supported values.
@@ -64,7 +64,11 @@ export function useListNavigationState<T extends { [K in keyof T]: ListNavigatio
       const value = normalized[field as keyof T]
       const primitive = (entry: unknown): entry is NavigationPrimitive => entry === null || typeof entry === 'string' || typeof entry === 'boolean' || (typeof entry === 'number' && Number.isFinite(entry))
       if (primitive(value)) result[field] = value
-      else if (Array.isArray(value) && value.every(primitive)) result[field] = [...value]
+      else if (Array.isArray(value) && value.every(primitive)) {
+        const prior = previous?.[field]
+        // Field lenses must not announce a filter change when only the page changed.
+        result[field] = Array.isArray(prior) && prior.length === value.length && value.every((item, index) => item === prior[index]) ? prior : [...value]
+      }
     }
     return result as T
   }
@@ -75,10 +79,13 @@ export function useListNavigationState<T extends { [K in keyof T]: ListNavigatio
     return registry.lists[key]!
   }
   const remembered = entry()
-  remembered.value = normalize(remembered.value)
+  remembered.value = normalize(remembered.value, remembered.value)
   const state = computed<T>({
     get: () => entry().value as T,
-    set: (value) => { entry().value = normalize(value) }
+    set: (value) => {
+      const stored = entry()
+      stored.value = normalize(value, stored.value)
+    }
   })
   watch(state, (value) => {
     const safe = normalize(value)
