@@ -1,0 +1,24 @@
+## MODIFIED Requirements
+
+### Requirement: Tenant client CRUD and validation
+The system SHALL provide client listing, detail, creation, update, and soft deletion under `/api/v1/clients`. Only current Account members SHALL read; only `admin` and `operador` SHALL write through those tenant CRUD routes. The separately authorized office-specific ERP trial registration SHALL have a narrow capability to create or explicitly reuse its sponsoring office's company Client within its atomic registration transaction; it SHALL grant no portfolio reading, general CRUD access or Account membership. CPF/CNPJ, person type, status, and tax regime SHALL be validated; individual clients SHALL use the not-applicable regime and SHALL NOT be enrolled as ERP Companies. Foreign client IDs SHALL return 404 and foreign related IDs SHALL be rejected. New Client creation, including trial registration, SHALL enforce the office client limit.
+
+#### Scenario: Read-only member attempts creation
+- **WHEN** a member with role `user` submits a client
+- **THEN** the API returns 403 and creates no client
+
+#### Scenario: Invalid registration
+- **WHEN** a client payload has an invalid tax identifier or incompatible individual regime
+- **THEN** the API returns 422 without partial creation
+
+#### Scenario: Foreign client
+- **WHEN** an Account member requests another office's client
+- **THEN** the API returns 404 without exposing that client
+
+#### Scenario: Existing portfolio Client enters an ERP trial
+- **WHEN** a verified owner completes an office-linked registration whose CNPJ already matches an active company Client in that office
+- **THEN** the existing Client is reused after explicit association confirmation without overwriting contact, fiscal, monitoring or certificate data
+
+#### Scenario: Public trial supplies a foreign Client identifier
+- **WHEN** a public signup includes a portfolio client identifier or office identifier instead of the server-resolved trial-link attribution
+- **THEN** the request is rejected before any client or Company association and no foreign portfolio details are disclosed
