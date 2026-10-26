@@ -1,3 +1,5 @@
+import { useErpListNavigation } from '~/composables/useErpListNavigation'
+import { useErpReadScope } from '~/composables/useErpReadScope'
 import type {
   ErpStockAdjustment,
   ErpStockBalance,
@@ -45,6 +47,7 @@ export function useErpStockWorkspace() {
   const { api, refreshCsrf } = useAccessApi()
   const { user, currentCompany, refreshWithStatus } = useAuth()
   const context = useErpAdministrationContext()
+  const reads = useErpReadScope()
   const balances = ref<ErpStockBalance[]>([])
   const movements = ref<ErpStockMovement[]>([])
   const lots = ref<ErpStockLot[]>([])
@@ -76,6 +79,9 @@ export function useErpStockWorkspace() {
   const filters = reactive({
     erp_establishment_id: '', erp_product_variant_id: '', source_type: '', source_id: '', direction: '', date_from: '', date_to: '', status: '', page: 1, per_page: 15
   })
+  const navigation = useErpListNavigation('erp-stock', filters, () => context.key.value, ['balances', 'movements', 'lots', 'adjustments', 'transfers'])
+  let activeArea: StockArea | null = null
+  const initialFilters = JSON.stringify(filters)
   const grants = computed(() => currentCompany.value?.permissions ?? [])
   const role = computed(() => currentCompany.value?.role)
   const actorId = computed(() => user.value?.id ?? null)
@@ -116,6 +122,7 @@ export function useErpStockWorkspace() {
       && errorMessage(error, '') === legacyTransferNeedsReconciliation
   }
   function clearPrivateState() {
+    reads.cancel()
     requestGeneration++
     referenceSequence++
     selectionIntentSequence++
@@ -261,20 +268,34 @@ export function useErpStockWorkspace() {
     return transfers.value
   }
   async function load(area: StockArea, page = filters.page) {
+    if (activeArea !== area) {
+      // Explicit criteria set before the first read take precedence over remembered filters.
+      const explicitInitialFilters = activeArea === null && JSON.stringify(filters) !== initialFilters ? { ...filters } : null
+      navigation.restore(area)
+      if (explicitInitialFilters) Object.assign(filters, explicitInitialFilters)
+      activeArea = area
+      page = filters.page
+    }
     const action = readActions[area]
     if (!allowed(action) || !currentCompany.value) return
     const token = context.capture()
     const generation = requestGeneration
     const sequence = ++listSequence[area]
+    const signal = reads.start(`list:${area}`)
     loading[area] = true
     listErrors[area] = ''
     try {
-      const result = await api<ErpStockPage<unknown>>(`/erp/stock/${area}?${pageQuery(area, page)}`)
+      const result = await api<ErpStockPage<unknown>>(`/erp/stock/${area}?${pageQuery(area, page)}`, { signal })
       if (!current(token, generation) || sequence !== listSequence[area]) return
+      if (result.meta && page > Math.max(1, result.meta.last_page)) {
+        filters.page = Math.max(1, result.meta.last_page)
+        await load(area, filters.page)
+        return
+      }
       assignRows(area, result.data)
       metas[area] = result.meta ?? null
       stale[area] = false
-      filters.page = page
+      filters.page = result.meta?.current_page ?? page
     } catch (error) {
       if (!current(token, generation) || sequence !== listSequence[area]) return
       stale[area] = rowsFor(area).length > 0
@@ -284,13 +305,13 @@ export function useErpStockWorkspace() {
       if (current(token, generation) && sequence === listSequence[area]) loading[area] = false
     }
   }
-  async function loadAllPages<T>(path: string, token: ReturnType<typeof context.capture>, generation: number): Promise<T[]> {
+  async function loadAllPages<T>(path: string, token: ReturnType<typeof context.capture>, generation: number, signal: AbortSignal): Promise<T[]> {
     const rows: T[] = []
     let page = 1
     let lastPage = 1
     while (page <= lastPage) {
       const query = new URLSearchParams({ status: 'active', per_page: '100', page: String(page) })
-      const result = await api<ErpStockPage<T>>(`${path}?${query}`)
+      const result = await api<ErpStockPage<T>>(`${path}?${query}`, { signal })
       if (!current(token, generation)) return []
       rows.push(...result.data)
       lastPage = result.meta?.last_page ?? page
@@ -303,11 +324,12 @@ export function useErpStockWorkspace() {
     const token = context.capture()
     const generation = requestGeneration
     const sequence = ++referenceSequence
+    const signal = reads.start('references')
     referencesLoading.value = true
     referencesError.value = ''
     const settled = await Promise.allSettled([
-      allowed('erp.establishments.index') ? loadAllPages<ErpStockEstablishment>('/erp/establishments', token, generation) : Promise.resolve([]),
-      allowed('erp.products.index') ? loadAllPages<Record<string, unknown>>('/erp/products', token, generation) : Promise.resolve([])
+      allowed('erp.establishments.index') ? loadAllPages<ErpStockEstablishment>('/erp/establishments', token, generation, signal) : Promise.resolve([]),
+      allowed('erp.products.index') ? loadAllPages<Record<string, unknown>>('/erp/products', token, generation, signal) : Promise.resolve([])
     ])
     if (!current(token, generation) || sequence !== referenceSequence) return
     const failures = settled.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
@@ -383,6 +405,11 @@ export function useErpStockWorkspace() {
     invalidateDetailSelection()
   }
   function beginManualIntent() {
+    for (const key of Object.keys(listSequence) as StockArea[]) {
+      reads.cancel(`list:${key}`)
+      listSequence[key]++
+      loading[key] = false
+    }
     invalidateDetailSelection()
   }
   async function refreshCurrentDetail(intent = selectionIntentSequence, expected = detail.value) {

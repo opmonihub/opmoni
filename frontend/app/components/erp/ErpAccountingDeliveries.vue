@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { listNavigationField, useListNavigationState } from '~/composables/useListNavigationState'
+import { useErpReadScope } from '~/composables/useErpReadScope'
 import { erpCompanyHasPermission } from '~/utils/erpModulesNav'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
 
@@ -26,11 +28,23 @@ type PendingRetry = { actorId: number, companyId: number, deliveryId: number, ke
 const { user, currentCompany, currentAccount } = useAuth()
 const { $api } = useNuxtApp()
 const context = useErpAdministrationContext()
+const reads = useErpReadScope()
 const rows = ref<AccountingDelivery[]>([])
 const total = ref(0)
-const page = ref(1)
+const navigation = useListNavigationState('erp-accounting-deliveries', {
+  defaults: () => ({ page: 1, status: 'all' }),
+  authority: () => context.key.value,
+  normalize(value: unknown) {
+    const source = typeof value === 'object' && value !== null ? value as { page?: unknown, status?: unknown } : {}
+    return {
+      page: typeof source.page === 'number' && Number.isSafeInteger(source.page) && source.page > 0 ? source.page : 1,
+      status: typeof source.status === 'string' && ['all', 'pending', 'delivered', 'failed', 'blocked'].includes(source.status) ? source.status : 'all'
+    }
+  }
+})
+const page = listNavigationField(navigation, 'page')
 const lastPage = ref(1)
-const statusFilter = ref('all')
+const statusFilter = listNavigationField(navigation, 'status')
 const selectedId = ref<number | null>(null)
 const selectedDetail = ref<AccountingDelivery | null>(null)
 const authorizedSources = ref<FiscalSource[]>([])
@@ -122,10 +136,11 @@ function persistPendingRetry(pending: PendingRetry | null) {
   else sessionStorage.removeItem(key)
 }
 
-function clearPrivateState() {
+function clearPrivateState(resetPage = true) {
+  reads.cancel()
   rows.value = []
   total.value = 0
-  page.value = 1
+  if (resetPage) page.value = 1
   lastPage.value = 1
   selectedId.value = null
   selectedDetail.value = null
@@ -155,14 +170,16 @@ async function load(pageNumber = page.value): Promise<boolean> {
   }
   const token = currentToken()
   const generation = ++listGeneration
+  const signal = reads.start('list')
   const query = new URLSearchParams({ page: String(pageNumber), per_page: '15' })
   if (statusFilter.value !== 'all') query.set('status', statusFilter.value)
   loading.value = true
   errorMessage.value = ''
   try {
-    const response = await api<Page<AccountingDelivery>>(`/erp/accounting-deliveries?${query}`)
+    const response = await api<Page<AccountingDelivery>>(`/erp/accounting-deliveries?${query}`, { signal })
     if (!isCurrent(token, generation, listGeneration)) return false
     if (!Array.isArray(response.data) || !response.meta) throw new Error('Resposta de entregas inválida.')
+    if (pageNumber > Math.max(1, response.meta.last_page)) return load(Math.max(1, response.meta.last_page))
     rows.value = response.data
     total.value = response.meta.total
     page.value = response.meta.current_page
@@ -196,10 +213,11 @@ async function loadSources() {
   if (!canRequest.value) return
   const token = currentToken()
   const generation = ++sourceGeneration
+  const signal = reads.start('sources')
   sourceLoading.value = true
   sourceError.value = ''
   try {
-    const response = await api<Page<FiscalSource>>('/erp/fiscal/documents?status=authorized&per_page=100')
+    const response = await api<Page<FiscalSource>>('/erp/fiscal/documents?status=authorized&per_page=100', { signal })
     if (!isCurrent(token, generation, sourceGeneration)) return
     authorizedSources.value = response.data.filter(row => row.status === 'authorized' && !!row.access_key)
     if (!authorizedSources.value.some(row => row.id === selectedSourceId.value)) selectedSourceId.value = 0
@@ -395,10 +413,12 @@ function statusLabel(status: string): string {
   return ({ pending: 'Aguardando', delivered: 'Entregue', failed: 'Com falha', blocked: 'Bloqueada' } as Record<string, string>)[status] ?? status
 }
 
-watch(() => context.key.value, () => {
+watch(() => context.key.value, (_next, previous) => {
+  const rememberedPage = page.value
   clearPrivateState()
   restorePendingRetry()
-  if (canRead.value) void load(1)
+  if (previous === undefined) page.value = rememberedPage
+  if (canRead.value) void load(page.value)
   if (canRequest.value) void loadSources()
 }, { immediate: true, flush: 'sync' })
 
@@ -408,7 +428,7 @@ watch([statusFilter], () => {
 }, { flush: 'sync' })
 
 onScopeDispose(() => {
-  clearPrivateState()
+  clearPrivateState(false)
 })
 </script>
 

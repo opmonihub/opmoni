@@ -28,6 +28,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const exports: Record<string, unknown> = {}
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
+    if (path === '~/composables/useErpListNavigation') return loadAppComposable('composables/useErpListNavigation.ts', { ...bindings, useState: bindings.useState ?? ((_key: string, init: () => unknown) => Vue.ref(init())) })
     if (path === '~/composables/useErpReadScope') return loadAppComposable('composables/useErpReadScope.ts')
     if (!(path in imports)) throw new Error(`Unexpected import ${path}`)
     return imports[path]

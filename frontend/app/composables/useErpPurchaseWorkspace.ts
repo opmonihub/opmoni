@@ -1,3 +1,4 @@
+import { useErpListNavigation } from '~/composables/useErpListNavigation'
 import { useErpReadScope } from '~/composables/useErpReadScope'
 import type {
   ErpPurchase,
@@ -86,6 +87,8 @@ export function useErpPurchaseWorkspace(initializeLists = true) {
   const authorityNeedsRefresh = ref(false)
   const filters = reactive({ status: '', search: '', page: 1, per_page: 15 })
   const returnFilters = reactive({ status: '', page: 1, per_page: 15 })
+  useErpListNavigation('erp-purchases', filters, () => context.key.value)
+  useErpListNavigation('erp-purchase-returns', returnFilters, () => context.key.value)
   let requestGeneration = 0
   let listSequence = 0
   let returnListSequence = 0
@@ -307,6 +310,16 @@ export function useErpPurchaseWorkspace(initializeLists = true) {
     if (filters.search.trim()) query.set('search', filters.search.trim())
     return query.toString()
   }
+  function cancelAreaRead(area: 'purchases' | 'returns') {
+    reads.cancel(area)
+    if (area === 'purchases') {
+      listSequence++
+      listLoading.value = false
+    } else {
+      returnListSequence++
+      returnsLoading.value = false
+    }
+  }
   async function load() {
     if (!allowed('erp.purchases.index') || !currentCompany.value) return
     const token = context.capture()
@@ -317,6 +330,12 @@ export function useErpPurchaseWorkspace(initializeLists = true) {
     try {
       const result = await api<ErpPurchasePage>(`/erp/purchases?${makeQuery()}`, { signal })
       if (!current(token, generation) || sequence !== listSequence) return
+      if (filters.page > Math.max(1, result.meta.last_page)) {
+        filters.page = Math.max(1, result.meta.last_page)
+        await load()
+        return
+      }
+      filters.page = result.meta.current_page
       purchases.value = result.data
       meta.value = result.meta
       listError.value = ''
@@ -340,6 +359,12 @@ export function useErpPurchaseWorkspace(initializeLists = true) {
     try {
       const result = await api<ErpPurchasePage>(`/erp/purchase-returns?${query}`, { signal })
       if (!current(token, generation) || sequence !== returnListSequence) return
+      if (returnFilters.page > Math.max(1, result.meta.last_page)) {
+        returnFilters.page = Math.max(1, result.meta.last_page)
+        await loadReturns()
+        return
+      }
+      returnFilters.page = result.meta.current_page
       returns.value = result.data as unknown as ErpPurchaseReturn[]
       returnMeta.value = result.meta
       returnListError.value = ''
@@ -881,7 +906,7 @@ export function useErpPurchaseWorkspace(initializeLists = true) {
     listLoading, returnsLoading, referencesLoading, mutating, loadingDetail, listError, returnListError, referenceError, mutationError, detailError, fieldErrors,
     selectedOperation, needsReconciliation, canRetryExact, staleRevisionRefreshed, resolvedOperation, isPurchaseConfirmedPosted,
     authorityGeneration, filters, allowed,
-    load, loadReturns, loadReferences, inspect, closeDetail, saveDraft, postReceipt, inspectXml, refreshXmlPreview, cancelXmlPreview, confirmXml,
+    cancelAreaRead, load, loadReturns, loadReferences, inspect, closeDetail, saveDraft, postReceipt, inspectXml, refreshXmlPreview, cancelXmlPreview, confirmXml,
     createReturn, inspectReturn, postReturn, reconcile, retryExact, clearOperationNotice, restorePreview
   }
 }

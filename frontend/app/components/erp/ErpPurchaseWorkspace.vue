@@ -59,6 +59,7 @@ function areaFromHash(hash: string): PurchaseArea | null {
 }
 async function setArea(area: PurchaseArea, updateHash = true) {
   if (!areaAllowed(area)) return
+  if (selectedArea.value !== area && selectedArea.value !== 'xml-preview') purchase.cancelAreaRead(selectedArea.value)
   selectedArea.value = area
   if (updateHash && route.hash !== `#${area}`) await router.replace({ path: route.path, query: route.query, hash: `#${area}` })
   if (area === 'purchases') void purchase.load()

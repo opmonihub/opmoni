@@ -71,13 +71,13 @@ function view(name: string, api: TestApi, initial: Record<string, unknown> = {},
   const user = Vue.ref({ id: 10 })
   const bindings = { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch,
     onMounted: (callback: () => void) => { mounted.push(callback) },
-    onScopeDispose: Vue.onScopeDispose, useRoute: () => Vue.reactive({ hash: '' }), useAuth: () => ({ user, currentCompany: company }), sessionStorage: storage, useAccessApi: () => ({ api }), document: { createElement: () => ({ href: '', download: '', click() {
+    onScopeDispose: Vue.onScopeDispose, useRoute: () => Vue.reactive({ hash: '' }), useAuth: () => ({ user, currentCompany: company, currentAccount: Vue.ref(null) }), sessionStorage: storage, useAccessApi: () => ({ api }), document: { createElement: () => ({ href: '', download: '', click() {
       downloads++
     } }) }, URL: { createObjectURL: () => 'blob:private', revokeObjectURL() {} } }
   const company = Vue.ref({ id: 1, permissions: ['*'], access_kind: 'direct', role: 'owner' })
   let downloads = 0
   const exports: { default?: { setup: (props: unknown, context: unknown) => ViewState } } = {}
-  new Function('require', 'exports', ...Object.keys(bindings), output)((path: string) => ({ 'vue': Vue, '~/utils/erpModulesNav': nav, '~/composables/useApiError': errors, '#shared/utils/erpOperationRecovery': recovery })[path], exports, ...Object.values(bindings))
+  new Function('require', 'exports', ...Object.keys(bindings), output)((path: string) => path.startsWith('~/composables/useErp') && !path.endsWith('useApiError') ? loadAppComposable(path.slice(2) + '.ts', { ...bindings, useState: (_key: string, init: () => unknown) => Vue.ref(init()) }) : ({ 'vue': Vue, '~/utils/erpModulesNav': nav, '~/composables/useApiError': errors, '#shared/utils/erpOperationRecovery': recovery })[path], exports, ...Object.values(bindings))
   const scope = Vue.effectScope()
   const props = Vue.reactive({ category: 'sales', filters: { ...filters }, contextKey: 'company-1', canExport: true, ...initial })
   const state = scope.run(() => exports.default!.setup(props, { expose() {} }))!
@@ -132,10 +132,10 @@ describe('authoritative report workspace', () => {
     const { descriptor } = parse(readFileSync(new URL('../app/components/erp/ErpReportsWorkspace.vue', import.meta.url), 'utf8'))
     const script = compileScript(descriptor, { id: 'report-layout', inlineTemplate: true })
     const output = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
-    const bindings = { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose, useRoute: () => ({ hash: '#finance' }), useAuth: () => ({ currentCompany: Vue.ref({ id: 1, permissions: ['*'], access_kind: 'direct', role: 'owner' }) }), useAccessApi: () => ({ api: async () => ({ data: [], meta: { last_page: 1 } }) }) }
+    const bindings = { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose, useRoute: () => ({ hash: '#finance' }), useAuth: () => ({ user: Vue.ref({ id: 10 }), currentAccount: Vue.ref(null), currentCompany: Vue.ref({ id: 1, permissions: ['*'], access_kind: 'direct', role: 'owner' }) }), useAccessApi: () => ({ api: async () => ({ data: [], meta: { last_page: 1 } }) }) }
     const exports: { default?: Vue.Component } = {}
     const imports: Record<string, unknown> = { 'vue': Vue, '~/utils/erpModulesNav': nav, '~/composables/useApiError': errors }
-    new Function('require', 'exports', ...Object.keys(bindings), output)((path: string) => imports[path], exports, ...Object.values(bindings))
+    new Function('require', 'exports', ...Object.keys(bindings), output)((path: string) => path.startsWith('~/composables/useErp') && !path.endsWith('useApiError') ? loadAppComposable(path.slice(2) + '.ts', { ...bindings, useState: (_key: string, init: () => unknown) => Vue.ref(init()) }) : imports[path], exports, ...Object.values(bindings))
     const app = Vue.createSSRApp(exports.default!)
     app.component('ErpCatalogPageShell', Vue.defineComponent({
       props: ['title', 'description'],

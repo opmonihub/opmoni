@@ -15,7 +15,6 @@ type RecoveryOwner = { key: string, authority: number, modal: ModalKind, identit
 const sales = useErpSalesWorkspace('quotes', false)
 const route = useRoute()
 const router = useRouter()
-const { key: workspaceContextKey } = useErpAdministrationContext()
 const modalKind = ref<ModalKind>(null)
 const modalGeneration = ref(0)
 const detailArea = ref<ErpSalesArea>('quotes')
@@ -590,7 +589,7 @@ async function refreshCompletedDetail(areaName: ErpSalesArea, id: number) {
   await sales.refreshCompletedDetail(areaName, id)
 }
 
-watch([() => route.hash, workspaceContextKey], ([hash]) => {
+watch(() => route.hash, (hash) => {
   const next = areaFromHash(hash)
   if (!next) return
   if (next !== sales.area.value) void setArea(next, false)

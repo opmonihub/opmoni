@@ -1,3 +1,4 @@
+import { useErpReadScope } from '~/composables/useErpReadScope'
 import type {
   ErpFiscalCertificate,
   ErpFiscalAttempt,
@@ -64,6 +65,7 @@ function definitiveBeforeDispatch(status: number | null): boolean {
 }
 
 export function useErpFiscalWorkspace() {
+  const reads = useErpReadScope()
   const { api: requestApi } = useAccessApi()
   const { user, currentCompany, currentAccount, refreshWithStatus } = useAuth()
   const selectedEstablishmentId = ref<number | null>(null)
@@ -207,6 +209,7 @@ export function useErpFiscalWorkspace() {
   }
 
   function clearContextState() {
+    reads.cancel()
     operationEpoch.value++
     listEpoch.value++
     establishments.value = []
@@ -460,21 +463,22 @@ export function useErpFiscalWorkspace() {
     const token = authority.capture()
     const epoch = operationEpoch.value
     const requestId = ++listEpoch.value
+    const signal = reads.start('workspace')
     const model = documentModel.value
     loading.value = true
     errorMessage.value = ''
     try {
       const reads: Array<{ key: FiscalReadKey, request: Promise<unknown> }> = []
-      if (can('erp.establishments.index')) reads.push({ key: 'establishments', request: api('/erp/establishments?per_page=100') })
+      if (can('erp.establishments.index')) reads.push({ key: 'establishments', request: api('/erp/establishments?per_page=100', { signal }) })
       const listGrants = { documents: actionGrants.documentRead, certificates: actionGrants.certificateRead, events: actionGrants.eventRead, invalidations: actionGrants.invalidationRead }
       for (const key of Object.keys(listGrants) as FiscalListKey[]) {
         const permitted = can(listGrants[key])
         listStates[key] = { ...listStates[key], permitted, loading: permitted, error: '' }
-        if (permitted) reads.push({ key, request: api(`/erp/fiscal/${key}?per_page=100${key === 'documents' && model ? `&model=${model}` : ''}`) })
+        if (permitted) reads.push({ key, request: api(`/erp/fiscal/${key}?per_page=100${key === 'documents' && model ? `&model=${model}` : ''}`, { signal }) })
       }
       // Preserve the existing bounded candidate read separately from the model list.
-      if (model && can(actionGrants.documentRead)) reads.push({ key: 'documentSources', request: api('/erp/fiscal/documents?per_page=100') })
-      if (can(actionGrants.configurationRead) && id !== null) reads.push({ key: 'configuration', request: api(`/erp/fiscal/configuration/${id}`) })
+      if (model && can(actionGrants.documentRead)) reads.push({ key: 'documentSources', request: api('/erp/fiscal/documents?per_page=100', { signal }) })
+      if (can(actionGrants.configurationRead) && id !== null) reads.push({ key: 'configuration', request: api(`/erp/fiscal/configuration/${id}`, { signal }) })
       const settled = await Promise.allSettled(reads.map(read => read.request))
       if (!isCurrent(token, epoch) || requestId !== listEpoch.value) return
       settled.forEach((result, index) => {
@@ -509,8 +513,8 @@ export function useErpFiscalWorkspace() {
         }
       })
       const sourceReads: Array<{ key: 'sales' | 'returns', request: Promise<unknown> }> = []
-      if (can('erp.sales.index')) sourceReads.push({ key: 'sales', request: api('/erp/sales?per_page=100&status=posted') })
-      if (can('erp.sale-returns.index')) sourceReads.push({ key: 'returns', request: api('/erp/sale-returns?per_page=100&status=posted') })
+      if (can('erp.sales.index')) sourceReads.push({ key: 'sales', request: api('/erp/sales?per_page=100&status=posted', { signal }) })
+      if (can('erp.sale-returns.index')) sourceReads.push({ key: 'returns', request: api('/erp/sale-returns?per_page=100&status=posted', { signal }) })
       const sourceResults = await Promise.allSettled(sourceReads.map(entry => entry.request))
       if (!isCurrent(token, epoch) || requestId !== listEpoch.value) return
       sourceResults.forEach((result, sourceIndex) => {
@@ -518,7 +522,7 @@ export function useErpFiscalWorkspace() {
         if (result.status === 'fulfilled' && key) acceptRows(result.value as ApiEnvelope<ErpFiscalSale[]>, key === 'sales' ? sales : returns)
       })
       if (can('erp.operation-natures.index')) {
-        const natureResult = await api<ErpPaginated<ErpOperationNatureRecord>>('/erp/tax-settings/operation-natures?per_page=100')
+        const natureResult = await api<ErpPaginated<ErpOperationNatureRecord>>('/erp/tax-settings/operation-natures?per_page=100', { signal })
         if (!isCurrent(token, epoch) || requestId !== listEpoch.value) return
         operationNatures.value = Array.isArray(natureResult.data) ? natureResult.data : []
       } else {

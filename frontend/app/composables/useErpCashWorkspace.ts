@@ -1,3 +1,5 @@
+import { useErpListNavigation } from '~/composables/useErpListNavigation'
+import { useErpReadScope } from '~/composables/useErpReadScope'
 import type { ErpCashLedgerTotals, ErpCashMovement, ErpCashPage, ErpCashRegister, ErpCashSession, ErpFinancePage } from '#shared/types/erpBusiness'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '~/composables/useApiError'
 import { erpFinanceAllowed, type ErpFinanceAction } from '#shared/utils/erpFinance'
@@ -30,6 +32,7 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
   const { api, refreshCsrf } = useAccessApi()
   const { user, currentCompany, refreshWithStatus } = useAuth()
   const context = useErpAdministrationContext()
+  const reads = useErpReadScope()
   const registers = ref<ErpCashRegister[]>([])
   const registerOptions = ref<ErpCashRegister[]>([])
   const registerOptionsMeta = ref<ErpFinancePage<ErpCashRegister>['meta'] | null>(null)
@@ -48,6 +51,7 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
   const movementError = ref('')
   const selectedPage = ref<'registers' | 'sessions'>('registers')
   const filters = reactive({ status: '', erp_cash_register_id: '', erp_establishment_id: '', currency: '', date_from: '', date_to: '', page: 1, per_page: 15 })
+  const navigation = useErpListNavigation('erp-cash', filters, () => context.key.value, ['registers', 'sessions'])
   const mutationError = ref('')
   const fieldErrors = ref<Record<string, string>>({})
   const mutating = ref(false)
@@ -137,6 +141,7 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     mutationError.value = 'Existe uma operação anterior aguardando conferência.'
   }
   function clearPrivateState() {
+    reads.cancel()
     requestGeneration++
     detailSequence++
     movementSequence++
@@ -221,19 +226,26 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     if (kind === 'establishments') params.set('status', 'active')
     return params.toString()
   }
-  async function loadList(kind: CashListKind, page = 1, append = false) {
+  async function loadList(kind: CashListKind, page = kind === selectedPage.value ? filters.page : 1, append = false) {
     const action = indexActions[kind]
     if (!allowed(action) || !currentCompany.value) return
     const token = context.capture()
     const generation = requestGeneration
     const sequence = ++listSequences[kind]
+    const signal = reads.start(`list:${kind}`)
     const previous = kind === 'registers' ? registers.value : kind === 'sessions' ? sessions.value : establishments.value
     const previousMeta = listMeta[kind]
     loading[kind] = true
     pageErrors[kind] = ''
     try {
-      const result = await api<ErpFinancePage<unknown>>(`${paths[kind]}?${query(kind, page, kind === 'establishments' ? 100 : 15)}`)
+      const result = await api<ErpFinancePage<unknown>>(`${paths[kind]}?${query(kind, page, kind === 'establishments' ? 100 : 15)}`, { signal })
       if (!current(token, generation) || listSequences[kind] !== sequence) return
+      if (result.meta && page > Math.max(1, result.meta.last_page)) {
+        if (kind === selectedPage.value) filters.page = Math.max(1, result.meta.last_page)
+        await loadList(kind, Math.max(1, result.meta.last_page))
+        return
+      }
+      if (kind === selectedPage.value) filters.page = result.meta.current_page ?? page
       if (kind === 'registers') {
         const incoming = result.data as ErpCashRegister[]
         registers.value = append ? [...registers.value, ...incoming.filter(row => !registers.value.some(existing => existing.id === row.id))] : incoming
@@ -271,10 +283,11 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     const token = context.capture()
     const generation = requestGeneration
     const sequence = ++registerOptionsSequence
+    const signal = reads.start('register-options')
     registerOptionsLoading.value = true
     registerOptionsError.value = ''
     try {
-      const result = await api<ErpFinancePage<ErpCashRegister>>(`/erp/cash-registers?per_page=100&page=${page}&status=active`)
+      const result = await api<ErpFinancePage<ErpCashRegister>>(`/erp/cash-registers?per_page=100&page=${page}&status=active`, { signal })
       if (!current(token, generation) || registerOptionsSequence !== sequence) return
       const incoming = result.data
       registerOptions.value = append ? [...registerOptions.value, ...incoming.filter(row => !registerOptions.value.some(existing => existing.id === row.id))] : incoming
@@ -549,8 +562,16 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     if (!pending || !canRetryExact.value) return null
     return post(pending.path, pending.payload, pending.operation as ErpFinanceAction, pending)
   }
-  async function setPage(page: 'registers' | 'sessions') {
+  async function setPage(page: 'registers' | 'sessions', criteria: Partial<typeof filters> = {}) {
+    const previous = selectedPage.value
+    if (previous !== page) {
+      reads.cancel(`list:${previous}`)
+      listSequences[previous]++
+      loading[previous] = false
+    }
     selectedPage.value = page
+    navigation.restore(page)
+    Object.assign(filters, criteria)
     await loadList(page)
   }
   watch(() => context.key.value, () => {
@@ -569,6 +590,7 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
   }, { flush: 'sync' })
   onMounted(() => {
     selectedPage.value = typeof initialPage === 'function' ? initialPage() : initialPage
+    navigation.restore(selectedPage.value)
     restorePending()
     void load()
   })

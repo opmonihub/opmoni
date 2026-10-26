@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as apiErrors from '../app/composables/useApiError.ts'
@@ -48,6 +49,8 @@ function compileComposable(path: string, imports: Record<string, unknown>, bindi
   const moduleExports: Record<string, unknown> = {}
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((specifier: string) => {
+    if (specifier === '~/composables/useErpReadScope' || specifier === '~/composables/useErpListNavigation')
+      return loadAppComposable(specifier.slice(2) + '.ts', { ...bindings, useState: (_key: string, init: () => unknown) => Vue.ref(init()) })
     const dependency = imports[specifier]
     if (!dependency) throw new Error(`Unexpected test import ${specifier}`)
     return dependency

@@ -69,8 +69,7 @@ const areaLinks = computed(() => [permittedAreas.value.map(item => ({
 watch(() => [mounted.value, area.value, selection.value.permitted, workspace.authorityGeneration.value] as const, (_next, previous) => {
   if (!mounted.value) return
   if (previous?.[0] && previous[3] === workspace.authorityGeneration.value) workspace.beginManualIntent()
-  workspace.filters.page = 1
-  if (selection.value.permitted) void workspace.load(area.value, 1)
+  if (selection.value.permitted) void workspace.load(area.value)
 })
 watch(() => workspace.resolvedOperation.value, (resolved) => {
   if (!resolved) return
@@ -142,7 +141,7 @@ onMounted(() => {
 
 function applyFilters() {
   workspace.filters.page = 1
-  if (selection.value.permitted) void workspace.load(area.value, 1)
+  if (selection.value.permitted) void workspace.load(area.value)
 }
 function clearFilters() {
   workspace.filters.erp_establishment_id = ''

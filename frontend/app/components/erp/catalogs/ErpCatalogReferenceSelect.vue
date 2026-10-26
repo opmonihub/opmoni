@@ -31,7 +31,7 @@ const normalizedQuery = computed(() => Object.fromEntries(
     .sort(([left], [right]) => left.localeCompare(right))
 ))
 const fixedQueryKey = computed(() => JSON.stringify(normalizedQuery.value))
-const list = useErpCatalogList<ReferenceRecord>(props.path, () => normalizedQuery.value)
+const list = useErpCatalogList<ReferenceRecord>(props.path, () => normalizedQuery.value, false)
 const { api } = useAccessApi()
 const authorityContext = useErpAdministrationContext()
 const context = useErpAdministrationContext(() => fixedQueryKey.value)

@@ -28,6 +28,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
     if (path === '~/components/erp/erpPresentation') return loadAppComposable('components/erp/erpPresentation.ts')
+    if (path === '~/composables/useErpListNavigation') return loadAppComposable('composables/useErpListNavigation.ts', { ...bindings, useState: bindings.useState ?? ((_key: string, init: () => unknown) => Vue.ref(init())) })
     if (path === '~/composables/useErpReadScope') return loadAppComposable('composables/useErpReadScope.ts')
     if (!(path in imports)) throw new Error(`Unexpected test import ${path}`)
     return imports[path]
@@ -138,7 +139,7 @@ function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Rec
     listLoading: Vue.ref(false), returnsLoading: Vue.ref(false), referencesLoading: Vue.ref(false), mutating: Vue.ref(false), loadingDetail: Vue.ref(false), listError: Vue.ref(''), returnListError: Vue.ref(''), referenceError: Vue.ref(''), mutationError, detailError: Vue.ref(''), fieldErrors: Vue.ref({}),
     selectedOperation: Vue.ref(null), needsReconciliation: Vue.ref(false), canRetryExact: Vue.ref(false), staleRevisionRefreshed: Vue.ref(null), resolvedOperation: Vue.ref(null), authorityGeneration, filters: Vue.reactive({ status: '', search: '', page: 1, per_page: 15 }), returnFilters: Vue.reactive({ status: '', page: 1, per_page: 15 }),
     allowed: () => true, isPurchaseConfirmedPosted: () => false,
-    load: async () => { loads.push('purchases') }, loadReturns: async () => { loads.push('returns') }, loadReferences: async () => {}, inspect: async () => null, closeDetail: () => {}, saveDraft: async () => { const result = draftSaveResults.shift() ?? null; if (!result) mutationError.value = 'A conexão caiu; confira a operação.'; return result },
+    cancelAreaRead: () => {}, load: async () => { loads.push('purchases') }, loadReturns: async () => { loads.push('returns') }, loadReferences: async () => {}, inspect: async () => null, closeDetail: () => {}, saveDraft: async () => { const result = draftSaveResults.shift() ?? null; if (!result) mutationError.value = 'A conexão caiu; confira a operação.'; return result },
     postReceipt: async () => null, inspectXml: async () => null, refreshXmlPreview: async () => null, cancelXmlPreview: () => {}, confirmXml: async () => null, createReturn: async () => null, inspectReturn: async () => null, postReturn: async () => null, reconcile: async () => {}, retryExact: async () => null, clearOperationNotice: () => { mutationError.value = '' }
   }
   Object.assign(state, workspaceState)

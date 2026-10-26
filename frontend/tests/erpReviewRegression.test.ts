@@ -42,11 +42,16 @@ function administrationBindings() {
     currentAccount: Vue.ref({ id: 12, status: 'active', role: 'admin' })
   }
   const sessionGeneration = Vue.ref(7)
+  const states = new Map<string, Vue.Ref>()
   const bindings = {
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch,
     onScopeDispose: Vue.onScopeDispose,
     useAuth: () => auth,
-    useState: () => sessionGeneration
+    useState: (key: string, init: () => unknown) => {
+      if (key === 'access-session-generation') return sessionGeneration
+      if (!states.has(key)) states.set(key, Vue.ref(init()))
+      return states.get(key)!
+    }
   }
   const { useErpAdministrationContext } = loadAppComposable<{
     useErpAdministrationContext: typeof import('../app/composables/useErpAdministrationContext.ts').useErpAdministrationContext

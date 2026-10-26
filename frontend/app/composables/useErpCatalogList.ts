@@ -1,4 +1,5 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
+import { useListNavigationState } from '~/composables/useListNavigationState'
 import type { ErpPaginated } from '#shared/types/erpCatalogs'
 import { apiFailure } from '#shared/utils/access'
 import { erpCatalogListQuery, erpCatalogRoutes } from '#shared/utils/erpCatalogs'
@@ -27,7 +28,7 @@ const catalogReadPermissions: Record<string, string> = {
 const searchDebounceMs = 250
 const reservedQueryKeys = new Set(['page', 'per_page', 'search', 'company', 'company_id', 'x-company-id', 'account', 'account_id', 'session', 'session_id'])
 
-export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<string, string> = () => ({})) {
+export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<string, string> = () => ({}), rememberNavigation = true) {
   const { api } = useAccessApi()
   const auth = useAuth()
   const { user, currentCompany, currentAccount } = auth
@@ -38,8 +39,21 @@ export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<stri
   ))
   const fixedQueryKey = computed(() => JSON.stringify(normalizedFixedQuery.value))
   const { key: contextKey, capture, isCurrent } = useErpAdministrationContext(() => fixedQueryKey.value)
-  const search = ref('')
-  const page = ref(1)
+  const navigation = rememberNavigation
+    ? useListNavigationState(`erp-catalog:${path}:${fixedQueryKey.value}`, {
+        defaults: () => ({ search: '', page: 1 }),
+        authority: () => contextKey.value,
+        normalize(value: unknown) {
+          const source = typeof value === 'object' && value !== null ? value as { search?: unknown, page?: unknown } : {}
+          return {
+            search: typeof source.search === 'string' && source.search.length <= 500 ? source.search : '',
+            page: typeof source.page === 'number' && Number.isSafeInteger(source.page) && source.page > 0 ? source.page : 1
+          }
+        }
+      })
+    : ref({ search: '', page: 1 })
+  const search = ref(navigation.value.search)
+  const page = ref(navigation.value.page)
   const pending = ref(false)
   const searchPending = ref(false)
   const state = ref<ErpPaginated<T> | null>(null)
@@ -146,8 +160,14 @@ export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<stri
       const query = new URLSearchParams(normalizedFixedQuery.value)
       new URLSearchParams(erpCatalogListQuery(search.value, page.value)).forEach((value, key) => query.set(key, value))
       const result = await api<ErpPaginated<T>>(`${path}?${query}`, { signal: controller.signal })
-      if (requestIsCurrent(sequence, token))
+      if (requestIsCurrent(sequence, token)) {
+        const availablePage = Math.max(1, result.meta.last_page)
+        if (page.value > availablePage) {
+          page.value = availablePage
+          return
+        }
         state.value = result
+      }
     } catch (failure) {
       if (!requestIsCurrent(sequence, token))
         return
@@ -235,15 +255,27 @@ export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<stri
     void refresh()
   }, { flush: 'sync' })
 
-  watch(contextKey, () => {
+  watch([search, page], () => {
+    if (!resettingForContext) navigation.value = { search: search.value, page: page.value }
+  }, { flush: 'sync' })
+  watch(navigation, (value) => {
+    resettingForContext = true
+    search.value = value.search
+    page.value = value.page
+    resettingForContext = false
+  }, { flush: 'sync' })
+
+  watch(contextKey, (_next, previous) => {
     clearSearchTimer()
     invalidateRequest()
     blockedContextKey.value = null
     state.value = null
     error.value = ''
     resettingForContext = true
-    search.value = ''
-    page.value = 1
+    if (previous !== undefined) {
+      search.value = ''
+      page.value = 1
+    }
     resettingForContext = false
     if (canRead.value)
       void requestPage()
