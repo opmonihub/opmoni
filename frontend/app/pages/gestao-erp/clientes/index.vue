@@ -44,7 +44,7 @@ const licenceLabels: Record<string, string> = {
   past_due: 'Assinatura em atraso',
   canceled: 'Assinatura cancelada'
 }
-const trialLabels = { trialing: 'Em teste', expired: 'Teste encerrado', converted: 'Convertido em assinatura' }
+const trialLabels = { trialing: 'Em teste', expired: 'Teste encerrado', converted: 'Período de teste convertido' }
 
 function formatOfficeDate(value: string | null | undefined) {
   if (!value) return null
@@ -129,6 +129,7 @@ watch([debouncedQuery, perPage], () => {
 })
 watch(identityStamp, () => {
   requestGeneration++
+  copyingTrialLink.value = false
   clients.value = []
   total.value = 0
   confirmedEmpty.value = false
@@ -219,14 +220,17 @@ watch(identityStamp, () => {
                 {{ row.original.subscription.erp_plan?.name || 'Plano ERP' }}
               </p>
               <p class="text-sm text-muted">
-                {{ row.original.subscription.trial ? trialLabels[row.original.subscription.trial.situation] : licenceLabels[row.original.subscription.licence_status || ''] || 'Situação indisponível' }}
+                {{ row.original.subscription.trial?.situation === 'trialing' ? trialLabels.trialing : row.original.subscription.trial?.situation === 'expired' ? trialLabels.expired : licenceLabels[row.original.subscription.licence_status || ''] || 'Situação indisponível' }}
+              </p>
+              <p v-if="row.original.subscription.trial?.situation === 'converted'" class="text-xs text-muted">
+                {{ trialLabels.converted }}
               </p>
             </div>
             <span v-else-if="row.original.subscription === null" class="text-sm text-muted">Sem contrato ERP vinculado</span>
             <span v-else class="text-sm text-muted">Resumo do contrato indisponível</span>
           </template>
           <template #billing-cell="{ row }">
-            <template v-if="row.original.subscription?.trial">
+            <template v-if="row.original.subscription?.trial?.situation === 'trialing' || row.original.subscription?.trial?.situation === 'expired'">
               <span class="text-sm text-muted">Termina em {{ formatOfficeDate(row.original.subscription.trial.ends_at) || 'data indisponível' }}</span>
             </template>
             <template v-else-if="row.original.subscription">

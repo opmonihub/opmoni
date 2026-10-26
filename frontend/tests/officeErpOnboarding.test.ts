@@ -208,6 +208,9 @@ const testCapabilities = Vue.ref({
   can_maintain: true,
   can_configure: true,
   can_sell_new: true,
+  can_provision: true,
+  can_start_trial: false,
+  can_manage_trial_link: true,
   capability_key: 'capability-1',
   reasons: {},
   allowance: { enabled: true, licence_limit: 4, module_keys: ['purchases'] },
@@ -250,6 +253,7 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
   routeQuery?: Record<string, string | number>
   origin?: string
   lookupCnpj?: () => Promise<unknown>
+  clipboardWrite?: (value: string) => Promise<void>
 } = {}) {
   const user = Vue.ref(identity(office(8)))
   const currentAccount = Vue.computed(() => user.value.current_account)
@@ -280,6 +284,7 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
     useClients: () => ({ lookupCnpj: options.lookupCnpj ?? (async () => { throw new Error('Consulta de CNPJ indisponível') }) }),
     useRoute: () => ({ query: options.routeQuery ?? {} }),
     window: { location: { origin: options.origin ?? 'http://localhost:3346' } },
+    navigator: { clipboard: { writeText: options.clipboardWrite ?? (async () => {}) } },
     useToast: () => ({ add() {} }),
     onBeforeUnmount: Vue.onBeforeUnmount,
     definePageMeta() {}
@@ -399,9 +404,16 @@ describe('Office ERP seller onboarding SFC', () => {
               { id: 18, name: 'Mercado São José', trade_name: 'São José', tax_id: '27865757000102', subscription: { contract_id: 42, agreement_status: 'effective', licence_status: 'active', erp_plan_id: 7, erp_plan: { id: 7, name: 'ERP Varejo' }, trial: null, next_billing_on: '2026-11-01' } },
               { id: 19, name: 'Oficina Norte', trade_name: null, tax_id: null, subscription: { contract_id: 43, agreement_status: 'effective', licence_status: 'active', erp_plan_id: 8, erp_plan: { id: 8, name: 'ERP Oficina' }, trial: { id: 2, started_at: '2026-10-20T12:00:00Z', ends_at: '2026-10-27T12:00:00Z', converted_at: null, expired_at: null, situation: 'trialing' }, next_billing_on: null } },
               { id: 20, name: 'Sem contrato', trade_name: null, tax_id: null, subscription: null },
-              { id: 21, name: 'Resumo faltando', trade_name: null, tax_id: null }
+              { id: 21, name: 'Resumo faltando', trade_name: null, tax_id: null },
+              ...['active', 'suspended', 'canceled'].map((licence_status, index) => ({
+                id: 22 + index,
+                name: `Trial convertido ${licence_status}`,
+                trade_name: null,
+                tax_id: null,
+                subscription: { contract_id: 50 + index, agreement_status: 'effective', licence_status, erp_plan_id: 9, erp_plan: { id: 9, name: 'ERP Convertido' }, trial: { id: 10 + index, started_at: '2026-10-20T12:00:00Z', ends_at: '2026-10-27T12:00:00Z', converted_at: '2026-10-27T12:00:00Z', expired_at: null, situation: 'converted' }, next_billing_on: '2026-12-01' }
+              }))
             ],
-            meta: { current_page: 1, last_page: 1, per_page: 25, total: 4 }
+            meta: { current_page: 1, last_page: 1, per_page: 25, total: 7 }
           }
         : testOffers()
     })
@@ -413,8 +425,49 @@ describe('Office ERP seller onboarding SFC', () => {
     assert.match(textOf(page.root), /27\/10\/2026/)
     assert.match(textOf(page.root), /Sem contrato ERP vinculado/)
     assert.match(textOf(page.root), /Resumo do contrato indisponível/)
+    const converted = textOf(page.root)
+    assert.ok((converted.match(/Assinatura ativa/g) ?? []).length >= 2)
+    assert.match(converted, /Assinatura suspensa/)
+    assert.match(converted, /Assinatura cancelada/)
+    assert.equal((converted.match(/Próxima cobrança 01\/12\/2026/g) ?? []).length, 3)
+    assert.equal((converted.match(/Período de teste convertido/g) ?? []).length, 3)
     const contractLink = findAll(page.root, node => node.tag === 'button' && textOf(node).includes('Ver contrato'))[0]
     assert.deepEqual(contractLink?.props.to, '/gestao-erp/assinaturas/42')
+    page.app.unmount()
+  })
+
+  it('releases trial-link busy state on authority change without letting the stale completion clear a new copy', async () => {
+    const pending: Array<(value: unknown) => void> = []
+    const copied: string[] = []
+    const trialUrl = 'http://localhost:3346/erp/testar/550e8400-e29b-41d4-a716-446655440000'
+    const page = harness('pages/gestao-erp/clientes/index.vue', {
+      api: async path => path === '/erp-commercial/trial-link'
+        ? new Promise(resolve => pending.push(resolve))
+        : testClients(),
+      clipboardWrite: async (value) => { copied.push(value) } })
+    await flush()
+    const copyButton = findButton(page.root, 'Copiar link de teste')
+    assert.ok(copyButton)
+    ;(copyButton.props.onClick as () => void)()
+    await flush()
+    assert.equal(findButton(page.root, 'Copiar link de teste')?.props['data-loading'], 'true')
+
+    page.user.value = identity(office(9))
+    await flush()
+    assert.equal(findButton(page.root, 'Copiar link de teste')?.props['data-loading'], 'false')
+    ;(findButton(page.root, 'Copiar link de teste')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(pending.length, 2)
+    assert.equal(findButton(page.root, 'Copiar link de teste')?.props['data-loading'], 'true')
+
+    pending[0]!({ data: { configured: true, enabled: true, url: trialUrl } })
+    await flush()
+    assert.equal(findButton(page.root, 'Copiar link de teste')?.props['data-loading'], 'true')
+    assert.deepEqual(copied, [])
+    pending[1]!({ data: { configured: true, enabled: true, url: trialUrl } })
+    await flush()
+    assert.deepEqual(copied, [trialUrl])
+    assert.equal(findButton(page.root, 'Copiar link de teste')?.props['data-loading'], 'false')
     page.app.unmount()
   })
 
@@ -566,6 +619,41 @@ describe('Office ERP seller onboarding SFC', () => {
     assert.equal(controlFor(page.root, 'new_client.tax_id')?.props.value, '12345678000199')
     assert.equal(controlFor(page.root, 'new_client.name')?.props.value, '')
     assert.doesNotMatch(textOf(page.root), /Nome protegido|Resultado antigo/)
+    page.app.unmount()
+  })
+
+  it('keeps the newest CNPJ lookup busy when an older same-authority lookup finishes', async () => {
+    const lookups: Array<(value: unknown) => void> = []
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      lookupCnpj: () => new Promise(resolve => lookups.push(resolve)),
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    updateInput(page.root, 'new_client.tax_id', '12345678000199')
+    await flush()
+    ;(findButton(page.root, 'Consultar CNPJ')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, true)
+
+    updateInput(page.root, 'new_client.tax_id', '27865757000102')
+    await flush()
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, false)
+    ;(findButton(page.root, 'Consultar CNPJ')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(lookups.length, 2)
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, true)
+
+    lookups[0]!({ tax_id: '12345678000199', name: 'Empresa antiga', mei: false, simple_national: false, email: null, phone: null })
+    await flush()
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, true)
+    assert.equal(controlFor(page.root, 'new_client.tax_id')?.props.value, '27865757000102')
+    lookups[1]!({ tax_id: '27865757000102', name: 'Empresa atual', mei: false, simple_national: false, email: null, phone: null })
+    await flush()
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, false)
+    assert.equal(controlFor(page.root, 'new_client.name')?.props.value, 'Empresa atual')
+    assert.doesNotMatch(textOf(page.root), /Empresa antiga/)
     page.app.unmount()
   })
 

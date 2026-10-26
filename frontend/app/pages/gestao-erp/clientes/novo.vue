@@ -230,7 +230,7 @@ async function lookupCompany() {
     if (request === lookupRequest && identity === identityStamp.value)
       lookupError.value = errorMessage(error, 'Não foi possível consultar o CNPJ agora. Os dados digitados foram mantidos.')
   } finally {
-    if (generation === authorityGeneration) lookupBusy.value = false
+    if (request === lookupRequest && generation === authorityGeneration) lookupBusy.value = false
   }
 }
 
@@ -529,6 +529,7 @@ watch(() => [
 watch(() => newClient.tax_id, (next, previous) => {
   if (taxIdEditInvalidatesLookup(previous ?? '', next)) {
     lookupRequest++
+    lookupBusy.value = false
     lookedUpTaxId.value = ''
     lookupError.value = ''
   }
