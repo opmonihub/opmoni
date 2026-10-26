@@ -32,9 +32,14 @@ function mountImport(realSelector = false) {
   const company = Vue.ref({ id: 41, status: 'active', access_kind: 'direct', role: 'owner', permissions: ['*'] })
   const generation = Vue.ref(1)
   let refreshHook = () => {}
+  const states = new Map<string, Vue.Ref>()
   const bindings = {
     computed: Vue.computed, ref: Vue.ref, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose,
-    useState: () => generation,
+    useState: (key: string, init: () => unknown) => {
+      if (key === 'access-session-generation') return generation
+      if (!states.has(key)) states.set(key, Vue.ref(init()))
+      return states.get(key)!
+    },
     useAuth: () => ({ user, currentCompany: company, currentAccount: Vue.ref(null), refresh: async () => {
       refreshHook()
       return user.value
