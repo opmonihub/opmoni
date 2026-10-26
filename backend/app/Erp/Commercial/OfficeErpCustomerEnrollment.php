@@ -6,8 +6,12 @@ use App\Erp\ErpCompanyProvisioning;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpContractRevision;
+use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpPlan;
+use App\Models\Erp\ErpSubscription;
+use App\Models\Erp\ErpSubscriptionTrial;
 use App\Rules\ValidCnpj;
 use App\Services\BrazilianTaxId;
 use App\Services\ClientManager;
@@ -181,6 +185,270 @@ final class OfficeErpCustomerEnrollment
         }, 3);
 
         return $outcome['data'];
+    }
+
+    /**
+     * Explicitly convert a linked office trial to a paid contract, retaining its original identity and trial history.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array{client_id:int,company_id:int,subscription_id:int,contract_id:int,trial_id:int,invoice_id:int,owner_setup_status:string}
+     */
+    public function convertTrial(OfficeErpExecutionContext $ctx, OfficeErpContract $contract, array $input, string $key): array
+    {
+        $contractId = (int) $contract->getKey();
+        $candidate = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+            ->whereKey($contractId)
+            ->with('company')
+            ->firstOrFail();
+        abort_unless($candidate->provisioning_source === 'office_trial' && $candidate->erp_company_id !== null, 404);
+        $company = ErpCompany::query()->whereKey($candidate->erp_company_id)->firstOrFail();
+        $data = $this->conversionTerms($ctx, $candidate, $input);
+        $payload = [
+            'command' => 'trial.convert',
+            'contract_id' => $contractId,
+            'erp_plan_id' => (int) $data['erp_plan_id'],
+            'terms' => $data['terms'],
+        ];
+
+        $outcome = DB::transaction(function () use ($ctx, $key, $payload, $contractId, $company): array {
+            AccessTransaction::boundLockWaits();
+            $this->lockCompanyCnpj($company->cnpj);
+
+            return $this->operations->execute(
+                $ctx,
+                $key,
+                'trial.convert',
+                $payload,
+                fn (string $action, array $storedPayload): mixed => $this->authorizeTrialConversion($ctx, $action, $storedPayload, $key),
+                fn (): array => ['data' => $this->convertTrialLocked($ctx, $contractId, $payload, $key)],
+            );
+        }, 3);
+
+        return $outcome['data'];
+    }
+
+    /** @param array<string, mixed> $payload */
+    public function authorizeTrialConversion(OfficeErpExecutionContext $ctx, string $action, array $payload, string $key): void
+    {
+        abort_unless($action === 'trial.convert' && ($payload['command'] ?? null) === 'trial.convert', 409);
+        abort_unless(is_int($payload['contract_id'] ?? null) && $payload['contract_id'] > 0, 409);
+        abort_unless(is_int($payload['erp_plan_id'] ?? null) && $payload['erp_plan_id'] > 0, 409);
+        abort_unless(is_array($payload['terms'] ?? null), 409);
+
+        $contract = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+            ->whereKey($payload['contract_id'])
+            ->firstOrFail();
+        abort_unless($contract->provisioning_source === 'office_trial' && $contract->erp_company_id !== null, 404);
+
+        $existing = OfficeErpRecords::query($ctx, OfficeErpCommercialOperation::class)
+            ->where('actor_kind', $ctx->actorKind)
+            ->where('actor_identity', $ctx->actorIdentity)
+            ->where('idempotency_key', $key)
+            ->where('action', 'trial.convert')
+            ->first(['outcome']);
+        if ($existing !== null) {
+            $outcome = $existing->outcome['data'] ?? null;
+            abort_unless(is_array($outcome)
+                && is_int($outcome['contract_id'] ?? null)
+                && is_int($outcome['company_id'] ?? null)
+                && is_int($outcome['subscription_id'] ?? null)
+                && is_int($outcome['trial_id'] ?? null)
+                && is_int($outcome['invoice_id'] ?? null)
+                && $outcome['contract_id'] === (int) $contract->id, 409);
+            $this->admission->assertCommand($ctx, 'contract.read', $contract);
+            $company = ErpCompany::query()->whereKey($outcome['company_id'])->whereKey($contract->erp_company_id)->firstOrFail();
+            $subscription = ErpSubscription::query()->whereKey($outcome['subscription_id'])
+                ->where('erp_company_id', $company->id)
+                ->where('office_erp_contract_id', $contract->id)
+                ->where('status', 'active')
+                ->firstOrFail();
+            ErpSubscriptionTrial::query()->whereKey($outcome['trial_id'])
+                ->where('erp_subscription_id', $subscription->id)
+                ->where('erp_company_id', $company->id)
+                ->where('account_id', $ctx->accountId)
+                ->whereNotNull('converted_at')
+                ->firstOrFail();
+            abort_unless($contract->agreement_status === 'effective', 409);
+
+            return;
+        }
+
+        // Follow the commercial aggregate order before taking the technical plan lock.
+        $this->admission->lockCommercialAggregate($ctx);
+        $plan = ErpPlan::query()->with('modules')->whereKey($payload['erp_plan_id'])->lockForUpdate()->firstOrFail();
+        $modules = $plan->modules->pluck('module_key')->sort()->values()->all();
+        abort_unless($modules !== [] && ($payload['terms']['module_keys'] ?? null) === $modules, 409);
+        $this->admission->assertCommand($ctx, 'trial.convert', $contract, $modules);
+
+        $lockedContract = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+            ->whereKey($contract->id)
+            ->firstOrFail();
+        abort_unless($lockedContract->agreement_status === 'accepted' && ! $lockedContract->manual_hold, 409, 'trial_not_convertible');
+        $subscription = ErpSubscription::query()
+            ->where('erp_company_id', $lockedContract->erp_company_id)
+            ->where('office_erp_contract_id', $lockedContract->id)
+            ->whereIn('status', ['trialing', 'trial_expired'])
+            ->firstOrFail();
+        $trial = ErpSubscriptionTrial::query()
+            ->where('erp_subscription_id', $subscription->id)
+            ->where('erp_company_id', $lockedContract->erp_company_id)
+            ->where('account_id', $ctx->accountId)
+            ->where('cnpj', ErpCompany::query()->whereKey($lockedContract->erp_company_id)->value('cnpj'))
+            ->whereNull('converted_at')
+            ->firstOrFail();
+        $allocation = OfficeErpRecords::query($ctx, OfficeErpLicenceAllocation::class)
+            ->where('contract_id', $lockedContract->id)
+            ->first();
+        abort_unless($allocation !== null
+            && in_array($allocation->state, ['occupied', 'released'], true)
+            && ($allocation->state === 'released' || (int) $allocation->erp_company_id === (int) $lockedContract->erp_company_id),
+            409, 'trial_allocation_unavailable');
+        abort_unless((int) $trial->erp_company_id === (int) $lockedContract->erp_company_id, 409);
+    }
+
+    /** @return array<string, mixed> */
+    private function convertTrialLocked(OfficeErpExecutionContext $ctx, int $contractId, array $payload, string $key): array
+    {
+        $this->admission->lockCommercialAggregate($ctx);
+        $contract = OfficeErpRecords::query($ctx, OfficeErpContract::class)->whereKey($contractId)->firstOrFail();
+        $company = ErpCompany::query()->whereKey($contract->erp_company_id)->lockForUpdate()->firstOrFail();
+        $contract = OfficeErpRecords::query($ctx, OfficeErpContract::class)->whereKey($contractId)->lockForUpdate()->firstOrFail();
+        $allocation = OfficeErpRecords::query($ctx, OfficeErpLicenceAllocation::class)
+            ->where('contract_id', $contract->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+        $subscription = ErpSubscription::query()
+            ->where('erp_company_id', $company->id)
+            ->where('office_erp_contract_id', $contract->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+        $trial = ErpSubscriptionTrial::query()
+            ->where('erp_subscription_id', $subscription->id)
+            ->where('erp_company_id', $company->id)
+            ->where('account_id', $ctx->accountId)
+            ->where('cnpj', $company->cnpj)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        abort_unless($contract->provisioning_source === 'office_trial'
+            && $contract->agreement_status === 'accepted'
+            && ! $contract->manual_hold
+            && $subscription->office_erp_contract_id === $contract->id
+            && in_array($subscription->status, ['trialing', 'trial_expired'], true)
+            && $trial->converted_at === null
+            && $allocation->state !== 'reserved'
+            && ($allocation->state === 'released' || (int) $allocation->erp_company_id === (int) $company->id),
+            409, 'trial_not_convertible');
+
+        $plan = ErpPlan::query()->with('modules')->whereKey($payload['erp_plan_id'])->lockForUpdate()->firstOrFail();
+        $modules = $plan->modules->pluck('module_key')->sort()->values()->all();
+        abort_unless($modules !== [] && $payload['terms']['module_keys'] === $modules, 409);
+        $terms = $this->contracts->terms($ctx, $contract, [
+            'price' => $payload['terms']['price'],
+            'interval_months' => $payload['terms']['interval_months'],
+            'due_in_days' => $payload['terms']['due_in_days'],
+            'module_keys' => $modules,
+        ]);
+
+        $revisionNumber = (int) $contract->revisions()->max('revision_number') + 1;
+        $revision = new OfficeErpContractRevision;
+        $revision->forceFill([
+            'account_id' => $ctx->accountId,
+            'contract_id' => $contract->id,
+            'revision_number' => $revisionNumber,
+            'sales_plan_revision_id' => null,
+            'price' => $terms['price'],
+            'currency' => 'BRL',
+            'interval_months' => $terms['interval_months'],
+            'due_in_days' => $terms['due_in_days'],
+            'module_keys' => $terms['module_keys'],
+            'reason' => 'trial_conversion',
+            'created_by_user_id' => $ctx->actor?->getKey(),
+        ]);
+        $revision = OfficeErpRecords::persist($ctx, $revision);
+
+        $timezone = $payload['terms']['billing_timezone'];
+        $contract->forceFill([
+            'erp_plan_id' => $plan->id,
+            'billing_timezone' => $timezone,
+            'current_revision_id' => $revision->id,
+        ]);
+        $contract = OfficeErpRecords::persist($ctx, $contract);
+        $allocation->forceFill([
+            'account_id' => $ctx->accountId,
+            'contract_id' => $contract->id,
+            'erp_company_id' => $company->id,
+            'state' => 'occupied',
+            'expires_at' => null,
+            'released_at' => null,
+        ]);
+        OfficeErpRecords::persist($ctx, $allocation);
+        $subscription->forceFill(['erp_plan_id' => $plan->id, 'status' => 'active']);
+        $subscription->save();
+
+        $now = CarbonImmutable::now('UTC');
+        $trial->forceFill([
+            'expired_at' => $trial->expired_at ?? (! $trial->ends_at->isAfter($now) ? $now : null),
+            'converted_at' => $now,
+        ])->save();
+
+        $start = CarbonImmutable::parse($payload['terms']['start_on'], $timezone)->startOfDay();
+        $activation = $this->contracts->activateProvisioned(
+            $ctx,
+            $contract,
+            $start,
+            'trial-convert-invoice-'.substr(hash('sha256', $key), 0, 40),
+        );
+
+        return [
+            'client_id' => (int) $contract->client_id,
+            'company_id' => (int) $company->id,
+            'subscription_id' => (int) $subscription->id,
+            'contract_id' => (int) $contract->id,
+            'trial_id' => (int) $trial->id,
+            'invoice_id' => (int) $activation['invoice_id'],
+            'owner_setup_status' => (string) $company->owner_setup_status,
+        ];
+    }
+
+    /** @param array<string, mixed> $input @return array{erp_plan_id:int,terms:array<string,mixed>} */
+    private function conversionTerms(OfficeErpExecutionContext $ctx, OfficeErpContract $contract, array $input): array
+    {
+        $allowed = ['erp_plan_id', 'price', 'currency', 'interval_months', 'due_in_days', 'start_on', 'billing_timezone'];
+        if (array_diff(array_keys($input), $allowed) !== []) {
+            throw ValidationException::withMessages(['payload' => ['O conteúdo de conversão contém campos não permitidos.']]);
+        }
+        $data = Validator::make($input, [
+            'erp_plan_id' => ['required', 'integer:strict', 'min:1'],
+            'price' => ['required', 'string'],
+            'currency' => ['required', 'string', Rule::in(['BRL'])],
+            'interval_months' => ['required', 'integer:strict', Rule::in([1, 3, 6, 12])],
+            'due_in_days' => ['required', 'integer:strict', 'between:0,65535'],
+            'start_on' => ['required', 'date_format:Y-m-d'],
+            'billing_timezone' => ['required', 'timezone:all'],
+        ])->validate();
+        $plan = ErpPlan::query()->with('modules')->whereKey($data['erp_plan_id'])->firstOrFail();
+        $modules = $plan->modules->pluck('module_key')->sort()->values()->all();
+        abort_unless($modules !== [], 422, 'erp_plan_without_modules');
+        $terms = $this->contracts->terms($ctx, $contract, [
+            'price' => $data['price'],
+            'interval_months' => $data['interval_months'],
+            'due_in_days' => $data['due_in_days'],
+            'module_keys' => $modules,
+        ]);
+        $timezone = $data['billing_timezone'];
+        if ($data['start_on'] > CarbonImmutable::now($timezone)->toDateString()) {
+            throw ValidationException::withMessages(['start_on' => ['A data de início deve ser hoje ou anterior.']]);
+        }
+
+        return [
+            'erp_plan_id' => (int) $plan->id,
+            'terms' => [
+                ...$terms,
+                'start_on' => $data['start_on'],
+                'billing_timezone' => $timezone,
+            ],
+        ];
     }
 
     /** @param array<string,mixed> $payload */

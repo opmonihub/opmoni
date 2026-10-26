@@ -478,7 +478,7 @@ final class OfficeErpContracts
     }
 
     /** @param array<string, mixed> $terms @return array{price:string,interval_months:int,due_in_days:int,module_keys:list<string>} */
-    private function terms(OfficeErpExecutionContext $ctx, OfficeErpContract $contract, array $terms): array
+    public function terms(OfficeErpExecutionContext $ctx, OfficeErpContract $contract, array $terms): array
     {
         abort_unless(array_diff(array_keys($terms), ['price', 'interval_months', 'due_in_days', 'module_keys']) === [], 422, 'invalid_contract_terms');
         $current = $this->revision($ctx, $contract, (int) $contract->current_revision_id);
