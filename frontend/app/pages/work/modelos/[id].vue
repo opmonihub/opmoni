@@ -104,7 +104,22 @@ function syncFromTemplate(template: WorkTemplate) {
 
 const { registry: navigationRegistry } = useListNavigationRegistry()
 const readAuthority = computed(() => navigationRegistry.value?.authority ?? '')
+let entryGeneration = 0
+let entryDisposed = false
+onBeforeUnmount(() => {
+  entryDisposed = true
+  entryGeneration++
+})
+function commandOwner() {
+  const generation = entryGeneration
+  const authority = readAuthority.value
+  const id = templateId.value
+  return () => !entryDisposed && generation === entryGeneration && authority === readAuthority.value && id === templateId.value
+}
 watch(readAuthority, () => {
+  entryGeneration++
+  saving.value = false
+  generating.value = false
   Object.assign(form, { name: '', description: '', cascade: false, is_active: true, generate_day: 1, due_day: 20, regimes: [], tag_ids: [], exceptions: [], steps: [] })
 }, { flush: 'sync' })
 const templateReadKey = computed(() => `work-template-${readAuthority.value}-${templateId.value ?? 'new'}`)
@@ -275,19 +290,22 @@ async function onSave() {
     toast.add({ title: 'Informe o título do modelo', color: 'error' })
     return
   }
+  const isCurrent = commandOwner()
   saving.value = true
   try {
     const payload = buildPayload()
     const saved = isNew.value
       ? await createTemplate(payload)
       : await updateTemplate(templateId.value as number, payload)
+    if (!isCurrent()) return
     toast.add({ title: isNew.value ? 'Modelo criado' : 'Modelo atualizado', color: 'success' })
     if (!isNew.value) syncFromTemplate(saved)
     await router.push(`/work/modelos/${saved.id}`)
   } catch (error: unknown) {
+    if (!isCurrent()) return
     toast.add({ title: 'Não foi possível salvar o modelo', description: apiMessage(error), color: 'error' })
   } finally {
-    saving.value = false
+    if (isCurrent()) saving.value = false
   }
 }
 
@@ -295,14 +313,18 @@ const canGenerate = computed(() => !isNew.value && /^\d{4}-(0[1-9]|1[0-2])$/.tes
 
 async function onGenerate() {
   if (isNew.value || !canGenerate.value) return
+  const isCurrent = commandOwner()
+  const month = referenceMonth.value
   generating.value = true
   try {
-    const created = await generateTemplate(templateId.value as number, referenceMonth.value)
-    toast.add({ title: `${created.length} processo(s) gerado(s) em ${referenceMonth.value}`, color: 'success' })
+    const created = await generateTemplate(templateId.value as number, month)
+    if (!isCurrent()) return
+    toast.add({ title: `${created.length} processo(s) gerado(s) em ${month}`, color: 'success' })
   } catch (error: unknown) {
+    if (!isCurrent()) return
     toast.add({ title: 'Não foi possível gerar os processos', description: apiMessage(error), color: 'error' })
   } finally {
-    generating.value = false
+    if (isCurrent()) generating.value = false
   }
 }
 </script>

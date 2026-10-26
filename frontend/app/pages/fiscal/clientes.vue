@@ -289,7 +289,8 @@ watch(pageSize, () => {
   currentPage.value = 1
 })
 
-watch(pageCount, (count) => {
+watch([pageCount, status], ([count, currentStatus]) => {
+  if (currentStatus !== 'success') return
   if (currentPage.value > count) currentPage.value = count
 }, { immediate: true })
 

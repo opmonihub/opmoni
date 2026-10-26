@@ -12,6 +12,7 @@ import * as taxId from '../app/utils/taxId.ts'
 import * as dispatch from '../app/utils/whatsappDispatch.ts'
 import type { Client, ClientEcacPowerOfAttorney } from '../app/types/client.ts'
 import type { ClientDispatchContact } from '../app/types/whatsapp.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 const filename = new URL('../app/pages/customers/empresa/[id].vue', import.meta.url)
 const { descriptor } = parse(readFileSync(filename, 'utf8'))
@@ -47,7 +48,7 @@ function client(poa: ClientEcacPowerOfAttorney | null = null): Client {
   }
 }
 
-async function setupRecord(data: Client, destinationsDisabled = false, listDestinations?: (clientId: number) => Promise<ClientDispatchContact[]>) {
+async function setupRecord(data: Client, destinationsDisabled = false, listDestinations?: (clientId: number) => Promise<ClientDispatchContact[]>, extra: Record<string, unknown> = {}) {
   const cleanups: (() => void)[] = []
   const imports = {
     'vue': { ...Vue, withAsyncContext: (run: () => unknown) => [run(), () => {}], resolveComponent: (name: string) => ({ name }) },
@@ -65,6 +66,7 @@ async function setupRecord(data: Client, destinationsDisabled = false, listDesti
     computed: Vue.computed,
     ...apiErrors,
     definePageMeta() {},
+    onBeforeUnmount() {},
     useOfficeReadLifecycle: () => ({ own() {} }),
     useListNavigationRegistry: () => ({ registry: Vue.ref({ authority: 'office' }) }),
     useAsyncData: async (_key: unknown, handler: (app: unknown, options: { signal: AbortSignal }) => Promise<unknown>, options: { default: () => unknown }) => {
@@ -100,7 +102,8 @@ async function setupRecord(data: Client, destinationsDisabled = false, listDesti
       const stop = Vue.watch(...args)
       cleanups.push(stop)
       return stop
-    }
+    },
+    ...extra
   }
   const component = evaluate(script.content, imports, globals).default as {
     setup: (props: object, context: object) => Promise<unknown>
@@ -109,6 +112,8 @@ async function setupRecord(data: Client, destinationsDisabled = false, listDesti
     tab: Vue.Ref<string>
     contactOpen: Vue.Ref<boolean>
     summaryText: Vue.ComputedRef<string>
+    client: Vue.Ref<Client | null>
+    toggleStatus: () => Promise<void>
   }
   await Vue.nextTick()
   const render = evaluate(template.code, imports).render as (...args: unknown[]) => Vue.VNode
@@ -209,4 +214,34 @@ describe('dados existentes na ficha do cliente', () => {
     assert.ok(view.some(node => typeof node.children === 'string' && node.children.includes('00076')))
     assert.ok(view.some(node => componentName(node) === 'UBadge' && node.props?.label === 'Recusada'))
   })
+})
+
+it('ignores a late client status update after an effective Account role change', async (t) => {
+  const identity = Vue.ref({ id: 1, current_account: { id: 7, status: 'active', role: 'admin' }, accounts: [{ id: 7, status: 'active', role: 'admin' }] })
+  const states = new Map<string, Vue.Ref>([['access-user', identity]])
+  const foundation = loadAppComposable<Record<string, unknown>>('composables/useListNavigationState.ts', {
+    useState(key: string, initial: () => unknown) {
+      if (!states.has(key)) states.set(key, Vue.ref(initial()))
+      return states.get(key)
+    }
+  })
+  let resolveCommand!: (value: Client) => void
+  const completion = new Promise<Client>((resolve) => {
+    resolveCommand = resolve
+  })
+  const toasts: unknown[] = []
+  const original = client()
+  const page = await setupRecord(original, false, undefined, {
+    useListNavigationRegistry: foundation.useListNavigationRegistry,
+    useClients: () => ({ show: async () => original, update: () => completion }),
+    useToast: () => ({ add: (value: unknown) => toasts.push(value) })
+  })
+  t.after(page.close)
+  const pending = page.state.toggleStatus()
+  identity.value.accounts[0]!.role = 'user'
+  assert.equal(page.state.client.value, null)
+  resolveCommand({ ...original, status: 'inactive' })
+  await pending
+  assert.equal(page.state.client.value, null)
+  assert.deepEqual(toasts, [])
 })
