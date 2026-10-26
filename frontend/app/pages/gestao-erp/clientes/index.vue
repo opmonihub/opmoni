@@ -8,6 +8,7 @@ definePageMeta({ middleware: 'auth' })
 
 const { api } = useAccessApi()
 const { user, currentAccount } = useAuth()
+const toast = useToast()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const context = useOfficeErpContext()
 const query = ref('')
@@ -20,6 +21,7 @@ const lastPage = ref(1)
 const loading = ref(false)
 const loadError = ref('')
 const confirmedEmpty = ref(false)
+const copyingTrialLink = ref(false)
 let requestGeneration = 0
 
 const identityStamp = computed(() => JSON.stringify([
@@ -70,6 +72,37 @@ async function loadClients() {
   }
 }
 
+async function copyTrialLink() {
+  if (copyingTrialLink.value) return
+  copyingTrialLink.value = true
+  const identity = identityStamp.value
+  try {
+    await context.refresh()
+    if (identity !== identityStamp.value) return
+    if (!context.capabilities.value?.can_manage_trial_link) {
+      toast.add({ title: 'Ação indisponível', description: 'Sua conta não pode gerenciar o link de teste deste escritório.', color: 'warning' })
+      return
+    }
+    const token = context.capture()
+    const response = await api<{ data: { configured: boolean, enabled: boolean, url: string | null } }>('/erp-commercial/trial-link')
+    if (identity !== identityStamp.value || !context.isCurrent(token)) return
+    if (!response?.data?.configured || !response.data.enabled || !response.data.url) {
+      toast.add({ title: 'Link de teste indisponível', description: 'Configure e ative o link de teste nas configurações do ERP.', color: 'warning' })
+      return
+    }
+    const target = new URL(response.data.url, window.location.origin)
+    if (target.origin !== window.location.origin || target.search || target.hash || !/^\/erp\/testar\/[a-f\d-]{36}$/i.test(target.pathname))
+      throw new Error('O endereço retornado não é um link de teste válido deste escritório.')
+    await navigator.clipboard.writeText(target.href)
+    toast.add({ title: 'Link de teste copiado', description: 'Compartilhe o link para iniciar um teste de sete dias.', color: 'success' })
+  } catch (error) {
+    if (identity === identityStamp.value)
+      toast.add({ title: 'Não foi possível copiar o link', description: apiErrorMessage(error) ?? 'Verifique a conexão e tente novamente.', color: 'error' })
+  } finally {
+    if (identity === identityStamp.value) copyingTrialLink.value = false
+  }
+}
+
 watch([debouncedQuery, page, perPage], () => {
   void loadClients()
 }, { immediate: true })
@@ -88,11 +121,23 @@ watch(identityStamp, () => {
 
 <template>
   <div class="flex min-h-0 flex-col gap-4">
-    <DataTablePanelList title="Clientes da carteira" description="Convide responsáveis para acessar o ERP dos clientes do escritório.">
+    <DataTablePanelList title="Clientes ERP" description="Cadastre clientes, selecione alguém da carteira e acompanhe as matrículas do escritório.">
       <template #action>
-        <UButton to="/gestao-erp/clientes/novo" icon="i-lucide-send">
-          Novo convite
-        </UButton>
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            v-if="context.capabilities.value?.can_manage_trial_link"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-copy"
+            :loading="copyingTrialLink"
+            @click="copyTrialLink"
+          >
+            Copiar link de teste
+          </UButton>
+          <UButton to="/gestao-erp/clientes/novo" icon="i-lucide-plus">
+            Cadastrar cliente ERP
+          </UButton>
+        </div>
       </template>
       <template #toolbar>
         <UFormField name="client-search" label="Buscar cliente" class="w-full max-w-sm">
@@ -164,7 +209,7 @@ watch(identityStamp, () => {
               variant="ghost"
               size="sm"
             >
-              Convidar responsável
+              Selecionar da carteira
             </UButton>
           </template>
           <template #empty>

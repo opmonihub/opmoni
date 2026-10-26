@@ -24,6 +24,68 @@ export interface OfficeErpCapabilities {
   usage: { reserved: number, occupied: number }
 }
 
+export interface OfficeErpEnrollmentPlan {
+  id: number
+  slug: string
+  name: string
+  module_keys: string[]
+}
+
+export interface OfficeErpEnrollmentPlansResponse {
+  data: OfficeErpEnrollmentPlan[]
+  eligibility: {
+    can_provision: boolean
+    reasons: string[]
+    licence_limit: number | null
+    used_licences: number
+    available_module_keys: string[]
+  }
+}
+
+export interface OfficeErpNewClientInput {
+  person_type: 'company'
+  tax_id: string
+  status: 'active'
+  tax_regime: 'mei' | 'simple_national' | 'presumed_profit' | 'actual_profit' | 'other'
+  name?: string
+  email?: string
+  phone?: string
+}
+
+export interface OfficeErpEnrollmentTerms {
+  erp_plan_id: number
+  price: string
+  currency: 'BRL'
+  interval_months: 1 | 3 | 6 | 12
+  due_in_days: number
+  start_on: string
+  billing_timezone: string
+}
+
+export type OfficeErpEnrollmentInput = OfficeErpEnrollmentTerms & (
+  | { client_id: number, new_client?: never }
+  | { new_client: OfficeErpNewClientInput, client_id?: never }
+)
+
+export interface OfficeErpEnrollmentOutcome {
+  client_id: number
+  company_id: number
+  subscription_id: number
+  contract_id: number
+  invoice_id: number
+  owner_setup_status: 'unclaimed' | 'claimed'
+}
+
+export interface OfficeErpOwnerSetupOutcome {
+  invitation_id: number
+  contract_id: number
+  company_id: number
+  owner_setup_status: 'unclaimed' | 'claimed'
+  expires_at: string
+  status: 'pending' | 'accepted' | 'revoked' | 'expired'
+  url?: string
+}
+
 export interface OfficeErpInvoiceBalance {
   original_total: string
   adjusted_charge: string

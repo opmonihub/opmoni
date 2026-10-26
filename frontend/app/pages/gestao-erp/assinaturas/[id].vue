@@ -18,8 +18,12 @@ interface ContractRevision {
 }
 interface ContractDetail {
   id: number
+  erp_plan_id?: number | null
+  erp_plan?: { id: number, name: string } | null
   client: { id: number, name: string }
-  company: { id: number, name: string } | null
+  company: { id: number, name: string, owner_setup_status?: 'unclaimed' | 'claimed' } | null
+  trial?: { id: number, started_at: string, ends_at: string, converted_at: string | null, expired_at: string | null, situation: 'trialing' | 'expired' | 'converted' } | null
+  next_billing_on?: string | null
   agreement_status: string
   licence_status: string | null
   current_revision: ContractRevision | null
@@ -62,6 +66,13 @@ const recoveryKey = computed(() => command.recoveryKey.value)
 const canMaintain = computed(() => !!context.capabilities.value?.can_maintain && !!record.value)
 const lifecycleStatus = computed(() => record.value?.agreement_status === 'effective' ? 'Vigente' : record.value?.agreement_status === 'accepted' ? 'Aceito · aguardando ativação' : record.value?.agreement_status === 'canceled' ? 'Cancelado' : record.value?.agreement_status ?? 'Indisponível')
 const licenceStatus = computed(() => ({ active: 'Ativa', pending: 'Pendente', suspended: 'Suspensa', past_due: 'Em atraso', canceled: 'Cancelada' } as Record<string, string>)[record.value?.licence_status ?? ''] ?? 'Sem licença vinculada')
+const trialStatus = computed(() => ({ trialing: 'Em teste', expired: 'Teste encerrado', converted: 'Convertido em assinatura paga' } as Record<string, string>)[record.value?.trial?.situation ?? ''] ?? '')
+
+function formatUtcDateTime(value: string) {
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return 'Data indisponível'
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' }).format(date) + ' UTC'
+}
 const moduleOptions = computed(() => [...new Set([
   ...(record.value?.current_revision?.module_keys ?? []),
   ...(context.capabilities.value?.allowance.module_keys ?? [])
@@ -233,6 +244,41 @@ watch(identityStamp, () => {
             Empresa ERP
           </p><p class="mt-1 font-medium text-highlighted">
             {{ record.company?.name ?? 'Aguardando vínculo' }}
+          </p>
+        </div>
+        <div v-if="record.erp_plan_id">
+          <p class="text-sm text-muted">
+            Plano técnico
+          </p>
+          <p class="mt-1 font-medium text-highlighted">
+            {{ record.erp_plan?.name ?? `Plano ERP #${record.erp_plan_id}` }}
+          </p>
+        </div>
+        <div v-if="record.company?.owner_setup_status">
+          <p class="text-sm text-muted">
+            Acesso do responsável
+          </p>
+          <p class="mt-1 font-medium text-highlighted">
+            {{ record.company.owner_setup_status === 'claimed' ? 'Configurado' : 'Aguardando configuração' }}
+          </p>
+        </div>
+        <div v-if="record.trial">
+          <p class="text-sm text-muted">
+            Teste de 7 dias
+          </p>
+          <UBadge class="mt-1" :color="record.trial.situation === 'trialing' ? 'info' : record.trial.situation === 'expired' ? 'warning' : 'success'" variant="subtle">
+            {{ trialStatus }}
+          </UBadge>
+          <p class="mt-1 text-sm text-muted">
+            {{ record.trial.situation === 'trialing' ? 'Encerra' : record.trial.situation === 'expired' ? 'Encerrou' : 'Período original até' }} {{ formatUtcDateTime(record.trial.ends_at) }}
+          </p>
+        </div>
+        <div v-else-if="record.next_billing_on">
+          <p class="text-sm text-muted">
+            Próxima cobrança
+          </p>
+          <p class="mt-1 font-medium text-highlighted">
+            {{ record.next_billing_on }}
           </p>
         </div>
         <div>

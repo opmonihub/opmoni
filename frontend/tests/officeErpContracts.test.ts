@@ -6,7 +6,7 @@ import { compileVueComponent } from './helpers/compileVueComponent.ts'
 type Node = { tag?: string, text?: string, props: Record<string, unknown>, children: Node[], parent?: Node | null }
 const capabilities = Vue.ref({ can_read: true, can_maintain: true, can_sell_new: true, capability_key: 'cap-1', allowance: { module_keys: ['purchases'] } })
 const revision = { id: 1, revision_number: 1, price: '99.00', interval_months: 1, due_in_days: 10, module_keys: ['purchases'], service_period_start: '2026-10-25', service_period_end: '2026-11-24', reason: 'accepted' }
-const detail = { id: 12, client: { id: 3, name: 'Mercado Central' }, company: { id: 4, name: 'Mercado ERP' }, agreement_status: 'effective', licence_status: 'active', current_revision: revision, pending_revision: null, service_anchor_on: '2026-10-25', next_period_month_offset: 1, cancel_effective_on: null, cancellation_reason: null, manual_hold: false, balance: { outstanding: '50.00', invoice_count: 2 }, revisions: [revision] }
+const detail = { id: 12, erp_plan_id: 7, erp_plan: { id: 7, name: 'Contábil Essencial' }, client: { id: 3, name: 'Mercado Central' }, company: { id: 4, name: 'Mercado ERP', owner_setup_status: 'unclaimed' }, trial: null, next_billing_on: '2026-11-24', agreement_status: 'effective', licence_status: 'active', current_revision: revision, pending_revision: null, service_anchor_on: '2026-10-25', next_period_month_offset: 1, cancel_effective_on: null, cancellation_reason: null, manual_hold: false, balance: { outstanding: '50.00', invoice_count: 2 }, revisions: [revision] }
 
 function nodes(node: Node, predicate: (candidate: Node) => boolean): Node[] {
   return [...(predicate(node) ? [node] : []), ...node.children.flatMap(child => nodes(child, predicate))]
@@ -125,6 +125,9 @@ test('renders the contracts list SFC and keeps agreement and licence statuses di
     await settle()
     assert.match(text(page.root), /Mercado Central/)
     assert.match(text(page.root), /R\$ 99,00/)
+    assert.match(text(page.root), /Contábil Essencial/)
+    assert.match(text(page.root), /Próxima cobrança/)
+    assert.match(text(page.root), /aguardando configuração/)
     assert.match(text(page.root), /Vigente/)
     assert.match(text(page.root), /Ativa/)
     assert.ok(page.calls.some(call => call.path === '/erp-commercial/contracts'))
@@ -159,6 +162,8 @@ test('renders the contract detail SFC, dispatches lifecycle actions, and recover
   try {
     await settle()
     assert.match(text(page.root), /Mercado Central/)
+    assert.match(text(page.root), /Contábil Essencial/)
+    assert.match(text(page.root), /Aguardando configuração/)
     assert.match(text(page.root), /Saldo em aberto/)
     const renew = nodes(page.root, node => node.tag === 'button' && text(node).includes('Renovar sem mudar termos'))[0]
     assert.ok(renew)
