@@ -5,12 +5,18 @@ namespace Tests\Feature\OfficeErpCommercial;
 use App\Enums\Erp\ErpSubscriptionStatus;
 use App\Erp\ErpCommercialCatalog;
 use App\Models\Account;
+use App\Models\Client;
+use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpOwnerInvitation;
+use App\Models\Erp\Commercial\OfficeErpSalesPlan;
+use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpSubscription;
 use App\Models\User;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use LogicException;
@@ -68,6 +74,153 @@ class TrialSchemaTest extends OfficeErpCommercialTestCase
             self::assertSame($invoiceSnapshot, $invoice->fresh()->only(['number', 'original_total', 'document_status']));
             self::assertSame($user->id, $company->fresh()->memberships()->where('role', 'owner')->value('user_id'));
             self::assertSame('active', $subscription->fresh()->status);
+        }
+    }
+
+    public function test_additive_migrations_backfill_legacy_rows_without_rewriting_snapshots(): void
+    {
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            self::markTestSkipped('The pre-addition upgrade proof uses its own in-memory SQLite database.');
+        }
+
+        $connection = 'erp_customer_enrollment_upgrade';
+        $originalConnection = DB::getDefaultConnection();
+        try {
+            config([
+                'database.connections.'.$connection => [
+                    'driver' => 'sqlite',
+                    'database' => ':memory:',
+                    'prefix' => '',
+                    'foreign_key_constraints' => true,
+                ],
+                'database.default' => $connection,
+            ]);
+            DB::purge($connection);
+            DB::setDefaultConnection($connection);
+
+            $enrollmentMigration = database_path('migrations/2026_10_25_090000_add_erp_customer_enrollment.php');
+            $trialMigration = database_path('migrations/2026_10_25_091000_create_erp_office_trials.php');
+            $prior = array_values(array_filter(
+                glob(database_path('migrations/*.php')),
+                static fn (string $path): bool => strcmp($path, $enrollmentMigration) < 0,
+            ));
+            self::assertSame(0, Artisan::call('migrate', [
+                '--database' => $connection,
+                '--path' => $prior,
+                '--realpath' => true,
+                '--force' => true,
+                '--no-interaction' => true,
+            ]));
+            self::assertFalse(Schema::hasColumn('erp_companies', 'owner_setup_status'));
+            self::assertFalse(Schema::hasColumn('office_erp_contracts', 'provisioning_source'));
+            self::assertFalse(Schema::hasColumn('office_erp_owner_invitations', 'purpose'));
+
+            $account = Account::factory()->create();
+            $client = Client::factory()->company()->create(['account_id' => $account->id]);
+            $owner = User::factory()->create();
+            $company = ErpCompany::factory()->create(['cnpj' => '30288513000100']);
+            ErpCompanyMembership::factory()->create([
+                'erp_company_id' => $company->id,
+                'user_id' => $owner->id,
+                'role' => 'owner',
+            ]);
+            $erpPlan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+            $subscription = ErpSubscription::factory()->create([
+                'erp_company_id' => $company->id,
+                'erp_plan_id' => $erpPlan->id,
+                'status' => 'active',
+            ]);
+            $salesPlan = OfficeErpSalesPlan::factory()->create(['account_id' => $account->id]);
+            $salesPlanRevision = OfficeErpSalesPlanRevision::factory()->create([
+                'account_id' => $account->id,
+                'sales_plan_id' => $salesPlan->id,
+                'price' => '321.45',
+                'module_keys' => ['purchases', 'add_sale'],
+            ]);
+            $salesPlan->forceFill(['current_revision_id' => $salesPlanRevision->id])->save();
+            $contract = OfficeErpContract::factory()->create([
+                'account_id' => $account->id,
+                'client_id' => $client->id,
+                'sales_plan_id' => $salesPlan->id,
+                'erp_company_id' => $company->id,
+                'agreement_status' => 'effective',
+            ]);
+            $contractRevision = OfficeErpContractRevision::factory()->create([
+                'account_id' => $account->id,
+                'contract_id' => $contract->id,
+                'sales_plan_revision_id' => $salesPlanRevision->id,
+                'price' => '321.45',
+                'module_keys' => ['purchases', 'add_sale'],
+            ]);
+            $contract->forceFill([
+                'current_revision_id' => $contractRevision->id,
+                'service_anchor_on' => '2026-01-01',
+                'effective_at' => '2026-01-01 12:00:00',
+            ])->save();
+            $invitation = OfficeErpOwnerInvitation::factory()->create([
+                'account_id' => $account->id,
+                'contract_id' => $contract->id,
+            ]);
+            $invoiceId = DB::table('office_erp_invoices')->insertGetId([
+                'account_id' => $account->id,
+                'contract_id' => $contract->id,
+                'contract_revision_id' => $contractRevision->id,
+                'kind' => 'manual',
+                'document_status' => 'issued',
+                'number' => 'LEGACY-2026-000001',
+                'issued_at' => '2026-01-01 12:00:00',
+                'period_start' => '2026-01-01',
+                'period_end' => '2026-01-31',
+                'due_on' => '2026-02-10',
+                'currency' => 'BRL',
+                'seller_snapshot' => '{"account":"legacy office"}',
+                'bill_to_snapshot' => '{"company":"legacy customer"}',
+                'items_snapshot' => '[{"description":"frozen service","amount":"321.45"}]',
+                'original_total' => '321.45',
+                'created_at' => '2026-01-01 12:00:00',
+                'updated_at' => '2026-01-01 12:00:00',
+            ]);
+
+            $tables = [
+                'erp_companies',
+                'erp_company_memberships',
+                'erp_subscriptions',
+                'office_erp_contracts',
+                'office_erp_contract_revisions',
+                'office_erp_owner_invitations',
+                'office_erp_invoices',
+            ];
+            $before = [];
+            foreach ($tables as $table) {
+                $columns = Schema::getColumnListing($table);
+                $before[$table] = [$columns, DB::table($table)->select($columns)->orderBy('id')->get()->toJson()];
+            }
+
+            self::assertSame(0, Artisan::call('migrate', [
+                '--database' => $connection,
+                '--path' => [$enrollmentMigration, $trialMigration],
+                '--realpath' => true,
+                '--force' => true,
+                '--no-interaction' => true,
+            ]));
+
+            foreach ($before as $table => [$columns, $json]) {
+                self::assertSame($json, DB::table($table)->select($columns)->orderBy('id')->get()->toJson(), $table);
+            }
+            self::assertSame('claimed', $company->fresh()->owner_setup_status);
+            self::assertSame($owner->id, $company->fresh()->memberships()->where('role', 'owner')->value('user_id'));
+            self::assertSame('active', $subscription->fresh()->status);
+            self::assertSame('legacy_invitation', $contract->fresh()->provisioning_source);
+            self::assertNull($contract->fresh()->erp_plan_id);
+            self::assertNull($contract->fresh()->authorized_by_user_id);
+            self::assertSame('commercial_acceptance', $invitation->fresh()->purpose);
+            self::assertSame(1, DB::table('office_erp_invoices')->where('id', $invoiceId)->count());
+            self::assertTrue(Schema::hasTable('erp_subscription_trials'));
+            self::assertTrue(Schema::hasTable('office_erp_trial_links'));
+        } finally {
+            DB::purge($connection);
+            config(['database.default' => $originalConnection]);
+            DB::setDefaultConnection($originalConnection);
         }
     }
 
@@ -220,7 +373,7 @@ class TrialSchemaTest extends OfficeErpCommercialTestCase
             'erp_plan_id' => app(ErpCommercialCatalog::class)->ensureBasicPlan()->id,
             'status' => 'trialing',
         ]);
-        $startedAt = now()->utc()->subHours(12);
+        $startedAt = now()->utc()->startOfSecond()->subHours(12);
         $endsAt = $startedAt->copy()->addHours(168);
         DB::table('erp_subscription_trials')->insert([
             'erp_subscription_id' => $subscription->id,
@@ -242,6 +395,11 @@ class TrialSchemaTest extends OfficeErpCommercialTestCase
             ->assertJsonPath('data.status', 'trialing')
             ->assertJsonPath('data.trial.situation', 'trialing')
             ->assertJsonPath('data.trial.ends_at', $endsAt->toIso8601String());
+
+        $this->travelTo($endsAt);
+        $this->getJson('/api/v1/erp/subscription')
+            ->assertOk()
+            ->assertJsonPath('data.trial.situation', 'expired');
     }
 
     public function test_erp_subscription_status_check_rejects_unknown_values(): void

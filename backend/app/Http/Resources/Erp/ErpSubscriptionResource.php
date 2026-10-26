@@ -52,7 +52,7 @@ class ErpSubscriptionResource extends JsonResource
                 'expired_at' => $trial->expired_at?->toIso8601String(),
                 'situation' => $trial->converted_at !== null
                     ? 'converted'
-                    : ($trial->expired_at !== null || $trial->ends_at->isPast() ? 'expired' : 'trialing'),
+                    : ($trial->expired_at !== null || $trial->ends_at->lessThanOrEqualTo(now()) ? 'expired' : 'trialing'),
             ];
         }
 
