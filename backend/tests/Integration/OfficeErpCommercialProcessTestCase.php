@@ -690,46 +690,10 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
 
     protected function assertWaitingOnAccountLock(Process $process): void
     {
-        $identity = $this->workers[spl_object_id($process)]['identity'];
-        $deadline = microtime(true) + 10;
-        do {
-            DB::select('select pg_stat_clear_snapshot()');
-            $activity = DB::selectOne(
-                'select wait_event_type, query from pg_stat_activity where pid = ?',
-                [$identity['database_pid']],
-            );
-            if ($activity?->wait_event_type === 'Lock') {
-                self::assertStringContainsString('"accounts"', strtolower($activity->query));
-                self::assertStringContainsString('for update', strtolower($activity->query));
-
-                return;
-            }
-            self::assertTrue($process->isRunning(), 'Contender exited before the Account row lock wait.');
-            self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL Account row lock wait observed.');
-            usleep(10000);
-        } while (true);
+        $this->assertWaitingOnRowLock($process, 'accounts');
     }
 
     protected function assertWaitingOnRowLock(Process $process, string $table): void
-    {
-        $identity = $this->workers[spl_object_id($process)]['identity'];
-        $deadline = microtime(true) + 10;
-        do {
-            DB::select('select pg_stat_clear_snapshot()');
-            $activity = DB::selectOne('select wait_event_type, query from pg_stat_activity where pid = ?', [$identity['database_pid']]);
-            if ($activity?->wait_event_type === 'Lock') {
-                self::assertStringContainsString('from "'.$table.'"', strtolower($activity->query));
-                self::assertStringContainsString('for update', strtolower($activity->query));
-
-                return;
-            }
-            self::assertTrue($process->isRunning(), 'Worker exited before waiting for the '.$table.' row lock.');
-            self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL '.$table.' row lock wait observed.');
-            usleep(10000);
-        } while (true);
-    }
-
-    protected function assertWaitingOnTableLock(Process $process, string $table): void
     {
         self::assertMatchesRegularExpression('/\A[a-z_]+\z/', $table);
         $identity = $this->workers[spl_object_id($process)]['identity'];
@@ -749,6 +713,11 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         } while (true);
     }
 
+    protected function assertWaitingOnTableLock(Process $process, string $table): void
+    {
+        $this->assertWaitingOnRowLock($process, $table);
+    }
+
     protected function assertWaitingOnAdvisoryLock(Process $process): void
     {
         $identity = $this->workers[spl_object_id($process)]['identity'];
@@ -766,6 +735,29 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
                 'Worker exited before waiting for the PostgreSQL advisory lock. '.self::workerFailureFingerprint($process),
             );
             self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL advisory lock wait observed.');
+            usleep(10000);
+        } while (true);
+    }
+
+    protected function assertWaitingOnAdvisoryLockHeldBy(Process $contender, Process $holder): void
+    {
+        $identity = $this->workers[spl_object_id($contender)]['identity'];
+        $holderPid = $this->signalData($holder, 'ready')['database_pid'];
+        $deadline = microtime(true) + 10;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $activity = DB::selectOne(
+                'select wait_event_type, query, case when ? = any(pg_blocking_pids(pid)) then 1 else 0 end as blocked_by_holder from pg_stat_activity where pid = ?',
+                [$holderPid, $identity['database_pid']],
+            );
+            if ($activity?->wait_event_type === 'Lock') {
+                self::assertStringContainsString('pg_advisory_xact_lock', strtolower($activity->query));
+                self::assertSame(1, (int) $activity->blocked_by_holder);
+
+                return;
+            }
+            self::assertTrue($contender->isRunning(), 'Worker exited before waiting on the held PostgreSQL advisory lock.');
+            self::assertLessThan($deadline, microtime(true), 'No PostgreSQL advisory wait blocked by the expected worker was observed.');
             usleep(10000);
         } while (true);
     }
