@@ -223,7 +223,7 @@ export function useErpTrialRegistration() {
         return
       }
       const parsed = setFailure(error)
-      const knownPreCommit409 = ['login_required', 'client_association_requires_owner_verification', 'confirm_existing_association_required', 'idempotency_conflict', ...definitive409Denials].includes(parsed.code)
+      const knownPreCommit409 = ['login_required', 'client_association_requires_owner_verification', 'confirm_existing_association_required', 'company_association_required', 'idempotency_conflict', ...definitive409Denials].includes(parsed.code)
       if (parsed.status === 422 || parsed.status === 403 || parsed.status === 410
         || (parsed.status === 409 && knownPreCommit409)) {
         if (parsed.status !== 422 && !['client_association_requires_owner_verification', 'confirm_existing_association_required'].includes(parsed.code))

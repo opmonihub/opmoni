@@ -479,10 +479,15 @@ describe('office ERP trial registration surface', () => {
 
   it('denies a wrong Company owner without offering Client association confirmation', async () => {
     let posts = 0
+    const bodies: Array<Record<string, unknown>> = []
+    const keys: string[] = []
     const app = setupTrial(async (_path, options) => {
       if (options?.method === 'POST') {
         posts++
-        throw { statusCode: 409, data: { code: 'company_association_required', message: 'Conflict' } }
+        bodies.push(options.body as Record<string, unknown>)
+        keys.push((options.headers as Record<string, string>)['Idempotency-Key']!)
+        if (posts === 1) throw { statusCode: 409, data: { code: 'company_association_required', message: 'Conflict' } }
+        return { identity: { id: 21, name: 'Outro titular', email: 'outro@example.test' }, data: trialOutcome }
       }
       return { data: { sponsor: { name: 'Escritório Exemplo' }, plan: { name: 'ERP Essencial' }, duration_days: 7, available: true } }
     }, async () => ({ id: 21, name: 'Outro titular', email: 'outro@example.test' }))
@@ -493,12 +498,29 @@ describe('office ERP trial registration surface', () => {
       for (let index = 0; index < 6; index++) await Promise.resolve()
       await Vue.nextTick()
       assert.equal(posts, 1, 'the wrong-owner response does not automatically resubmit')
+      assert.equal((app.view.phase as Vue.Ref<string>).value, 'form', 'the applicant may correct a mistyped CNPJ')
+      assert.equal((app.view.pending as Vue.Ref<unknown>).value, null, 'the definitive rejection must not create recovery state')
+      assert.equal((app.view.operationKey as Vue.Ref<string>).value, '', 'the rejected operation key is discarded')
       assert.equal(mounted.nodes().some(node => node.type === 'UCheckbox'), false)
+      assert.ok(mounted.form, 'the signup form stays available for a corrected CNPJ')
+      const cnpjField = mounted.nodes().find(node => node.type === 'UFormField' && node.props.name === 'cnpj')
+      assert.ok(cnpjField)
+      const cnpjInput = mounted.nodes().find(node => node.type === 'UInput' && node.props.inputmode === 'numeric')
+      assert.ok(cnpjInput, 'the CNPJ field remains editable')
       const ownershipAlert = mounted.nodes().find(node => node.type === 'UAlert' && node.props.title === 'Não foi possível confirmar a titularidade')
       assert.ok(ownershipAlert)
       assert.match(String(ownershipAlert.props.description), /titular correto|proprietário correto/i)
       assert.match(String(ownershipAlert.props.description), /revise o CNPJ|fale com o escritório/i)
       assert.equal(mounted.nodes().some(node => node.type === 'UButton' && node.props.target === '_blank' && node.props.to === '/login'), true)
+      ;(cnpjInput.props['onUpdate:modelValue'] as (value: string) => void)('98765432000198')
+      await Vue.nextTick()
+      ;(mounted.form!.props.onSubmit as (event: { data: TrialRegistrationInput }) => void)({ data: { ...input(), cnpj: '98765432000198', password: undefined } })
+      for (let index = 0; index < 6; index++) await Promise.resolve()
+      await Vue.nextTick()
+      assert.equal(posts, 2, 'a corrected CNPJ is sent only after a second explicit form submission')
+      assert.equal(bodies[1]?.cnpj, '98765432000198')
+      assert.notEqual(keys[0], keys[1], 'a corrected CNPJ uses a fresh operation key')
+      assert.equal((app.view.phase as Vue.Ref<string>).value, 'confirmed')
     } finally {
       mounted.app.unmount()
       app.stop()
