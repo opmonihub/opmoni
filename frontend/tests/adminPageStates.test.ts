@@ -6,6 +6,7 @@ import { it } from 'node:test'
 import * as Vue from 'vue'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 // Compiled SFC setup returns dynamic bindings; the runtime harness exercises their actual values.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Runtime = any
@@ -30,6 +31,7 @@ function session() {
     if (!values.has(key)) values.set(key, Vue.ref(initial()))
     return values.get(key)!
   }
+  useState('access-user', () => ({ id: 1, is_super_admin: true, current_account: null, accounts: [], current_company: null, companies: [] }))
   return { values, useState }
 }
 async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>, routePath = '/admin/contas', props: Record<string, Runtime> = {}, app = session(), debounce: Runtime = (value: unknown) => value) {
@@ -44,10 +46,10 @@ async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>,
   const unmounted: (() => unknown)[] = []
   const globals = {
     useRoute: () => ({ path: routePath }),
-    useListNavigationState: navigation.useListNavigationState, listNavigationField: navigation.listNavigationField, useListNavigationRegistry: navigation.useListNavigationRegistry, useAdminReadAuthority: undefined as Runtime,
+    useListNavigationState: navigation.useListNavigationState, listNavigationField: navigation.listNavigationField, useListNavigationRegistry: navigation.useListNavigationRegistry, useAdminReadAuthority: undefined as Runtime, useAdminReadAllowed: undefined as Runtime, useState: app.useState,
     ref: Vue.ref, computed: Vue.computed, reactive: Vue.reactive, watch: Vue.watch, definePageMeta() {
     }, useNuxtApp: () => ({ $api: api }), useAccessApi: () => ({ api }),
-    useAuth: () => ({ user: Vue.ref({ is_super_admin: true }), currentAccount: Vue.ref({ id: 1, status: 'active', role: 'user' }), canManageMembers: Vue.ref(true), accounts: Vue.ref([{ id: 1, status: 'active', role: 'user' }]), switchAccount: api }),
+    useAuth: () => ({ user: app.values.get('access-user')!, currentAccount: Vue.ref({ id: 1, status: 'active', role: 'user' }), canManageMembers: Vue.ref(true), accounts: Vue.ref([{ id: 1, status: 'active', role: 'user' }]), switchAccount: api }),
     useToast: () => ({ add() {
     } }), refDebounced: debounce,
     useAccountFilters: undefined as Runtime,
@@ -70,7 +72,7 @@ async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>,
     }, exports, ...Object.values(globals))
     return exports
   }
-  globals.useAdminReadAuthority = evaluate(readFileSync(new URL('../app/composables/useAdminReadAuthority.ts', import.meta.url), 'utf8')).useAdminReadAuthority
+  Object.assign(globals, evaluate(readFileSync(new URL('../app/composables/useAdminReadAuthority.ts', import.meta.url), 'utf8')))
   globals.useAccountFilters = evaluate(readFileSync(new URL('../app/composables/useAccountFilters.ts', import.meta.url), 'utf8')).useAccountFilters
   const scope = Vue.effectScope()
   const state = scope.run(() => evaluate(script.content).default.setup(props, { emit: (name: string) => emitted.push(name), expose() {
@@ -757,5 +759,88 @@ it('Usuarios uses the actual 300ms VueUse debounce and admits only the normalize
   await new Promise(resolve => setTimeout(resolve, 350))
   await flush()
   assert.deepEqual(calls, [{ page: 1, q: 'changed' }])
+  view.stop()
+})
+
+for (const name of ['usuarios', 'assinaturas', 'contas', 'planos', 'index', 'suporte'])
+  for (const loss of ['actor', 'super-admin'])
+    it(`${name} admits no safe reads after ${loss} loss and resumes once for a current Super Admin`, async () => {
+      const app = session()
+      const actor = app.values.get('access-user')!.value
+      const calls: Runtime[] = []
+      const view = await page(name, async (path, options) => {
+        calls.push([path, options])
+        if (name === 'planos') return [{ id: 1, name: 'Private', slug: 'private' }]
+        if (name === 'index') return { data: { totals: {}, recent_support_logs: [] } }
+        return resource([{ id: 1 }])
+      }, '/admin/' + name, {}, app)
+      await view.start()
+      calls.length = 0
+      app.values.get('access-user')!.value = loss === 'actor' ? null : { ...actor, is_super_admin: false }
+      await flush()
+      await flush()
+      await view.state.load?.()
+      await view.state.loadLogs?.()
+      await view.state.loadCatalog?.()
+      if (name === 'suporte') {
+        view.state.query.value = 'Needle'
+        await view.state.search()
+      }
+      if (name === 'contas') await view.state.begin('edit', { id: 1, name: 'Private' })
+      assert.deepEqual(calls, [])
+      app.values.get('access-user')!.value = actor
+      await flush()
+      await flush()
+      assert.equal(calls.length, 1)
+      view.stop()
+    })
+
+it('mounted Usuarios invalidates through the actual API 401 plugin and auth flow without admitting another read', async () => {
+  const app = session()
+  let unauthorized = false
+  const calls: string[] = []
+  const destinations: string[] = []
+  const api = async (path: string) => {
+    calls.push(path)
+    if (unauthorized) throw { statusCode: 401 }
+    return resource([{ id: 1, name: 'Private' }])
+  }
+  const nuxtApp = { runWithContext: (run: () => unknown) => run() }
+  const authBindings = {
+    useState: app.useState,
+    useNuxtApp: () => nuxtApp,
+    useAccessApi: () => ({ api, csrf: Vue.ref(null), refreshCsrf: async () => {} }),
+    clearNuxtData() {},
+    clearNuxtState: (predicate: (key: string) => boolean) => {
+      for (const [key, value] of app.values) if (predicate(key)) value.value = undefined
+    }
+  }
+  const authSource = readFileSync(new URL('../app/composables/useAuth.ts', import.meta.url), 'utf8').replaceAll('import.meta.client', 'false')
+  const compiledAuth = ts.transpileModule(authSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ESNext } }).outputText
+  const authExports: Runtime = {}
+  new Function('require', 'exports', ...Object.keys(authBindings), compiledAuth)((name: string) => name.startsWith('#shared/')
+    ? require(fileURLToPath(new URL(`../shared/${name.slice(8)}.ts`, import.meta.url)))
+    : require(name), authExports, ...Object.values(authBindings))
+  const auth = authExports.useAuth()
+  const plugin = loadAppComposable<{ default: (app: typeof nuxtApp) => { provide: { api: typeof api } } }>('plugins/api.ts', {
+    defineNuxtPlugin: (run: unknown) => run,
+    useState: app.useState,
+    useAccessApi: () => ({ api }),
+    useAuth: () => auth,
+    navigateTo: async (path: string) => { destinations.push(path) }
+  }).default(nuxtApp)
+  const view = await page('usuarios', plugin.provide.api, '/admin/usuarios', {}, app)
+  await view.start()
+  assert.equal(view.state.users.value.length, 1)
+  unauthorized = true
+  calls.length = 0
+  await view.state.load()
+  await flush()
+  await flush()
+  assert.deepEqual(calls, ['/admin/users'])
+  assert.equal(app.values.get('access-user')!.value, null)
+  assert.deepEqual(destinations, ['/login'])
+  assert.deepEqual(view.state.users.value, [])
+  assert.equal(view.state.loading.value, false)
   view.stop()
 })

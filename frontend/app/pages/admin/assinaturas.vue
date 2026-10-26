@@ -18,6 +18,7 @@ const STATUS_META: Record<Subscription['status'], {
   past_due: { label: 'Inadimplente', color: 'warning' },
   canceled: { label: 'Cancelada', color: 'neutral' }
 }
+const adminReadAllowed = useAdminReadAllowed()
 const { $api } = useNuxtApp()
 const toast = useToast()
 const subscriptions = ref<Subscription[]>([])
@@ -27,6 +28,8 @@ const catalogLoading = ref(false)
 const catalogError = ref<unknown>(null)
 const runCatalog = createLatestRequestRunner()
 function loadCatalog() {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   if (catalogLoading.value)
     return
   catalogLoading.value = true
@@ -78,6 +81,8 @@ const { isLoading, showError, retry } = useRetryableLoad({
   refreshErrorTitle: 'Não foi possível atualizar as assinaturas'
 })
 function load() {
+  if (!adminReadAllowed.value)
+    return Promise.resolve()
   loading.value = true
   loadError.value = null
   return runLatestLoad(signal => $api<ResourceListResponse<Subscription>>('/admin/subscriptions', { params: listParams.value, signal }), {

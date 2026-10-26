@@ -155,11 +155,12 @@ async function serproPage(configured: boolean | null) {
     if (!states.has(key)) states.set(key, Vue.ref(initial()))
     return states.get(key)!
   }
+  useState('access-user', () => ({ id: 1, is_super_admin: true, accounts: [], current_account: null, companies: [], current_company: null }))
   const navigation = loadAppComposable<typeof import('../app/composables/useListNavigationState.ts')>(
     'composables/useListNavigationState.ts', { useState }
   )
   const authority = loadAppComposable<typeof import('../app/composables/useAdminReadAuthority.ts')>(
-    'composables/useAdminReadAuthority.ts', navigation
+    'composables/useAdminReadAuthority.ts', { ...navigation, useState }
   )
   const page = await setupPage<SerproPage>('pages/admin/serpro.vue', {
     ...navigation,
