@@ -6,17 +6,27 @@ import { useMembers } from '~/composables/useMembers'
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const { list, create, update, remove } = useDepartments()
 const { listDirectory } = useMembers()
 const { canManageDepartments } = useAuth()
 const toast = useToast()
 
-const search = ref('')
+const navigation = useListNavigationState('team-departments', {
+  defaults: () => ({ search: '' }),
+  normalize: (value) => {
+    const input = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    return { search: typeof input.search === 'string' ? input.search.slice(0, 1000) : '' }
+  }
+})
+const search = listNavigationField(navigation, 'search')
 
-const { data, status, error, refresh: reload } = await useAsyncData('equipe-departments', async () => {
-  const [departments, members] = await Promise.all([list(), listDirectory()])
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData('equipe-departments', async (_nuxtApp, { signal }) => {
+  const [departments, members] = await Promise.all([list({}, { signal }), listDirectory({}, { signal })])
   return { departments, members }
 })
+readLifecycle.own({ clear: clearOffice0, refresh: reload })
 
 /**
  * `sticky`: the alert is fatal to this page — it is `v-else-if` of the list — so a

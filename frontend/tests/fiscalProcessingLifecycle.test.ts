@@ -67,6 +67,11 @@ function page() {
   const component = compileVueComponent('pages/fiscal/processamento.vue', {
     ref: Vue.ref, computed: Vue.computed, watch: Vue.watch,
     useState: () => session,
+    useOfficeReadLifecycle: () => ({ own() {} }),
+    useListNavigationState: (_key: string, options: { defaults: () => unknown }) => Vue.ref(options.defaults()),
+    listNavigationField: (state: Vue.Ref<Record<string, unknown>>, key: string) => Vue.computed({
+      get: () => state.value[key], set: (value) => { state.value = { ...state.value, [key]: value } }
+    }),
     definePageMeta() { }, useAuth: () => ({ currentAccount: account }),
     onMounted: (callback: () => void) => mounted.push(callback),
     onBeforeUnmount: (callback: () => void) => unmounted.push(callback),

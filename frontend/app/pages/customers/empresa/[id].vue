@@ -3,6 +3,7 @@ import type { DropdownMenuItem, TabsItem, TimelineItem } from '@nuxt/ui'
 import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import type { Client, DeadlineStatus } from '~/types/client'
 import type { ClientDispatchContact } from '~/types/whatsapp'
+import DispatchContactFormModal from '~/components/monitoring/DispatchContactFormModal.vue'
 import { apiErrorMessage } from '~/composables/useApiError'
 import {
   clientStatusLabel,
@@ -19,10 +20,13 @@ import {
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const route = useRoute()
 const toast = useToast()
 const { canManageClients } = useAuth()
 const { show, update } = useClients()
+const dispatchContactsApi = useDispatchContacts()
 
 function parseId(param: unknown): number | null {
   const raw = Array.isArray(param) ? param[0] : param
@@ -36,8 +40,6 @@ if (initialId === null) {
 }
 
 const activeId = ref(initialId)
-const client = shallowRef<Client | null>(null)
-const loading = ref(true)
 const togglingStatus = ref(false)
 const tab = ref<'visao' | 'cadastro' | 'contato' | 'endereco' | 'acesso' | 'historico'>('visao')
 
@@ -66,35 +68,40 @@ const certificateOpen = ref(false)
 const tagsOpen = ref(false)
 const deleteOpen = ref(false)
 
-async function loadById(id: number, initial = false) {
-  if (!initial) loading.value = true
-  try {
-    const data = await show(id)
-    client.value = data
-    activeId.value = id
-  } catch {
-    if (initial) throw createError({ statusCode: 404, statusMessage: 'Cliente não encontrado' })
-    toast.add({ title: 'Não foi possível carregar o cliente', color: 'error' })
-  } finally {
-    loading.value = false
-  }
-}
-
-await loadById(initialId, true)
-
-watch(() => route.params.id, (param) => {
-  const id = parseId(param)
-  if (id === null || id === activeId.value) return
-  tab.value = 'visao'
-  void loadById(id)
-})
+const { registry: navigationRegistry } = useListNavigationRegistry()
+const readAuthority = computed(() => navigationRegistry.value?.authority ?? '')
+const confirmedClient = shallowRef<Client | null>(null)
+watch(readAuthority, () => {
+  confirmedClient.value = null
+}, { flush: 'sync' })
+const clientReadKey = computed(() => `client-detail-${readAuthority.value}-${activeId.value}`)
+const { data: client, status: clientStatus, error: clientError, refresh: refreshClient, clear: clearOffice0 } = await useAsyncData<Client | null>(
+  clientReadKey,
+  (_nuxtApp, { signal }) => show(activeId.value, { signal }),
+  { default: () => confirmedClient.value, getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined }
+)
+readLifecycle.own({ clear: clearOffice0, refresh: refreshClient })
+if (clientError.value) throw createError({ statusCode: 404, statusMessage: 'Cliente não encontrado' })
+const loading = computed(() => clientStatus.value === 'pending')
+watch(readAuthority, () => {
+  client.value = null
+  cadastroOpen.value = false
+  contactOpen.value = false
+  certificateOpen.value = false
+  tagsOpen.value = false
+  deleteOpen.value = false
+}, { flush: 'sync' })
+watch(client, (value) => {
+  if (value) confirmedClient.value = value
+}, { immediate: true, flush: 'sync' })
 
 function onSaved(saved: Client) {
   client.value = saved
 }
 
 async function reload() {
-  await loadById(activeId.value)
+  await refreshClient()
+  if (clientError.value) toast.add({ title: 'Não foi possível carregar o cliente', color: 'error' })
 }
 
 const isCompany = computed(() => client.value?.person_type !== 'individual')
@@ -500,43 +507,39 @@ const addressEmptyActions = computed(() => {
  * Qualquer membro lê a lista; cadastrar/editar/remover é admin|operador —
  * o backend responde 403 e a tela esconde os botões.
  */
-const dispatchContactsApi = useDispatchContacts()
-const dispatchContacts = ref<ClientDispatchContact[]>([])
-const dispatchContactsLoading = ref(false)
-const dispatchContactsFailed = ref(false)
 const dispatchContactFormOpen = ref(false)
 const dispatchContactEditing = ref<ClientDispatchContact | null>(null)
 const dispatchContactDeleting = ref<ClientDispatchContact | null>(null)
-
-async function loadDispatchContacts() {
-  if (!client.value) return
-  dispatchContactsLoading.value = true
-  dispatchContactsFailed.value = false
-  try {
-    dispatchContacts.value = await dispatchContactsApi.list(client.value.id)
-  } catch (e) {
-    // Feature desligada (404) é estado inerte: sem contatos, sem alerta.
-    if (apiStatus(e) === 404) {
-      dispatchContacts.value = []
-    } else {
-      dispatchContactsFailed.value = true
+const confirmedContacts = shallowRef<ClientDispatchContact[]>([])
+watch(readAuthority, () => {
+  confirmedContacts.value = []
+}, { flush: 'sync' })
+const contactsReadKey = computed(() => `client-dispatch-contacts-${readAuthority.value}-${activeId.value}`)
+const { data: dispatchContacts, status: contactsStatus, error: contactsError, refresh: loadDispatchContacts, clear: clearOffice1 } = await useAsyncData<ClientDispatchContact[]>(
+  contactsReadKey,
+  async (_nuxtApp, { signal }) => {
+    try {
+      return await dispatchContactsApi.list(activeId.value, { signal })
+    } catch (error) {
+      // Feature desligada (404) é estado inerte: sem contatos, sem alerta.
+      if (apiStatus(error) === 404) return []
+      throw error
     }
-  } finally {
-    dispatchContactsLoading.value = false
-  }
-}
-
-// A lista é da ficha: carrega quando o cliente chega, relê quando a rota
-// troca de cliente — o contato do CNPJ anterior não pode aparecer aqui.
-watch(() => client.value?.id, (id) => {
-  if (id) void loadDispatchContacts()
-}, { immediate: true })
-
-watch(tab, (value) => {
-  if (value === 'contato' && dispatchContacts.value.length === 0 && !dispatchContactsFailed.value) {
-    void loadDispatchContacts()
-  }
-})
+  },
+  { default: () => confirmedContacts.value, getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined }
+)
+readLifecycle.own({ clear: clearOffice1, refresh: loadDispatchContacts })
+watch(dispatchContacts, (value) => {
+  confirmedContacts.value = value
+}, { immediate: true, flush: 'sync' })
+watch(readAuthority, () => {
+  dispatchContacts.value = []
+  dispatchContactFormOpen.value = false
+  dispatchContactEditing.value = null
+  dispatchContactDeleting.value = null
+}, { flush: 'sync' })
+const dispatchContactsLoading = computed(() => contactsStatus.value === 'pending')
+const dispatchContactsFailed = computed(() => Boolean(contactsError.value))
 
 function openDispatchContactForm(contact: ClientDispatchContact | null) {
   dispatchContactEditing.value = contact

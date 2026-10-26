@@ -9,9 +9,9 @@ import { queryOf } from './useApiQuery'
 export function useDepartments() {
   const { $api } = useNuxtApp()
 
-  async function list(params: Record<string, unknown> = {}) {
+  async function list(params: Record<string, unknown> = {}, options: { signal?: AbortSignal } = {}) {
     const response = await $api<{ data: Department[] }>('/departments', {
-      query: queryOf(params)
+      signal: options.signal, query: queryOf(params)
     })
     return response.data
   }

@@ -6,6 +6,8 @@ import { pageScrollClass } from '~/utils/pageShell'
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const route = useRoute()
 const { showProcess } = useWork()
 
@@ -15,11 +17,12 @@ const processId = computed(() => {
   return id
 })
 
-const { data, status, error, refresh: reload } = await useAsyncData<WorkProcessDetail>(
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData<WorkProcessDetail>(
   'work-processo-detalhe',
-  () => showProcess(processId.value),
+  (_nuxtApp, { signal }) => showProcess(processId.value, { signal }),
   { watch: [processId] }
 )
+readLifecycle.own({ clear: clearOffice0, refresh: reload })
 
 const process = computed(() => data.value ?? null)
 

@@ -17,6 +17,7 @@ import {
 import { pinnedDocumentFilter, singleValueFacets, tagFacets, type PortfolioListing } from '~/utils/portfolioFilters'
 
 type UseClientListFiltersOptions = {
+  navigation: ReturnType<typeof useOfficeTableNavigation>
   listing: Ref<PortfolioListing | null | undefined>
   rows: Ref<ClientSheet[]>
   matchingTotal: Ref<number>
@@ -27,14 +28,29 @@ type UseClientListFiltersOptions = {
 }
 
 export function useClientListFilters(options: UseClientListFiltersOptions) {
-  const search = ref('')
+  const navigation = options.navigation
+  const search = navigation.search
   const debouncedSearch = refDebounced(search, 350)
-  const statusFilter = ref<ClientStatus[]>([])
-  const regimeFilter = ref<TaxRegime[]>([])
-  const tagFilter = ref<number[]>([])
-  const certificateFilter = ref<DeadlineStatus[]>([])
-  const poaFilter = ref<DeadlineStatus[]>([])
-  const filterOperator = ref<Partial<Record<string, DataTableFilterOperator>>>({})
+  function values<T extends string | number>(columnId: string, convert: (value: string | number) => T) {
+    return computed<T[]>({
+      get: () => (navigation.filterModels.value.find(filter => filter.columnId === columnId)?.values ?? []).map(convert),
+      set: (next) => {
+        const current = navigation.filterModels.value.find(filter => filter.columnId === columnId)
+        navigation.filterModels.value = [
+          ...navigation.filterModels.value.filter(filter => filter.columnId !== columnId),
+          ...(next.length ? [{ columnId, operator: current?.operator ?? (next.length > 1 ? 'is any of' : 'is'), values: next } as DataTableFilterModel] : [])
+        ]
+      }
+    })
+  }
+  const statusFilter = values('status', value => String(value) as ClientStatus)
+  const regimeFilter = values('regime', value => String(value) as TaxRegime)
+  const tagFilter = values('tag', Number)
+  const certificateFilter = values('certificate', value => String(value) as DeadlineStatus)
+  const poaFilter = values('poa', value => String(value) as DeadlineStatus)
+  const filterOperator = computed<Partial<Record<string, DataTableFilterOperator>>>(() =>
+    Object.fromEntries(navigation.filterModels.value.map(model => [model.columnId, model.operator]))
+  )
 
   watch(options.listing, (value) => {
     if (!value) return
@@ -171,13 +187,7 @@ export function useClientListFilters(options: UseClientListFiltersOptions) {
   const activeFilterCount = computed(() => filterModels.value.length)
 
   function onFilters(models: DataTableFilterModel[]) {
-    const valuesOf = (id: string) => models.find(filter => filter.columnId === id)?.values ?? []
-    tagFilter.value = valuesOf('tag').map(Number)
-    regimeFilter.value = valuesOf('regime') as TaxRegime[]
-    statusFilter.value = valuesOf('status') as ClientStatus[]
-    certificateFilter.value = valuesOf('certificate') as DeadlineStatus[]
-    poaFilter.value = valuesOf('poa') as DeadlineStatus[]
-    filterOperator.value = Object.fromEntries(models.map(model => [model.columnId, model.operator]))
+    navigation.filterModels.value = models
   }
 
   function applySavedFilter(preset: { q: string, filters: DataTableFilterModel[] }) {

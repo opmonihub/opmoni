@@ -12,17 +12,20 @@ import { pageScrollClass } from '~/utils/pageShell'
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const { overview } = useSerpro()
 
 /** Reuse the SSR result during hydration; later visits read current stored counters. */
-const { data, status, error, refresh: reload } = await useAsyncData<MonitoringOverview>(
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData<MonitoringOverview>(
   'serpro-monitoring-overview',
-  () => overview(),
+  (_nuxtApp, { signal }) => overview({ signal }),
   {
     default: () => ({ portfolio_total: 0, attention: {} }),
     getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined
   }
 )
+readLifecycle.own({ clear: clearOffice0, refresh: reload })
 
 /**
  * `ignoreStatus: 404` — a 404 means the read API is not there yet, which is the

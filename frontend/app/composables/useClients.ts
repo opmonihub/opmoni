@@ -22,25 +22,25 @@ import { queryOf } from './useApiQuery'
 export function useClients() {
   const { $api } = useNuxtApp()
 
-  async function list(params: ClientListParams) {
+  async function list(params: ClientListParams, options: { signal?: AbortSignal } = {}) {
     return $api<{
       data: ClientSheet[]
       meta?: { total: number, mode?: 'sheet' | 'paged', current_page?: number, last_page?: number }
-    }>('/clients', { query: queryOf(params) })
+    }>('/clients', { signal: options.signal, query: queryOf(params) })
   }
 
-  async function show(id: number) {
-    const response = await $api<{ data: Client }>(`/clients/${id}`)
+  async function show(id: number, options: { signal?: AbortSignal } = {}) {
+    const response = await $api<{ data: Client }>(`/clients/${id}`, { signal: options.signal })
     return response.data
   }
 
-  async function portfolioSummary(params: Pick<ClientListParams, 'q' | 'status' | 'tax_regime' | 'tag_id' | 'certificate_status' | 'poa_status'> & { client_id?: number }) {
-    const response = await $api<{ data: ClientPortfolioSummary }>('/clients/summary', { query: queryOf(params) })
+  async function portfolioSummary(params: Pick<ClientListParams, 'q' | 'status' | 'tax_regime' | 'tag_id' | 'certificate_status' | 'poa_status'> & { client_id?: number }, options: { signal?: AbortSignal } = {}) {
+    const response = await $api<{ data: ClientPortfolioSummary }>('/clients/summary', { signal: options.signal, query: queryOf(params) })
     return response.data
   }
 
-  async function portfolioAnalytics(params: Pick<ClientListParams, 'q' | 'status' | 'tax_regime' | 'tag_id' | 'certificate_status' | 'poa_status'> & { client_id?: number } = {}) {
-    const response = await $api<{ data: ClientPortfolioAnalytics }>('/clients/analytics', { query: queryOf(params) })
+  async function portfolioAnalytics(params: Pick<ClientListParams, 'q' | 'status' | 'tax_regime' | 'tag_id' | 'certificate_status' | 'poa_status'> & { client_id?: number } = {}, options: { signal?: AbortSignal } = {}) {
+    const response = await $api<{ data: ClientPortfolioAnalytics }>('/clients/analytics', { signal: options.signal, query: queryOf(params) })
     return response.data
   }
 
@@ -104,8 +104,8 @@ export function useClients() {
     await $api(`/clients/saved-filters/${id}`, { method: 'DELETE' })
   }
 
-  async function listTags() {
-    return $api<{ data: ClientTag[] }>('/tags')
+  async function listTags(options: { signal?: AbortSignal } = {}) {
+    return $api<{ data: ClientTag[] }>('/tags', { signal: options.signal })
   }
 
   async function createTag(body: { name: string, color: ClientTagColor }) {

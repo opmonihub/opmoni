@@ -16,8 +16,17 @@ export function useWorkReferenceMonth(options: { syncRoute?: boolean } = {}) {
   const route = useRoute()
   const router = useRouter()
 
-  const month = useState<string>('work-reference-month', () => {
-    return parseReferenceMonth(route.query.reference_month) ?? currentReferenceMonth()
+  const navigation = useListNavigationState('work-reference-month', {
+    defaults: () => ({ month: currentReferenceMonth() }),
+    normalize: value => ({ month: parseReferenceMonth((value as { month?: unknown } | null)?.month) ?? currentReferenceMonth() }),
+    fromQuery: () => {
+      const parsed = isWorkMonthScopedPath(route.path) ? parseReferenceMonth(route.query.reference_month) : null
+      return parsed ? { month: parsed } : null
+    }
+  })
+  const month = computed({
+    get: () => navigation.value.month,
+    set: (value: string) => { navigation.value = { month: value } }
   })
 
   const isMonthScoped = computed(() => isWorkMonthScopedPath(route.path))
@@ -34,18 +43,7 @@ export function useWorkReferenceMonth(options: { syncRoute?: boolean } = {}) {
 
   if (options.syncRoute) {
     watch(
-      () => route.query.reference_month,
-      (raw) => {
-        const parsed = parseReferenceMonth(raw)
-        if (parsed && parsed !== month.value) {
-          month.value = parsed
-        }
-      },
-      { immediate: true }
-    )
-
-    watch(
-      [isMonthScoped, month],
+      [isMonthScoped, month, () => route.query.reference_month],
       () => {
         if (!isMonthScoped.value) return
         if (route.query.reference_month === month.value) return

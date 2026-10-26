@@ -16,8 +16,7 @@ describe('reference month', () => {
     for (const selected of ['2027-02', undefined]) {
       const state = evaluateVueBindings(source, ['referenceMonth'], {
         ref,
-        currentReferenceMonth,
-        useState: (_key: string, initial: () => string) => ref(selected ?? initial())
+        useWorkReferenceMonth: () => ({ referenceMonth: ref(selected ?? currentReferenceMonth()) })
       }) as { referenceMonth: ReturnType<typeof ref<string>> }
       assert.equal(state.referenceMonth.value, selected ?? '2027-08')
     }
@@ -33,8 +32,7 @@ describe('reference month', () => {
     const shared = ref('2027-02')
     const state = evaluateVueBindings(vueSource('pages/work/modelos/[id].vue'), ['referenceMonth'], {
       ref,
-      currentReferenceMonth,
-      useState: () => shared
+      useWorkReferenceMonth: () => ({ referenceMonth: shared })
     }) as { referenceMonth: ReturnType<typeof ref<string>> }
 
     for (const draft of ['', '2027-', '2027-13', '2027-04']) {

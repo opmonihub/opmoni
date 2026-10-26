@@ -6,6 +6,7 @@ import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as apiErrors from '../app/composables/useApiError.ts'
 import * as pageShell from '../app/utils/pageShell.ts'
+import * as requestRunner from '../app/utils/adminListFilters.ts'
 import type { ClientPortfolioAnalytics, ClientPortfolioSummary } from '../app/types/client.ts'
 
 function deferred<T>() {
@@ -38,6 +39,8 @@ function page() {
   const globals: Record<string, unknown> = {
     ref: Vue.ref, computed: Vue.computed, watch: Vue.watch,
     definePageMeta() {},
+    useOfficeReadLifecycle: () => ({ own() {} }),
+    onBeforeUnmount: Vue.onScopeDispose,
     useToast: () => ({ add: (toast: unknown) => toasts.push(toast) }),
     onMounted: (callback: () => unknown) => mounted.push(callback),
     useClients: () => ({
@@ -55,6 +58,7 @@ function page() {
     new Function('require', 'exports', ...Object.keys(globals), compiled)((name: string) => {
       if (name === 'vue') return { ...Vue, resolveComponent: (component: string) => ({ name: component }) }
       if (name === '~/utils/pageShell') return pageShell
+      if (name === '~/utils/adminListFilters') return requestRunner
       if (name === '~/composables/useApiError') return apiErrors
       return { name: name.split('/').at(-1)!.replace('.vue', '') }
     }, exports, ...Object.values(globals))

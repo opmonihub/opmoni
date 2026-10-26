@@ -65,6 +65,29 @@ async function setupRecord(data: Client, destinationsDisabled = false, listDesti
     computed: Vue.computed,
     ...apiErrors,
     definePageMeta() {},
+    useOfficeReadLifecycle: () => ({ own() {} }),
+    useListNavigationRegistry: () => ({ registry: Vue.ref({ authority: 'office' }) }),
+    useAsyncData: async (_key: unknown, handler: (app: unknown, options: { signal: AbortSignal }) => Promise<unknown>, options: { default: () => unknown }) => {
+      const data = Vue.ref(options.default())
+      const error = Vue.ref<unknown>()
+      const status = Vue.ref('idle')
+      const clear = () => {
+        data.value = options.default()
+      }
+      const refresh = async () => {
+        status.value = 'pending'
+        try {
+          data.value = await handler({}, { signal: new AbortController().signal })
+          error.value = undefined
+          status.value = 'success'
+        } catch (failure) {
+          error.value = failure
+          status.value = 'error'
+        }
+      }
+      await refresh()
+      return { data, error, status, refresh, clear }
+    },
     useRoute: () => ({ params: { id: String(data.id) } }),
     useToast: () => ({ add() {} }),
     useAuth: () => ({ canManageClients: Vue.ref(true) }),

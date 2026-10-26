@@ -5,14 +5,25 @@ import { formatFiscalDateTime } from '~/utils/fiscalPresentation'
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
 const { processingList } = useFiscal()
 const { currentAccount } = useAuth()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const rows = ref<FiscalProcessingPage['data']>([])
 const summary = ref<FiscalProcessingPage['summary'] | null>(null)
 const meta = ref<FiscalProcessingPage['meta'] | null>(null)
-const page = ref(1)
-const stateFilter = ref('all')
+const navigation = useListNavigationState('fiscal-processing', {
+  defaults: () => ({ page: 1, state: 'all' }),
+  normalize: (value) => {
+    const input = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    return {
+      page: Number.isSafeInteger(input.page) && Number(input.page) > 0 ? Number(input.page) : 1,
+      state: typeof input.state === 'string' && ['all', 'awaiting_science', 'science_queued', 'awaiting_xml', 'recovery_queued', 'deferred', 'attention'].includes(input.state) ? input.state : 'all'
+    }
+  }
+})
+const page = listNavigationField(navigation, 'page')
+const stateFilter = listNavigationField(navigation, 'state')
 const pending = ref(false)
 const error = ref<string | null>(null)
 const lastUpdated = ref<string | null>(null)
@@ -75,6 +86,11 @@ async function refresh() {
   await runLatest(() => processingList({ page: page.value, per_page: 25, state: stateFilter.value === 'all' ? undefined : stateFilter.value }, { signal }), {
     onSuccess(response) {
       if (!isCurrent()) return
+      const lastPage = Math.max(1, response.meta.last_page)
+      if (page.value > lastPage) {
+        page.value = lastPage
+        return
+      }
       rows.value = response.data
       summary.value = response.summary
       meta.value = response.meta
@@ -103,6 +119,20 @@ watch([() => currentAccount.value?.id, stateFilter, page, sessionGeneration], ([
   pending.value = false
   if (mounted) void refresh()
 }, { flush: 'sync' })
+
+readLifecycle.own({
+  clear() {
+    controller?.abort()
+    runLatest.invalidate()
+    rows.value = []
+    summary.value = null
+    meta.value = null
+    lastUpdated.value = null
+    error.value = null
+    pending.value = false
+  },
+  refresh
+})
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {

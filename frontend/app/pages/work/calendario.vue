@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import type { WorkTask, WorkTaskPriority, WorkTaskStatus } from '~/types/work'
+import type { WorkTask } from '~/types/work'
 import { useClients } from '~/composables/useClients'
 import { useDepartments } from '~/composables/useDepartments'
 import { useMembers } from '~/composables/useMembers'
 import { monthTitleParts } from '~/utils/calendarUi'
 import {
-  type CalendarView,
   groupTasksByDay,
-  parseCalendarQuery,
   periodRange,
   shiftPeriod,
   todayKey,
@@ -15,6 +13,8 @@ import {
 } from '~/utils/workCalendar'
 
 definePageMeta({ middleware: 'auth' })
+
+const readLifecycle = useOfficeReadLifecycle()
 
 const route = useRoute()
 const router = useRouter()
@@ -25,22 +25,7 @@ const { list: listDepartments } = useDepartments()
 const { listDirectory } = useMembers()
 const { canManageWork } = useAuth()
 
-const initial = parseCalendarQuery(route.query.view, route.query.date)
-const view = ref<CalendarView>(initial.view)
-const focusDate = ref(initial.date)
-
-const statusVisible = ref<Record<WorkTaskStatus, boolean>>({
-  todo: true,
-  doing: true,
-  done: true,
-  dismissed: true
-})
-
-const processId = ref<number | null>(null)
-const clientId = ref<number | null>(null)
-const assigneeId = ref<number | null>(null)
-const departmentId = ref<number | null>(null)
-const priority = ref<WorkTaskPriority | ''>('')
+const { view, focusDate, statusVisible, processId, clientId, assigneeId, departmentId, priority } = useWorkCalendarNavigation()
 
 const range = computed(() => periodRange(view.value, focusDate.value))
 const rangeKey = computed(() => JSON.stringify([
@@ -53,17 +38,18 @@ const rangeKey = computed(() => JSON.stringify([
   priority.value
 ]))
 
-const { data, status, error, refresh: reload } = await useAsyncData(
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData(
   'work-calendar',
-  () => calendar(range.value.from, range.value.to, {
+  (_nuxtApp, { signal }) => calendar(range.value.from, range.value.to, {
     process_id: processId.value ?? undefined,
     client_id: clientId.value ?? undefined,
     assignee_member_id: assigneeId.value ?? undefined,
     department_id: departmentId.value ?? undefined,
     priority: priority.value || undefined
-  }),
+  }, { signal }),
   { watch: [rangeKey] }
 )
+readLifecycle.own({ clear: clearOffice0, refresh: reload })
 
 const tasks = computed<WorkTask[]>(() => data.value ?? [])
 
@@ -123,6 +109,7 @@ const viewItems = [
 ]
 
 function syncQuery() {
+  if (route.query.view === view.value && route.query.date === focusDate.value) return
   router.replace({
     query: {
       ...route.query,
@@ -133,15 +120,6 @@ function syncQuery() {
 }
 
 watch([view, focusDate], syncQuery, { immediate: true })
-
-watch(
-  () => [route.query.view, route.query.date] as const,
-  ([qView, qDate]) => {
-    const parsed = parseCalendarQuery(qView, qDate)
-    if (parsed.view !== view.value) view.value = parsed.view
-    if (parsed.date !== focusDate.value) focusDate.value = parsed.date
-  }
-)
 
 function goToday() {
   focusDate.value = todayKey()
@@ -168,13 +146,13 @@ function clearFilters() {
   statusVisible.value = { todo: true, doing: true, done: true, dismissed: true }
 }
 
-const { data: filterSources } = await useAsyncData('work-calendar-filters', async () => {
+const { data: filterSources, clear: clearOffice1, refresh: refreshOffice1 } = await useAsyncData('work-calendar-filters', async (_nuxtApp, { signal }) => {
   const month = focusDate.value.slice(0, 7)
   const [processes, clientsRes, members, departments] = await Promise.all([
-    listProcesses({ reference_month: month }).catch(() => []),
-    listClients({ per_page: 100, sort: 'name', direction: 'asc' }).catch(() => ({ data: [] as { id: number, name: string }[] })),
-    listDirectory().catch(() => []),
-    listDepartments().catch(() => [])
+    listProcesses({ reference_month: month }, { signal }).catch(() => []),
+    listClients({ per_page: 100, sort: 'name', direction: 'asc' }, { signal }).catch(() => ({ data: [] as { id: number, name: string }[] })),
+    listDirectory({}, { signal }).catch(() => []),
+    listDepartments({}, { signal }).catch(() => [])
   ])
   return {
     processes,
@@ -183,6 +161,7 @@ const { data: filterSources } = await useAsyncData('work-calendar-filters', asyn
     departments
   }
 }, { watch: [() => focusDate.value.slice(0, 7)] })
+readLifecycle.own({ clear: clearOffice1, refresh: refreshOffice1 })
 
 const processOptions = computed(() => (filterSources.value?.processes ?? []).map(p => ({
   label: p.name,

@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { h, resolveComponent } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
-import type { SortingState } from '@tanstack/table-core'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
-import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import WorkToolbarTeleport from '~/components/work/WorkToolbarTeleport'
 import WorkTaskStatusSelect from '~/components/work/WorkTaskStatusSelect.vue'
 import { apiMessage, apiStatus } from '~/composables/useApiError'
@@ -28,6 +26,8 @@ import {
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const toast = useToast()
 const { grouped, unscopedTasks, updateTask } = useWork()
 const { canManageWork } = useAuth()
@@ -35,34 +35,39 @@ const { list: listDepartments } = useDepartments()
 const { referenceMonth } = useWorkReferenceMonth()
 const { error: membersError, memberOptions, memberName } = useDirectory()
 
+const navigation = useOfficeTableNavigation('work-tasks', ['status', 'priority', 'department', 'clientId', 'processId', 'cascade', 'assignee', 'due_on'], ['order', 'title', 'clientName', 'processName', 'status', 'priority', 'departmentName', 'due_on'], { page: true, views: true })
+
 const UBadge = resolveComponent('UBadge')
 const UCheckbox = resolveComponent('UCheckbox')
 const UButton = resolveComponent('UButton')
 
 type ColumnKey = WorkTask['status']
 
-const viewMode = ref<'board' | 'table'>('board')
-const scopeMode = ref<'month' | 'undated'>('month')
-const search = ref('')
-const filterModels = ref<DataTableFilterModel[]>([])
-const sorting = ref<SortingState>([])
+const viewMode = navigation.viewMode
+const scopeMode = navigation.scopeMode
+const search = navigation.search
+const filterModels = navigation.filterModels
+const sorting = navigation.sorting
 const rowSelection = ref<Record<string, boolean>>({})
 const isDesktop = useClientMediaQuery('(min-width: 768px)')
 
-const { data, status, error, refresh: reload } = await useAsyncData<{
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData<{
   groups: WorkGroupedClient[]
   unscoped: WorkTask[]
 }>(
   'work-tarefas-by-month',
-  async () => {
+  async (_nuxtApp, { signal }) => {
     const [groups, unscoped] = await Promise.all([
-      grouped(referenceMonth.value),
-      unscopedTasks(referenceMonth.value)
+      grouped(referenceMonth.value, { signal }),
+      unscopedTasks(referenceMonth.value, { signal })
     ])
     return { groups, unscoped }
   },
   { watch: [referenceMonth], default: () => ({ groups: [], unscoped: [] }) }
 )
+readLifecycle.own({ clear: clearOffice0, refresh: reload }, () => {
+  rowSelection.value = {}
+})
 
 const undatedTasks = computed(() => tasksForWorkScope([], data.value?.unscoped ?? [], 'undated'))
 const allTasks = computed(() => tasksForWorkScope(
@@ -86,11 +91,12 @@ const { isLoading, showError, refresh, retry } = useRetryableLoad({
   refreshErrorTitle: 'Não foi possível atualizar as tarefas'
 })
 
-const { data: departments } = await useAsyncData(
+const { data: departments, clear: clearOffice1, refresh: refreshOffice1 } = await useAsyncData(
   'work-departments',
-  () => listDepartments(),
+  (_nuxtApp, { signal }) => listDepartments({}, { signal }),
   { default: () => [] }
 )
+readLifecycle.own({ clear: clearOffice1, refresh: refreshOffice1 })
 
 const membersFailed = computed(() => membersError.value !== null && membersError.value !== undefined)
 const membersForbidden = computed(() => apiStatus(membersError.value) === 403)
@@ -169,7 +175,7 @@ const allTableRows = computed(() => tasksToLeaves(allTasks.value))
 
 /** Keep table/mobile mounts bounded — hundreds of status controls freeze clicks. */
 const TABLE_PAGE_SIZE = 50
-const tablePage = ref(1)
+const tablePage = navigation.page
 const tablePageCount = computed(() => Math.max(1, Math.ceil(tableRows.value.length / TABLE_PAGE_SIZE)))
 /** Filters can shrink the result set under the current page; never slice past the end. */
 const currentTablePage = computed(() => Math.min(tablePage.value, tablePageCount.value))
@@ -182,7 +188,7 @@ const pagedFilteredTasks = computed(() => {
   return filteredTasks.value.slice(start, start + TABLE_PAGE_SIZE)
 })
 
-watch([filteredTasks, viewMode, scopeMode], () => {
+watch([filterModels, search, referenceMonth, viewMode, scopeMode], () => {
   tablePage.value = 1
 })
 

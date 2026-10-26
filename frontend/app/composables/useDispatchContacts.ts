@@ -10,8 +10,8 @@ import type { ClientDispatchContact } from '~/types/whatsapp'
 export function useDispatchContacts() {
   const { $api } = useNuxtApp()
 
-  async function list(clientId: number) {
-    const res = await $api<{ data: ClientDispatchContact[] }>(`/clients/${clientId}/dispatch-contacts`)
+  async function list(clientId: number, options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: ClientDispatchContact[] }>(`/clients/${clientId}/dispatch-contacts`, { signal: options.signal })
     return res.data
   }
 
