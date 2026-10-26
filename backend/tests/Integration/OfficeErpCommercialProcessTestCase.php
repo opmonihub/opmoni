@@ -48,6 +48,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'office_erp_contract_revisions', 'office_erp_owner_invitations', 'office_erp_licence_allocations', 'office_erp_invoices',
         'office_erp_invoice_counters', 'office_erp_commercial_operations', 'office_erp_audit_events',
         'office_erp_receipts', 'office_erp_receipt_allocations', 'office_erp_receipt_reversals', 'office_erp_receipt_proofs',
+        'office_erp_trial_links', 'erp_subscription_trials',
     ];
 
     private const SOURCES = [
@@ -89,6 +90,9 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Models/Erp/ErpCompanyMembership.php',
         'app/Models/Erp/ErpPlan.php',
         'app/Models/Erp/ErpSubscription.php',
+        'app/Models/Erp/ErpSubscriptionTrial.php',
+        'app/Models/Erp/Commercial/OfficeErpTrialLink.php',
+        'database/migrations/2026_10_25_091000_create_erp_office_trials.php',
         'app/Models/Account.php',
         'app/Models/AccountMembership.php',
         'app/Models/Client.php',
@@ -518,6 +522,26 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
 
     protected function assertWaitingOnRowLock(Process $process, string $table): void
     {
+        $identity = $this->workers[spl_object_id($process)]['identity'];
+        $deadline = microtime(true) + 10;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $activity = DB::selectOne('select wait_event_type, query from pg_stat_activity where pid = ?', [$identity['database_pid']]);
+            if ($activity?->wait_event_type === 'Lock') {
+                self::assertStringContainsString('from "'.$table.'"', strtolower($activity->query));
+                self::assertStringContainsString('for update', strtolower($activity->query));
+
+                return;
+            }
+            self::assertTrue($process->isRunning(), 'Worker exited before waiting for the '.$table.' row lock.');
+            self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL '.$table.' row lock wait observed.');
+            usleep(10000);
+        } while (true);
+    }
+
+    protected function assertWaitingOnTableLock(Process $process, string $table): void
+    {
+        self::assertMatchesRegularExpression('/\A[a-z_]+\z/', $table);
         $identity = $this->workers[spl_object_id($process)]['identity'];
         $deadline = microtime(true) + 10;
         do {
