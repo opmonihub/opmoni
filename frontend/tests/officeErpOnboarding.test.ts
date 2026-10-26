@@ -587,6 +587,47 @@ describe('Office ERP seller onboarding SFC', () => {
     assert.equal(findAll(page.root, node => node.tag === 'a')[0]?.props.href, `http://localhost:3346/erp/ativar#token=${'a'.repeat(64)}`)
     page.app.unmount()
   })
+
+  it('recovers_owner_setup_without_issuing_a_second_access_link', async () => {
+    const command = createCommand()
+    command.executeResults.push(
+      { status: 'confirmed', data: { client_id: 18, company_id: 40, subscription_id: 41, contract_id: 42, invoice_id: 43, owner_setup_status: 'unclaimed' } },
+      { status: 'unknown', key: '9a1bdbb6-7f88-4479-a78a-471e4cb16c78' }
+    )
+    command.recoveryResult = { status: 'confirmed', data: {
+      invitation_id: 77, contract_id: 42, company_id: 40, owner_setup_status: 'unclaimed', expires_at: '2026-11-01T12:00:00Z', status: 'pending'
+    } }
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command,
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    ;(findButton(page.root, 'Selecionar da carteira')?.props.onClick as () => void)()
+    await flush()
+    selectOption(page.root, 'client_id', '18')
+    await flush()
+    selectOption(page.root, 'erp_plan_id', '7')
+    updateInput(page.root, 'price', '100,00')
+    updateInput(page.root, 'due_in_days', '7')
+    updateInput(page.root, 'start_on', '2026-10-25')
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    updateInput(page.root, 'owner.full_name', 'Ana Souza')
+    updateInput(page.root, 'owner.email', 'ana@example.test')
+    await flush()
+    ;(findButton(page.root, 'Preparar acesso do responsável')?.props.onClick as () => void)()
+    await flush()
+    ;(findButton(page.root, 'Verificar resultado')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(command.executeCalls.length, 2)
+    assert.deepEqual(command.recoverCalls, ['9a1bdbb6-7f88-4479-a78a-471e4cb16c78'])
+    assert.match(textOf(page.root), /resultado foi confirmado sem recuperar o link único/)
+    assert.ok(findButton(page.root, 'Emitir novo link de acesso'))
+    assert.equal(findAll(page.root, node => node.tag === 'a' && textOf(node).includes('Abrir link de acesso')).length, 0)
+    page.app.unmount()
+  })
 })
 
 describe('Office ERP seller navigation', () => {

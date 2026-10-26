@@ -345,6 +345,7 @@ async function setupOwner() {
   if (!enrollment.value || ownerName.value.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.value.trim()) || commandBusy.value || commandPending.value) return
   const identity = identityStamp.value
   const token = context.capture()
+  ownerSetup.value = null
   ownerSetupBusy.value = true
   ownerSetupError.value = ''
   try {
@@ -559,9 +560,11 @@ watch(() => context.capabilities.value?.capability_key, () => {
             </template>
             <UAlert
               v-else
-              color="success"
+              :color="ownerSetup.url ? 'success' : 'warning'"
               title="Acesso preparado"
-              :description="`Link válido até ${ownerSetup.expires_at}. O responsável ainda precisa concluir a ativação.`"
+              :description="ownerSetup.url
+                ? `Link válido até ${ownerSetup.expires_at}. O responsável ainda precisa concluir a ativação.`
+                : `O resultado foi confirmado sem recuperar o link único. Se necessário, emita outro link; isso substituirá o anterior.`"
             >
               <template v-if="ownerSetup.url" #description>
                 <a
@@ -572,6 +575,16 @@ watch(() => context.capabilities.value?.capability_key, () => {
                 >Abrir link de acesso</a>
               </template>
             </UAlert>
+            <UButton
+              v-if="ownerSetup && !ownerSetup.url"
+              color="neutral"
+              variant="outline"
+              :disabled="commandBusy || commandPending"
+              :loading="ownerSetupBusy"
+              @click="setupOwner"
+            >
+              Emitir novo link de acesso
+            </UButton>
           </section>
         </template>
 
