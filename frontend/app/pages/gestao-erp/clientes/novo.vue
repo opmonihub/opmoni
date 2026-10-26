@@ -272,7 +272,12 @@ function newClientInput(): OfficeErpNewClientInput {
 
 function enrollmentInput(): OfficeErpEnrollmentInput {
   if (!selectedPlan.value) throw new Error('Selecione um plano ERP.')
-  const canonicalPrice = parseOfficeErpMoney(price.value.trim())
+  let canonicalPrice: string
+  try {
+    canonicalPrice = parseOfficeErpMoney(price.value.trim())
+  } catch {
+    throw new Error('Informe um valor em reais com até duas casas decimais.')
+  }
   const due = Number(dueInDays.value)
   if (!Number.isInteger(due) || due < 0 || due > 65535) throw new Error('O vencimento deve ficar entre 0 e 65.535 dias.')
   if (startOn.value > todayLocal()) throw new Error('A data de início não pode ser futura.')

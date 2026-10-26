@@ -778,7 +778,7 @@ describe('Office ERP seller onboarding SFC', () => {
     updateInput(page.root, 'price', 'valor inválido')
     ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
     await flush()
-    assert.match(textOf(page.root), /Invalid money amount/)
+    assert.match(textOf(page.root), /Informe um valor em reais com até duas casas decimais/)
     updateInput(page.root, 'price', '100,00')
     await flush()
     ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()

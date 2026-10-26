@@ -422,7 +422,7 @@ watch(identityStamp, () => {
             {{ record.trial.situation === 'trialing' ? 'Encerra' : record.trial.situation === 'expired' ? 'Encerrou' : 'Período original até' }} {{ formatUtcDateTime(record.trial.ends_at) }}
           </p>
         </div>
-        <div v-else-if="record.next_billing_on">
+        <div v-if="record.next_billing_on">
           <p class="text-sm text-muted">
             Próxima cobrança
           </p>

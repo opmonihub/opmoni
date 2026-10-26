@@ -203,6 +203,18 @@ test('keeps paid subscription status and next billing visible after trial conver
     next_billing_on: '2026-11-25'
   }))
   const page = harness('pages/gestao-erp/assinaturas/index.vue', detail, null, rows)
+  const convertedActiveDetail = harness('pages/gestao-erp/assinaturas/[id].vue', {
+    ...detail,
+    licence_status: 'active',
+    trial: rows[0]!.trial,
+    next_billing_on: '2026-11-25'
+  })
+  const convertedCanceledDetail = harness('pages/gestao-erp/assinaturas/[id].vue', {
+    ...detail,
+    licence_status: 'canceled',
+    trial: rows[3]!.trial,
+    next_billing_on: null
+  })
   try {
     await settle()
     const rendered = text(page.root)
@@ -212,8 +224,14 @@ test('keeps paid subscription status and next billing visible after trial conver
     assert.match(rendered, /Cancelada/)
     assert.equal((rendered.match(/Próxima cobrança 25\/11\/2026/g) ?? []).length, 4)
     assert.equal((rendered.match(/Período de teste convertido: 25\/10\/2026/g) ?? []).length, 4)
+    assert.match(text(convertedActiveDetail.root), /Próxima cobrança 2026-11-25/)
+    assert.match(text(convertedActiveDetail.root), /Período original até/)
+    assert.match(text(convertedCanceledDetail.root), /Período original até/)
+    assert.doesNotMatch(text(convertedCanceledDetail.root), /Próxima cobrança/)
   } finally {
     page.app.unmount()
+    convertedActiveDetail.app.unmount()
+    convertedCanceledDetail.app.unmount()
   }
 })
 
