@@ -1,5 +1,7 @@
 # Frontend navigation lifecycle implementation evidence
 
+Archive followup: on 2026-10-26 the user authorized synchronization and archival. See the [archive record](archive-record.md) for the canonical merge, preserved artifacts and documentation-only validation. The implementation checkpoints below retain their original scope and evidence boundaries.
+
 Source: `2454fa8`, branch `codex/frontend-navigation-lifecycle`, isolated worktree `.worktrees/frontend-navigation-lifecycle`.
 
 ## Final acceptance
