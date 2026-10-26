@@ -16,7 +16,7 @@ const compiledScript = ts.transpileModule(compileScript(descriptor, { id: 'erp-c
 }).outputText
 
 type TestCompany = { id: number, status: 'active' | 'suspended', access_kind: 'direct' | 'delegated', role: string, permissions: string[], delegated_office_id: number | null }
-type TestIdentity = { id: number, current_account: null, current_company: TestCompany | null }
+type TestIdentity = { id: number, current_account: null, current_company: TestCompany | null, companies?: TestCompany[] }
 
 function ownerIdentity(): TestIdentity {
   return {
@@ -104,6 +104,45 @@ async function flushVue() {
 }
 
 describe('ERP company administration editor', () => {
+  it('clears protected rows and editor and aborts a pending read when matching effective grants change alone', async () => {
+    const identity = ownerIdentity()
+    identity.companies = [{ ...identity.current_company!, permissions: ['*'] }]
+    const response = { data: [{ id: 11, name: 'Matriz protegida', cnpj: null, status: 'active' }], meta: { current_page: 1, last_page: 1, all_establishments: true } }
+    let pending = false
+    const reads: Array<{ signal: AbortSignal, finish: (value: unknown) => void }> = []
+    const mounted = mountAdministration('establishments', identity, (_path, options) => {
+      if (!pending) return response
+      return new Promise((finish) => {
+        reads.push({ signal: options?.signal as AbortSignal, finish })
+      })
+    })
+    try {
+      await flushVue()
+      assert.equal((mounted.exposed.rows as Vue.Ref<unknown[]>).value.length, 1)
+      mounted.exposed.beginEdit(response.data[0])
+      assert.equal((mounted.exposed.formOpen as Vue.Ref<boolean>).value, true)
+      ;(mounted.exposed.form as Record<string, unknown>).name = 'Rascunho privado'
+      pending = true
+      const read = mounted.exposed.load()
+      assert.equal(reads.length, 1)
+      const selectedCompany = mounted.identity.value.current_company
+      mounted.identity.value.companies![0]!.permissions = []
+      assert.equal(mounted.identity.value.current_company, selectedCompany, 'selected Company identity remains unchanged')
+      assert.deepEqual(selectedCompany!.permissions, ['*'], 'only the matching effective membership loses grants')
+      assert.deepEqual((mounted.exposed.rows as Vue.Ref<unknown[]>).value, [])
+      assert.equal((mounted.exposed.formOpen as Vue.Ref<boolean>).value, false)
+      assert.equal((mounted.exposed.form as Record<string, unknown>).name, '')
+      assert.equal(reads[0]!.signal.aborted, true)
+      reads[0]!.finish(response)
+      await read
+      assert.deepEqual((mounted.exposed.rows as Vue.Ref<unknown[]>).value, [], 'obsolete safe read cannot restore protected rows')
+      assert.equal((mounted.exposed.formOpen as Vue.Ref<boolean>).value, false)
+    } finally {
+      mounted.stop()
+      reads.forEach(attempt => attempt.finish(response))
+    }
+  })
+
   for (const kind of ['establishments', 'members'] as const) {
     it(`retains ${kind} navigation criteria across reentry without storing editor state`, async () => {
       const cache = new Map<string, Vue.Ref>()
