@@ -109,7 +109,6 @@ function mountDefaultProfile(options: { initialProfileId: number | null, revisio
   const app = renderer.createApp(component)
   app.component('UPageCard', defineComponent({ setup: (_props, { slots }) => () => Vue.h('article', slots.default?.()) }))
   app.component('UButton', defineComponent({ props: ['label', 'disabled', 'loading'], setup: (props, { attrs }) => () => Vue.h('button', { ...attrs, disabled: props.disabled, onClick: attrs.onClick }, String(props.label ?? '')) }))
-  app.component('ErpCatalogReferenceSelect', ReferenceSelect)
   app.mount(root)
   return {
     root,
@@ -147,6 +146,12 @@ function mountDefaultProfile(options: { initialProfileId: number | null, revisio
 }
 
 describe('ERP company product tax profile default settings integration', () => {
+  it('resolves the catalog reference control through its explicit component import', (t) => {
+    const form = mountDefaultProfile({ initialProfileId: null, revision: 5 })
+    t.after(form.unmount)
+    assert.ok(walk(form.root).some(node => node.tag === 'select' && node.props.name === 'default_product_tax_profile_id'), 'the real card must render its imported reference control without a synthetic global alias')
+  })
+
   it('mounts the isolated default-profile control while preserving initialization reconciliation', async () => {
     const page = compileVueComponent('pages/erp/configuracoes/empresa.vue', { definePageMeta() {} }, {
       '~/utils/erpCompanySettingsFields': { erpSettingsBusinessFields: [] }
