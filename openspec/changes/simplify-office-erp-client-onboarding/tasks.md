@@ -1,7 +1,7 @@
 ## 1. Additive domain foundation
 
-- [ ] 1.1 Add Company owner-setup state, contract administrative/trial attribution and technical-plan reference, purpose-scoped owner setup, office trial links and durable trial grants using additive migrations; verify legacy rows and trial uniqueness in `OfficeErpCommercial/TrialSchemaTest` on SQLite and PostgreSQL.
-- [ ] 1.2 Add `trialing`/`trial_expired` subscription representations and strict `erp_subscriptions` validity checks without changing office subscription constraints or enabling trial creation through generic platform updates; verify enum/serializer/platform-filter behavior in `ErpCommercialAccessTest` and `TrialSchemaTest`.
+- [x] 1.1 Add Company owner-setup state, contract administrative/trial attribution and technical-plan reference, purpose-scoped owner setup, office trial links and durable trial grants using additive migrations; verify legacy rows and trial uniqueness in `OfficeErpCommercial/TrialSchemaTest` on SQLite and PostgreSQL.
+- [x] 1.2 Add `trialing`/`trial_expired` subscription representations and strict `erp_subscriptions` validity checks without changing office subscription constraints or enabling trial creation through generic platform updates; verify enum/serializer/platform-filter behavior in `ErpCommercialAccessTest` and `TrialSchemaTest`.
 
 ## 2. Core customer administration
 
