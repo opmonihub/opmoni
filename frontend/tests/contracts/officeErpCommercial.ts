@@ -1,9 +1,9 @@
 import type {
   OfficeErpCommandResult,
+  OfficeErpCapabilities,
   OfficeErpFailure,
   OfficeErpInvoiceBalanceEntry
 } from '../../shared/types/officeErpCommercial'
-import type { OfficeErpCapabilities } from '../../shared/types/officeErpCommercial'
 
 const failure: OfficeErpFailure = {
   code: 'receipt_balance_conflict',
