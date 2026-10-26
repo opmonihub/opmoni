@@ -8,6 +8,7 @@ import { apiStatus } from '../app/composables/useApiError.ts'
 
 type DataResult = { data: Vue.Ref<unknown>, error: Vue.Ref<unknown>, status: Vue.Ref<string>, refresh: () => Promise<unknown> }
 type Payload = { serverRendered: boolean, data: Record<string, unknown>, _errors: Record<string, unknown> }
+const compiledEngines = new Map<boolean, string>()
 
 // Run the installed Nuxt engine, replacing only its Nuxt-app/build environment.
 // This covers useAsyncData's null/error cache and unmount/reentry semantics;
@@ -22,14 +23,16 @@ function asyncDataEngine(server: boolean, payload: Payload) {
     hook: () => () => {},
     runWithContext: (run: () => unknown) => run()
   }
-  const source = readFileSync(new URL('../node_modules/nuxt/dist/app/composables/asyncData.js', import.meta.url), 'utf8')
-    .replaceAll('import.meta.server', String(server))
-    .replaceAll('import.meta.client', String(!server))
-    .replaceAll('import.meta.dev', 'false')
-    .replaceAll('import.meta.prerender', 'false')
-  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+  if (!compiledEngines.has(server)) {
+    const source = readFileSync(new URL('../node_modules/nuxt/dist/app/composables/asyncData.js', import.meta.url), 'utf8')
+      .replaceAll('import.meta.server', String(server))
+      .replaceAll('import.meta.client', String(!server))
+      .replaceAll('import.meta.dev', 'false')
+      .replaceAll('import.meta.prerender', 'false')
+    compiledEngines.set(server, ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)
+  }
   const exports: Record<string, unknown> = {}
-  new Function('require', 'exports', code)((path: string) => {
+  new Function('require', 'exports', compiledEngines.get(server)!)((path: string) => {
     if (path === 'vue') return Vue
     if (path.endsWith('/nuxt.js')) return { useNuxtApp: () => app }
     if (path.endsWith('/error.js')) return { createError: (error: unknown) => error }
@@ -42,7 +45,8 @@ function asyncDataEngine(server: boolean, payload: Payload) {
 }
 
 function pageReader(path: string, useAsyncData: unknown, read: () => Promise<unknown>) {
-  const { descriptor } = parse(readFileSync(new URL(`../app/pages/settings/${path}.vue`, import.meta.url), 'utf8'))
+  const sourcePath = path === 'monitoring' ? 'monitoring/index' : `settings/${path}`
+  const { descriptor } = parse(readFileSync(new URL(`../app/pages/${sourcePath}.vue`, import.meta.url), 'utf8'))
   const source = ts.createSourceFile(path, descriptor.scriptSetup!.content, ts.ScriptTarget.Latest, true)
   let call: ts.CallExpression | undefined
   function visit(node: ts.Node) {
@@ -53,26 +57,30 @@ function pageReader(path: string, useAsyncData: unknown, read: () => Promise<unk
   assert.ok(call)
   const readChannel = source.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === 'readChannel')
   const code = ts.transpileModule(`${readChannel?.getText(source) ?? ''}\nreturn ${call.getText(source)}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
-  return () => new Function('useAsyncData', 'accountCertificate', 'channel', 'apiStatus', code)(useAsyncData, read, read, apiStatus) as Promise<DataResult>
+  return () => new Function('useAsyncData', 'accountCertificate', 'channel', 'overview', 'apiStatus', code)(useAsyncData, read, read, read, apiStatus) as Promise<DataResult>
 }
 
-for (const page of ['certificado', 'whatsapp']) {
+for (const page of ['certificado', 'whatsapp', 'monitoring']) {
   test(`${page} performs one safe read when the hydration payload is missing`, async () => {
     let reads = 0
     const client = asyncDataEngine(false, { serverRendered: true, data: {}, _errors: {} })
     const scope = Vue.effectScope()
+    const value = page === 'monitoring' ? { portfolio_total: 0, attention: {} } : null
     const result = await scope.run(pageReader(page, client.useAsyncData, async () => {
       reads++
-      return null
+      return value
     }))!
     assert.equal(reads, 1)
-    assert.equal(result.data.value, null)
+    assert.deepEqual(result.data.value, value)
     assert.equal(result.status.value, 'success')
     scope.stop()
   })
 
-  for (const value of [{ status: 'connected', document: 'sample', subject: 'Escritório' }, { status: 'disconnected', portfolio_total: 0 }, null]) {
-    test(`${page} reuses its SSR ${value === null ? '404/null' : value.status} payload and rereads changed visits`, async () => {
+  const values = page === 'monitoring'
+    ? [{ portfolio_total: 16, attention: { dctf: 7 } }, { portfolio_total: 0, attention: {} }]
+    : [{ status: 'connected', document: 'sample', subject: 'Escritório' }, { status: 'disconnected', portfolio_total: 0 }, null]
+  for (const value of values) {
+    test(`${page} reuses its SSR ${value === null ? '404/null' : JSON.stringify(value)} payload and rereads changed visits`, async () => {
       let reads = 0
       const read = async () => {
         reads++
