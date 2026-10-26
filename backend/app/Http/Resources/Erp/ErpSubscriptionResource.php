@@ -17,7 +17,7 @@ class ErpSubscriptionResource extends JsonResource
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
-        $this->loadMissing(['plan.modules', 'company']);
+        $this->loadMissing(['plan.modules', 'company', 'trial']);
 
         $data = [
             'id' => $this->id,
@@ -39,6 +39,23 @@ class ErpSubscriptionResource extends JsonResource
         ];
 
         $context = $request->attributes->get(CurrentCompany::class);
+        if ($context instanceof CurrentCompany
+            && $context->accessKind === 'direct'
+            && $context->membership?->roleEnum() === ErpCompanyRole::Owner
+            && $context->company->id === $this->company->id
+            && $this->trial !== null) {
+            $trial = $this->trial;
+            $data['trial'] = [
+                'started_at' => $trial->started_at->toIso8601String(),
+                'ends_at' => $trial->ends_at->toIso8601String(),
+                'converted_at' => $trial->converted_at?->toIso8601String(),
+                'expired_at' => $trial->expired_at?->toIso8601String(),
+                'situation' => $trial->converted_at !== null
+                    ? 'converted'
+                    : ($trial->expired_at !== null || $trial->ends_at->isPast() ? 'expired' : 'trialing'),
+            ];
+        }
+
         if ($context instanceof CurrentCompany
             && $context->accessKind === 'direct'
             && $context->membership?->roleEnum() === ErpCompanyRole::Owner

@@ -19,7 +19,7 @@ class OfficeErpOwnerInvitation extends Model
 
     protected $fillable = [
         'account_id', 'contract_id', 'owner_name', 'owner_email', 'seller_snapshot', 'token_hash', 'status',
-        'expires_at', 'consumed_at', 'revoked_at', 'revocation_reason', 'created_by_user_id',
+        'expires_at', 'consumed_at', 'revoked_at', 'revocation_reason', 'created_by_user_id', 'purpose',
     ];
 
     protected function casts(): array
@@ -40,8 +40,8 @@ class OfficeErpOwnerInvitation extends Model
     protected static function booted(): void
     {
         static::updating(static function (self $invitation): void {
-            if ($invitation->isDirty('token_hash')) {
-                throw new LogicException('Office ERP owner invitation token hashes are immutable.');
+            if ($invitation->isDirty(['token_hash', 'purpose'])) {
+                throw new LogicException('Office ERP owner invitation tokens and purposes are immutable.');
             }
         });
         static::deleting(static function (): never {

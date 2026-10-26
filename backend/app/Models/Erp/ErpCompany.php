@@ -52,4 +52,9 @@ class ErpCompany extends Model
     {
         return $this->hasOne(ErpCompanySetupState::class, 'erp_company_id');
     }
+
+    public function trial(): HasOne
+    {
+        return $this->hasOne(ErpSubscriptionTrial::class, 'erp_company_id');
+    }
 }

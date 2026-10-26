@@ -9,6 +9,8 @@ enum ErpSubscriptionStatus: string
     case PastDue = 'past_due';
     case Suspended = 'suspended';
     case Canceled = 'canceled';
+    case Trialing = 'trialing';
+    case TrialExpired = 'trial_expired';
 
     public function allowsOperatingWrites(): bool
     {

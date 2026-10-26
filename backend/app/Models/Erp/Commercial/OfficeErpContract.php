@@ -5,7 +5,9 @@ namespace App\Models\Erp\Commercial;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpPlan;
 use App\Models\Erp\ErpSubscription;
+use App\Models\User;
 use Database\Factories\Erp\Commercial\OfficeErpContractFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -22,7 +24,7 @@ class OfficeErpContract extends Model
         'account_id', 'client_id', 'sales_plan_id', 'erp_company_id', 'agreement_status', 'current_revision_id',
         'pending_revision_id', 'service_anchor_on', 'billing_timezone', 'next_period_index',
         'next_period_month_offset', 'cancel_effective_on', 'manual_hold', 'accepted_at', 'effective_at',
-        'canceled_at', 'cancellation_reason',
+        'canceled_at', 'cancellation_reason', 'provisioning_source', 'erp_plan_id', 'authorized_by_user_id', 'authorized_at',
     ];
 
     protected function casts(): array
@@ -36,6 +38,7 @@ class OfficeErpContract extends Model
             'accepted_at' => 'datetime',
             'effective_at' => 'datetime',
             'canceled_at' => 'datetime',
+            'authorized_at' => 'datetime',
         ];
     }
 
@@ -88,5 +91,15 @@ class OfficeErpContract extends Model
     public function subscription(): HasOne
     {
         return $this->hasOne(ErpSubscription::class, 'office_erp_contract_id');
+    }
+
+    public function erpPlan(): BelongsTo
+    {
+        return $this->belongsTo(ErpPlan::class, 'erp_plan_id');
+    }
+
+    public function authorizedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'authorized_by_user_id');
     }
 }

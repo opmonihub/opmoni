@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ErpSubscription extends Model
 {
@@ -35,6 +36,11 @@ class ErpSubscription extends Model
     public function officeErpContract(): BelongsTo
     {
         return $this->belongsTo(Commercial\OfficeErpContract::class, 'office_erp_contract_id');
+    }
+
+    public function trial(): HasOne
+    {
+        return $this->hasOne(ErpSubscriptionTrial::class, 'erp_subscription_id');
     }
 
     public function statusEnum(): ErpSubscriptionStatus
