@@ -70,6 +70,41 @@ class ErpCommercialRegistration
         }));
     }
 
+    /**
+     * Create the owner identity for an office-attributed trial without provisioning a second Company.
+     * The caller owns the surrounding transaction and creates the Company, Client and trial atomically.
+     *
+     * @param  array{name: string, email: string, password: string}  $data
+     */
+    public function createTrialOwner(array $data): User
+    {
+        $email = mb_strtolower(trim($data['email']));
+        $hash = Hash::make($data['password']);
+
+        return DB::transaction(function () use ($data, $email, $hash): User {
+            AccessTransaction::boundLockWaits();
+            $this->identities->advisory('email:'.$email);
+            $this->assertTrialOwnerEmailAvailableLocked($email);
+
+            return User::query()->create([
+                'name' => trim($data['name']),
+                'email' => $email,
+                'password' => $hash,
+            ]);
+        });
+    }
+
+    public function assertTrialOwnerEmailAvailable(string $email): void
+    {
+        $email = mb_strtolower(trim($email));
+
+        DB::transaction(function () use ($email): void {
+            AccessTransaction::boundLockWaits();
+            $this->identities->advisory('email:'.$email);
+            $this->assertTrialOwnerEmailAvailableLocked($email);
+        });
+    }
+
     /** @param  array{name: string, cnpj: string, establishment_name?: string|null}  $data */
     public function createCompanyForAuthenticated(User $user, array $data): ErpCompany
     {
@@ -116,6 +151,21 @@ class ErpCommercialRegistration
             throw ValidationException::withMessages([
                 $field => $field === 'cnpj' ? 'CNPJ já cadastrado' : 'Este email já possui cadastro. Faça login para continuar.',
             ]);
+        }
+    }
+
+    private function assertTrialOwnerEmailAvailableLocked(string $email): void
+    {
+        if (User::query()->where('email', $email)->exists()) {
+            abort(response()->json([
+                'code' => 'login_required',
+                'message' => 'Entre com sua conta para continuar o cadastro.',
+            ], 409));
+        }
+
+        if (OwnerActivation::query()->where('email', $email)
+            ->whereNull('consumed_at')->whereNull('revoked_at')->where('expires_at', '>', now())->exists()) {
+            throw ValidationException::withMessages(['email' => 'Este email já está em uso.']);
         }
     }
 

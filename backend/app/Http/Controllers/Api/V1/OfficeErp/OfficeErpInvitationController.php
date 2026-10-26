@@ -5,13 +5,31 @@ namespace App\Http\Controllers\Api\V1\OfficeErp;
 use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpOperations;
 use App\Erp\Commercial\OfficeErpOwnerInvitations;
+use App\Erp\Commercial\OfficeErpOwnerSetup;
+use App\Erp\Commercial\OfficeErpRecords;
 use App\Erp\ErpOperationJournal;
 use App\Http\Controllers\Controller;
+use App\Models\Erp\Commercial\OfficeErpContract;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 final class OfficeErpInvitationController extends Controller
 {
+    public function setupOwner(Request $request, int $contract, OfficeErpAdmission $admission, ErpOperationJournal $journal, OfficeErpOwnerSetup $ownerSetup): JsonResponse
+    {
+        $data = $request->validate([
+            'owner' => ['required', 'array:full_name,email'],
+            'owner.full_name' => ['required', 'string', 'min:2', 'max:255'],
+            'owner.email' => ['required', 'string', 'email:rfc', 'max:255'],
+        ]);
+        $ctx = $admission->context($request);
+        $contractRecord = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+            ->whereKey($contract)->firstOrFail();
+        $outcome = $ownerSetup->issue($ctx, $contractRecord, $data['owner'], $journal->key($request, true));
+
+        return response()->json(['data' => $outcome], array_key_exists('url', $outcome) ? 201 : 200)->header('Cache-Control', 'no-store');
+    }
+
     public function store(Request $request, int $client, OfficeErpAdmission $admission, ErpOperationJournal $journal, OfficeErpOwnerInvitations $invitations): JsonResponse
     {
         $data = $request->validate([

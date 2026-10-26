@@ -8,14 +8,14 @@
 - [x] 2.1 Separate office-admin configuration/provisioning capabilities from the legacy retail resale flag while retaining active Account, real membership, active office subscription for new provisioning and explicit licence/module/client limits; verify role, inactive-subscription maintenance, zero/null capacity and cross-office cases in `CommercialAdmissionTest`.
 - [x] 2.2 Extract reusable Client preflight/persistence and unclaimed Company provisioning without changing legacy owner signup behavior; verify CNPJ provider failure, same-office reuse, inactive/foreign Client denial and no automatic Company access in `CustomerEnrollmentTest` and existing `ClientCrudTest`/`ErpCommercialAccessTest`.
 - [x] 2.3 Implement idempotent direct paid enrollment, plan discovery, exact frozen terms and existing contract/counter/invoice integration without a published offer or owner acceptance; verify actual route rollback and lost-response lookup in `CustomerEnrollmentTest`.
-- [ ] 2.4 Add optional purpose-scoped verified owner access setup without allocating, activating or billing again; verify existing-email/foreign-owner/consumed-token denial and existing invitation compatibility in `OwnerSetupTest`/`OwnerAcceptanceTest`.
+- [x] 2.4 Add optional purpose-scoped verified owner access setup without allocating, activating or billing again; verify existing-email/foreign-owner/consumed-token denial and existing invitation compatibility in `OwnerSetupTest`/`OwnerAcceptanceTest`.
 
 ## 3. Office-attributed ERP trial
 
 - [x] 3.1 Implement guarded trial-link read/configure/rotate and safe public availability, keeping release flags and sponsor resolution server-controlled; verify revocation, rotation, stale revision, missing capacity and foreign-office isolation in `TrialLinkTest`.
-- [ ] 3.2 Implement atomic public owner registration, same-office Client creation/reuse and one 168-hour trial per normalized CNPJ, with CSRF/origin/rate guards and password-free recovery; verify full route behavior and failed pre-commit/session-after-commit cases in `TrialRegistrationTest`.
-- [ ] 3.3 Enforce live trial deadlines and frozen module grants in HTTP and queued effects, preserve authorized reads, and reconcile expiry without deleting data or inventing debt; verify frozen-clock exact-end and scheduler-delay cases in `TrialLifecycleTest`.
-- [ ] 3.4 Implement explicit paid conversion on the same Company/subscription/allocation, preserving holds and trial history and issuing one first invoice from confirmed paid terms; verify valid/expired/capacity-denied/replayed cases in `TrialLifecycleTest` and `RecurringInvoiceTest`.
+- [x] 3.2 Implement atomic public owner registration, same-office Client creation/reuse and one 168-hour trial per normalized CNPJ, with CSRF/origin/rate guards and password-free recovery; verify full route behavior and failed pre-commit/session-after-commit cases in `TrialRegistrationTest`.
+- [x] 3.3 Enforce live trial deadlines and frozen module grants in HTTP and queued effects, preserve authorized reads, and reconcile expiry without deleting data or inventing debt; verify frozen-clock exact-end and scheduler-delay cases in `TrialLifecycleTest`.
+- [x] 3.4 Implement explicit paid conversion on the same Company/subscription/allocation, preserving holds and trial history and issuing one first invoice from confirmed paid terms; verify valid/expired/capacity-denied/replayed cases in `TrialLifecycleTest` and `RecurringInvoiceTest`.
 
 ## 4. Customer-first Nuxt flows
 
