@@ -49,6 +49,7 @@ class ErpPlanController extends Controller
     {
         $data = $this->validatePlan($request, $plan);
         $plan = DB::transaction(function () use ($request, $plan, $data): ErpPlan {
+            $plan = ErpPlan::query()->whereKey($plan->getKey())->lockForUpdate()->firstOrFail();
             $updates = [];
             if (array_key_exists('name', $data)) {
                 $updates['name'] = $data['name'];

@@ -104,6 +104,11 @@ class ProcessErpFiscalAttempt implements ShouldQueue
 
             return;
         }
+        if (! DB::transaction(fn (): bool => $authorization->allowsDispatch($attempt))) {
+            $attempts->complete($attempt->id, $token, 'blocked_authority', ['code' => 'authority_revoked_before_local_effects']);
+
+            return;
+        }
         if ($isDocument && in_array($attempt->action, ['document:queue', 'document:contingency'], true)) {
             $artifact = null;
             if ($attempt->action === 'document:contingency') {

@@ -14,6 +14,7 @@ use App\Models\Erp\Commercial\OfficeErpReceiptAllocation;
 use App\Models\Erp\Commercial\OfficeErpReceiptReversal;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpSubscription;
+use App\Models\Erp\ErpSubscriptionTrial;
 use App\Models\Subscription;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
@@ -278,6 +279,9 @@ final class OfficeErpDelinquency
         if ($contract->agreement_status === 'canceled') {
             return ErpSubscriptionStatus::Canceled->value;
         }
+        if ($this->isUnconvertedTrial($contract, $subscription)) {
+            return (string) $subscription->status;
+        }
         if ($contract->agreement_status !== 'effective' || $contract->erp_company_id === null) {
             return ErpSubscriptionStatus::Pending->value;
         }
@@ -307,6 +311,22 @@ final class OfficeErpDelinquency
         }
 
         return ErpSubscriptionStatus::Active->value;
+    }
+
+    private function isUnconvertedTrial(OfficeErpContract $contract, ?ErpSubscription $subscription): bool
+    {
+        if ($subscription === null || $contract->provisioning_source !== 'office_trial'
+            || ! in_array($subscription->status, [ErpSubscriptionStatus::Trialing->value, ErpSubscriptionStatus::TrialExpired->value], true)) {
+            return false;
+        }
+
+        return ErpSubscriptionTrial::query()
+            ->where('erp_subscription_id', $subscription->id)
+            ->where('erp_company_id', $contract->erp_company_id)
+            ->where('account_id', $contract->account_id)
+            ->where('cnpj', ErpCompany::query()->whereKey($contract->erp_company_id)->value('cnpj'))
+            ->whereNull('converted_at')
+            ->exists();
     }
 
     /** @return list<OfficeErpInvoice> */

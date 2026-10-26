@@ -102,6 +102,52 @@ class ErpCommercialGate
             ->contains(fn ($module): bool => $module->module_key === $moduleKey) ?? false;
     }
 
+    public function moduleEnabledForRead(ErpCompany $company, string $moduleKey): bool
+    {
+        $subscription = $this->subscriptionForCompany($company);
+        if ($subscription === null) {
+            return false;
+        }
+
+        $trial = $this->trialRecordForSubscription($company, $subscription);
+        if ($trial === null || ! in_array($subscription->status, [
+            ErpSubscriptionStatus::Trialing->value,
+            ErpSubscriptionStatus::TrialExpired->value,
+        ], true)) {
+            return $this->moduleEnabled($company, $moduleKey);
+        }
+
+        $contract = OfficeErpContract::query()->whereKey($subscription->office_erp_contract_id)
+            ->where('account_id', $trial->account_id)
+            ->where('erp_company_id', $company->id)
+            ->where('agreement_status', 'accepted')
+            ->where('provisioning_source', 'office_trial')
+            ->where('manual_hold', false)
+            ->whereNotNull('current_revision_id')
+            ->first();
+        if ($contract === null) {
+            return false;
+        }
+
+        $expired = $trial->expired_at !== null
+            || ! $trial->ends_at->isAfter(CarbonImmutable::now('UTC'))
+            || $subscription->status === ErpSubscriptionStatus::TrialExpired->value;
+        $allocation = OfficeErpLicenceAllocation::query()
+            ->where('account_id', $trial->account_id)
+            ->where('contract_id', $contract->id)
+            ->where('erp_company_id', $company->id)
+            ->whereIn('state', $expired ? ['occupied', 'released'] : ['occupied'])
+            ->exists();
+        if (! $allocation) {
+            return false;
+        }
+
+        $revision = OfficeErpContractRevision::query()->whereKey($contract->current_revision_id)
+            ->where('contract_id', $contract->id)->first();
+
+        return in_array($moduleKey, $revision?->module_keys ?? [], true);
+    }
+
     private function trialRecordForSubscription(ErpCompany $company, ErpSubscription $subscription): ?ErpSubscriptionTrial
     {
         return ErpSubscriptionTrial::query()

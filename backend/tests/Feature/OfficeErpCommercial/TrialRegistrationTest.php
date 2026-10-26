@@ -2,27 +2,82 @@
 
 namespace Tests\Feature\OfficeErpCommercial;
 
+use App\Erp\Commercial\OfficeErpCustomerEnrollment;
+use App\Erp\ErpCommercialCatalog;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
+use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\Commercial\OfficeErpTrialLink;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpPlan;
 use App\Models\Erp\ErpPlanModule;
 use App\Models\Erp\ErpSubscription;
+use App\Models\Erp\ErpSubscriptionTrial;
+use App\Models\OwnerActivation;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Tests\OfficeErpCommercialTestCase;
 
 class TrialRegistrationTest extends OfficeErpCommercialTestCase
 {
+    public function test_trial_registration_takes_catalog_lock_before_locking_the_technical_plan(): void
+    {
+        config(['erp.office_trial_enabled' => true]);
+        $code = $this->enabledTrialLink();
+        $events = [];
+        $providerReturned = false;
+        $catalog = new class($events) extends ErpCommercialCatalog
+        {
+            public function __construct(private array &$events) {}
+
+            public function advisory(): void
+            {
+                $this->events[] = 'catalog';
+                parent::advisory();
+            }
+        };
+        $this->app->instance(ErpCommercialCatalog::class, $catalog);
+        DB::listen(function ($query) use (&$events, &$providerReturned): void {
+            if ($providerReturned && str_contains(strtolower($query->sql), 'from "erp_plans"')
+                && str_contains(strtolower($query->sql), 'where "erp_plans"."id" =')) {
+                $events[] = 'plan';
+            }
+        });
+        Http::fake(function () use (&$providerReturned) {
+            $providerReturned = true;
+
+            return Http::response([], 404);
+        });
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+
+        $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', [
+                'name' => 'Pessoa responsável',
+                'email' => 'lock-order-owner@example.test',
+                'password' => 'never-store-this-password',
+                'company_name' => 'Empresa de teste',
+                'cnpj' => '27865757000102',
+                'tax_regime' => 'presumed_profit',
+            ], ['Idempotency-Key' => 'trial-catalog-lock-order-operation'])
+            ->assertCreated();
+
+        $catalogIndex = array_search('catalog', $events, true);
+        $planIndex = array_search('plan', $events, true);
+        self::assertIsInt($catalogIndex, json_encode($events, JSON_THROW_ON_ERROR));
+        self::assertIsInt($planIndex, json_encode($events, JSON_THROW_ON_ERROR));
+        self::assertLessThan($planIndex, $catalogIndex);
+    }
+
     public function test_public_current_route_requires_authentication_without_selected_company(): void
     {
         $this->getJson('/api/v1/erp/trials/current', ['Idempotency-Key' => 'trial-recovery-operation-1'])
@@ -102,6 +157,42 @@ class TrialRegistrationTest extends OfficeErpCommercialTestCase
         Http::assertNothingSent();
     }
 
+    public function test_pending_platform_owner_activation_reserves_email_from_trial_signup_without_consuming_activation(): void
+    {
+        config(['erp.office_trial_enabled' => true]);
+        $code = $this->enabledTrialLink();
+        $activationToken = str_repeat('a', 64);
+        $activation = OwnerActivation::factory()->create([
+            'email' => 'reserved-trial-email@example.test',
+            'token_hash' => hash('sha256', $activationToken),
+            'expires_at' => now()->addDays(2),
+        ]);
+        Http::fake();
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+
+        $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', [
+                'name' => 'Pessoa responsável',
+                'email' => $activation->email,
+                'password' => 'never-store-this-password',
+                'company_name' => 'Empresa de teste',
+                'cnpj' => '27865757000102',
+                'tax_regime' => 'presumed_profit',
+            ], ['Idempotency-Key' => 'trial-pending-activation-operation'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('email');
+
+        $this->getJson('/api/v1/first-access/status?'.http_build_query([
+            'token' => $activationToken,
+            'email' => $activation->email,
+        ]))->assertOk()->assertJsonPath('valid', true);
+        self::assertDatabaseMissing('users', ['email' => $activation->email]);
+        $this->assertDatabaseCount('erp_companies', 0);
+        $this->assertDatabaseCount('erp_subscription_trials', 0);
+        $this->assertDatabaseCount('office_erp_commercial_operations', 0);
+        Http::assertNothingSent();
+    }
+
     public function test_public_signup_atomically_provisions_a_seven_day_trial_and_current_recovers_it(): void
     {
         config(['erp.office_trial_enabled' => true, 'erp.registration_enabled' => false]);
@@ -168,9 +259,81 @@ class TrialRegistrationTest extends OfficeErpCommercialTestCase
             ->assertJsonPath('data.company_id', $data['company_id']);
         self::assertContains('no-store', array_map('trim', explode(',', (string) $current->headers->get('Cache-Control'))));
 
+        CarbonImmutable::setTestNow(CarbonImmutable::parse($data['ends_at'])->addSecond());
+        try {
+            $this->getJson('/api/v1/erp/trials/current', ['Idempotency-Key' => $key])
+                ->assertOk()
+                ->assertJsonPath('data.trial_id', $data['trial_id']);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+
+        $companyMembership->forceFill(['role' => 'admin'])->save();
+        $this->actingAs($owner)
+            ->getJson('/api/v1/erp/trials/current', ['Idempotency-Key' => $key])
+            ->assertNotFound();
+
         $this->actingAs(User::factory()->create())
             ->getJson('/api/v1/erp/trials/current', ['Idempotency-Key' => $key])
             ->assertNotFound();
+    }
+
+    public function test_real_signup_expires_and_converts_without_replacing_the_company_or_trial_grant(): void
+    {
+        config(['erp.office_trial_enabled' => true, 'erp.registration_enabled' => false]);
+        $registeredAt = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($registeredAt);
+        $code = $this->enabledTrialLink();
+        Http::fake(['publica.cnpj.ws/cnpj/27865757000102' => Http::response($this->providerPayload())]);
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+        $key = 'trial-lifecycle-registration-0001';
+
+        $registration = $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', [
+                'name' => 'Pessoa responsável',
+                'email' => 'lifecycle-trial-owner@example.test',
+                'password' => 'never-store-this-password',
+                'company_name' => 'Globo Comunicação',
+                'cnpj' => '27.865.757/0001-02',
+                'tax_regime' => 'presumed_profit',
+            ], ['Idempotency-Key' => $key])
+            ->assertCreated();
+        $data = $registration->json('data');
+        $trial = ErpSubscriptionTrial::query()->findOrFail($data['trial_id']);
+        $end = $trial->ends_at;
+        self::assertSame($registeredAt->addHours(168)->toISOString(), $end->toISOString());
+
+        CarbonImmutable::setTestNow($end);
+        $this->artisan('office-erp:expire-trials', ['--batch' => 50])->assertExitCode(0);
+        $trial->refresh();
+        self::assertSame($end->toISOString(), $trial->expired_at->toISOString());
+        self::assertSame('trial_expired', ErpSubscription::query()->findOrFail($data['subscription_id'])->status);
+
+        $accountId = OfficeErpTrialLink::query()->where('public_code', $code)->value('account_id');
+        $ctx = $this->officeContextFor(Account::query()->findOrFail($accountId));
+        request()->attributes->remove('access.session_lock');
+        $contract = OfficeErpContract::query()->findOrFail($data['contract_id']);
+        $link = OfficeErpTrialLink::query()->where('public_code', $code)->firstOrFail();
+        $startOn = $end->setTimezone('America/Sao_Paulo')->toDateString();
+        $converted = $this->withOfficeAccount($ctx, fn (): array => app(OfficeErpCustomerEnrollment::class)->convertTrial($ctx, $contract, [
+            'erp_plan_id' => (int) $link->erp_plan_id,
+            'price' => '250.00',
+            'currency' => 'BRL',
+            'interval_months' => 1,
+            'due_in_days' => 10,
+            'start_on' => $startOn,
+            'billing_timezone' => 'America/Sao_Paulo',
+        ], 'trial-lifecycle-conversion-0001'));
+
+        self::assertSame((int) $data['company_id'], $converted['company_id']);
+        self::assertSame((int) $data['subscription_id'], $converted['subscription_id']);
+        self::assertSame((int) $data['contract_id'], $converted['contract_id']);
+        self::assertSame((int) $data['trial_id'], $converted['trial_id']);
+        self::assertSame($end->toISOString(), $trial->fresh()->expired_at->toISOString());
+        self::assertNotNull($trial->fresh()->converted_at);
+        self::assertSame('active', ErpSubscription::query()->findOrFail($data['subscription_id'])->status);
+        self::assertSame('effective', $contract->fresh()->agreement_status);
+        self::assertSame(1, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
     }
 
     public function test_provider_failure_leaves_identity_and_trial_aggregate_unmodified(): void
@@ -442,6 +605,66 @@ class TrialRegistrationTest extends OfficeErpCommercialTestCase
         self::assertSame(2, (int) $link->fresh()->revision);
 
         $this->assertDatabaseMissing('users', ['email' => 'revision-trial-owner@example.test']);
+        $this->assertDatabaseCount('erp_subscription_trials', 0);
+        $this->assertDatabaseCount('office_erp_contracts', 0);
+        $this->assertDatabaseCount('office_erp_commercial_operations', 0);
+    }
+
+    public function test_current_rejects_an_outcome_whose_subscription_no_longer_matches_trial_company(): void
+    {
+        config(['erp.office_trial_enabled' => true]);
+        $code = $this->enabledTrialLink();
+        Http::fake(['publica.cnpj.ws/cnpj/27865757000102' => Http::response($this->providerPayload())]);
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+        $key = 'trial-current-inconsistent-outcome';
+        $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', [
+                'name' => 'Pessoa responsável',
+                'email' => 'current-inconsistent-owner@example.test',
+                'password' => 'never-store-this-password',
+                'company_name' => 'Globo Comunicação',
+                'cnpj' => '27865757000102',
+                'tax_regime' => 'presumed_profit',
+            ], ['Idempotency-Key' => $key])
+            ->assertCreated();
+
+        $operation = OfficeErpCommercialOperation::query()->where('idempotency_key', $key)->firstOrFail();
+        $otherCompany = ErpCompany::factory()->create();
+        $otherSubscription = ErpSubscription::factory()->create(['erp_company_id' => $otherCompany->id]);
+        $outcome = $operation->outcome;
+        $outcome['data']['subscription_id'] = (int) $otherSubscription->id;
+        $operation->forceFill(['outcome' => $outcome])->save();
+
+        $this->getJson('/api/v1/erp/trials/current', ['Idempotency-Key' => $key])
+            ->assertNotFound();
+    }
+
+    public function test_technical_plan_module_change_during_provider_preflight_aborts_trial_registration(): void
+    {
+        config(['erp.office_trial_enabled' => true]);
+        $code = $this->enabledTrialLink();
+        $link = OfficeErpTrialLink::query()->where('public_code', $code)->firstOrFail();
+        Http::fake(function () use ($link) {
+            ErpPlanModule::query()->where('erp_plan_id', $link->erp_plan_id)->delete();
+
+            return Http::response([], 404);
+        });
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+
+        $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', [
+                'name' => 'Pessoa responsável',
+                'email' => 'plan-modules-changed-owner@example.test',
+                'password' => 'never-store-this-password',
+                'company_name' => 'Empresa de teste',
+                'cnpj' => '27865757000102',
+                'tax_regime' => 'presumed_profit',
+            ], ['Idempotency-Key' => 'trial-plan-modules-changed-operation'])
+            ->assertConflict();
+
+        $this->assertDatabaseMissing('users', ['email' => 'plan-modules-changed-owner@example.test']);
+        $this->assertDatabaseMissing('clients', ['tax_id' => '27865757000102']);
+        $this->assertDatabaseCount('erp_companies', 0);
         $this->assertDatabaseCount('erp_subscription_trials', 0);
         $this->assertDatabaseCount('office_erp_contracts', 0);
         $this->assertDatabaseCount('office_erp_commercial_operations', 0);
