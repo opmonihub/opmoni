@@ -840,7 +840,17 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     {
         $process->wait();
         self::assertTrue($process->isSuccessful(), 'Worker exit='.$process->getExitCode().'; stderr bytes='.strlen($process->getErrorOutput()));
-        $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+        $output = $process->getOutput();
+        try {
+            $result = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            $firstLine = strtok($output, "\n") ?: '[empty stdout]';
+            $firstLine = preg_replace('/\b\d{14}\b/', '[cnpj]', $firstLine) ?? $firstLine;
+            $firstLine = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', '[email]', $firstLine) ?? $firstLine;
+            $firstLine = preg_replace('/Trial-Race-Secret-[^"\s]*/', '[secret]', $firstLine) ?? $firstLine;
+            $firstLine = substr($firstLine, 0, 240);
+            self::fail('Worker emitted invalid JSON (stdout bytes='.strlen($output).', json error='.$exception->getMessage().', first line='.$firstLine.').');
+        }
         self::assertSame(0, $result['transaction_level']);
 
         return $result;
