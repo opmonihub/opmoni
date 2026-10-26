@@ -338,6 +338,53 @@ class TrialLifecycleTest extends OfficeErpCommercialTestCase
         self::assertSame('trialing', $company->subscription()->firstOrFail()->fresh()->status);
     }
 
+    public function test_expired_trial_conversion_uses_the_trial_end_date_in_the_selected_billing_timezone(): void
+    {
+        $now = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($now);
+        $trialEndsAt = CarbonImmutable::parse('2026-10-20T01:00:00Z');
+        $company = $this->trialCompany($trialEndsAt->subDays(7), $trialEndsAt);
+        $trial = $company->trial;
+        $contract = OfficeErpContract::query()->where('erp_company_id', $company->id)->firstOrFail();
+        $plan = ErpPlan::factory()->create(['name' => 'Paid plan at trial boundary']);
+        ErpPlanModule::factory()->create(['erp_plan_id' => $plan->id, 'module_key' => 'purchases']);
+        $ctx = $this->officeContextFor(Account::query()->findOrFail($trial->account_id));
+        $service = app(OfficeErpCustomerEnrollment::class);
+        app(ErpTrialLifecycle::class)->expire($trial, $now);
+        $input = [...$this->conversionInput((int) $plan->id), 'billing_timezone' => 'America/Los_Angeles'];
+
+        self::assertSame('2026-10-19', $trialEndsAt->setTimezone('America/Los_Angeles')->toDateString());
+        $input['start_on'] = '2026-10-18';
+        try {
+            $this->withOfficeAccount($ctx, fn (): array => $service->convertTrial(
+                $ctx,
+                $contract,
+                $input,
+                'convert-expired-trial-before-local-end',
+            ));
+            self::fail('Paid conversion cannot include the trial end date in the selected billing timezone.');
+        } catch (ValidationException $exception) {
+            self::assertArrayHasKey('start_on', $exception->errors());
+        }
+
+        self::assertSame(0, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+        self::assertSame('trial_expired', $company->subscription()->firstOrFail()->fresh()->status);
+        self::assertNull($trial->fresh()->converted_at);
+        self::assertDatabaseCount('office_erp_commercial_operations', 0);
+
+        $input['start_on'] = '2026-10-19';
+        $outcome = $this->withOfficeAccount($ctx, fn (): array => $service->convertTrial(
+            $ctx,
+            $contract,
+            $input,
+            'convert-expired-trial-on-local-end',
+        ));
+
+        self::assertGreaterThan(0, $outcome['invoice_id']);
+        self::assertSame('2026-10-19', OfficeErpInvoice::query()->whereKey($outcome['invoice_id'])->firstOrFail()->period_start->toDateString());
+        self::assertSame(1, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+    }
+
     public function test_expired_trial_conversion_reacquires_original_seat_and_replays_one_first_invoice(): void
     {
         $now = CarbonImmutable::parse('2026-10-25T12:00:00Z');

@@ -640,7 +640,6 @@ final class OfficeErpContracts
             return null;
         }
 
-        $now = CarbonImmutable::now($contract->billing_timezone);
         $period = $this->calendar->periodAtMonthOffset(
             $contract->service_anchor_on->toDateString(),
             (int) $contract->currentRevision->interval_months,
@@ -658,8 +657,6 @@ final class OfficeErpContracts
                 $contract->billing_timezone,
                 (int) $revision->due_in_days,
             );
-        } else {
-            $revision = $contract->currentRevision;
         }
         if ($contract->cancel_effective_on !== null
             && $contract->cancel_effective_on->toDateString() <= $period['start']) {
