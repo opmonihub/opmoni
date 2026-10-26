@@ -4,6 +4,7 @@ import { registerHooks } from 'node:module'
 import { ref, nextTick, effectScope } from 'vue'
 import { accessDestination, apiFailure, passwordLength } from './shared/utils/access.ts'
 import type { Identity, Membership } from './shared/types/access.ts'
+import { loadAppComposable } from './tests/helpers/loadAppComposable.ts'
 
 const office = (id: number, status: Membership['status'] = 'active'): Membership => ({ id, name: 'Office', role: 'admin', status })
 const identity = (accounts: Membership[], current_account: Membership | null = null): Identity => ({ id: 1, name: 'Owner', email: 'owner@example.test', is_super_admin: false, accounts, current_account, companies: [], current_company: null })
@@ -98,7 +99,17 @@ test('focus returns a reactivated office to home and preserves active settings r
 })
 
 test('account status changes reset pagination and clear filters loads only once', async () => {
-  const { useAccountFilters } = await import('./app/composables/useAccountFilters.ts')
+  const states = new Map<string, ReturnType<typeof ref>>()
+  const useState = (key: string, initial: () => unknown) => {
+    if (!states.has(key)) states.set(key, ref(initial()))
+    return states.get(key)!
+  }
+  const navigation = loadAppComposable<typeof import('./app/composables/useListNavigationState.ts')>(
+    'composables/useListNavigationState.ts', { useState }
+  )
+  const { useAccountFilters } = loadAppComposable<typeof import('./app/composables/useAccountFilters.ts')>(
+    'composables/useAccountFilters.ts', navigation
+  )
   const scope = effectScope()
   const requests: { q: string, status: string, page: number }[] = []
   const filters = scope.run(() => useAccountFilters(() => {
