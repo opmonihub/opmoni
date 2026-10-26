@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { apiFailure } from '#shared/utils/access'
+import ErpCatalogReferenceSelect from '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue'
 
 const settings = useErpCompanySettings()
 const selectedProfileId = ref<number | null>(null)
