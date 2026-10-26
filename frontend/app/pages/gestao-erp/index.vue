@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type { OfficeErpCommercialSummary, OfficeErpCommercialSummaryResponse } from '#shared/types/officeErpCommercial'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
@@ -17,14 +19,14 @@ const stale = ref(false)
 const permissionMessage = ref('')
 let requestGeneration = 0
 
-const identityStamp = computed(() => JSON.stringify([
+const identityStamp = useOfficeErpReadIdentity(() => [
   user.value?.id ?? null,
   sessionGeneration.value,
   currentAccount.value?.id ?? null,
   currentAccount.value?.status ?? null,
-  currentAccount.value?.role ?? null,
-  context.capabilities.value?.capability_key ?? null
-]))
+  currentAccount.value?.role ?? null
+], () => context.capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identityStamp)
 const capabilities = computed(() => context.capabilities.value)
 const empty = computed(() => summary.value !== null
   && summary.value.contracted_licences === 0
@@ -80,6 +82,7 @@ function isAuthorityFailure(error: unknown): boolean {
 }
 
 async function loadSummary(): Promise<void> {
+  const read = reads.begin('loadSummary')
   const request = ++requestGeneration
   const identity = identityStamp.value
   const hasPriorSummary = summary.value !== null
@@ -90,7 +93,7 @@ async function loadSummary(): Promise<void> {
 
   try {
     await context.refresh()
-    if (request !== requestGeneration || identity !== identityStamp.value) return
+    if (!read.current() || request !== requestGeneration || identity !== identityStamp.value) return
     const currentCapabilities = capabilities.value
     if (!currentCapabilities?.can_read) {
       summary.value = null
@@ -102,13 +105,13 @@ async function loadSummary(): Promise<void> {
     }
 
     const token = context.capture()
-    const response = await api<OfficeErpCommercialSummaryResponse>('/erp-commercial/summary')
-    if (request !== requestGeneration || identity !== identityStamp.value || !context.isCurrent(token)) return
+    const response = await api<OfficeErpCommercialSummaryResponse>('/erp-commercial/summary', { signal: read.signal })
+    if (!read.current() || request !== requestGeneration || identity !== identityStamp.value || !context.isCurrent(token)) return
     if (!isSummary(response?.data)) throw new Error('A resposta do resumo comercial está incompleta.')
     summary.value = response.data
     stale.value = false
   } catch (error) {
-    if (request === requestGeneration && identity === identityStamp.value) {
+    if (read.current() && request === requestGeneration && identity === identityStamp.value) {
       loadError.value = apiErrorMessage(error) ?? 'Não foi possível carregar o resumo comercial agora.'
       if (isAuthorityFailure(error)) {
         summary.value = null
@@ -118,7 +121,7 @@ async function loadSummary(): Promise<void> {
       }
     }
   } finally {
-    if (request === requestGeneration && identity === identityStamp.value) {
+    if (read.current() && request === requestGeneration && identity === identityStamp.value) {
       loading.value = false
       refreshing.value = false
     }

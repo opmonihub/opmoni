@@ -218,6 +218,7 @@ function mountCaller(path: string, options: {
     readonly: Vue.readonly,
     onScopeDispose: Vue.onScopeDispose,
     useNuxtApp: () => ({}),
+    useRoute: () => ({ query: {} }),
     useState: <T>(key: string, init: () => T) => {
       if (key === 'access-session-generation') return session as Vue.Ref<T>
       if (!states.has(key)) states.set(key, Vue.ref(init()))

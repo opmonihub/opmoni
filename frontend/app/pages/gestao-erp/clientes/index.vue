@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { listNavigationField } from '~/composables/useListNavigationState'
+import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type { TableColumn } from '@nuxt/ui'
 import type { OfficeErpPortfolioClient, OfficeErpPortfolioClientListResponse } from '#shared/types/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
@@ -11,10 +15,18 @@ const { user, currentAccount } = useAuth()
 const toast = useToast()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const context = useOfficeErpContext()
-const query = ref('')
+const route = useRoute()
+function explicitCriteria() {
+  const query = route.query ?? {}
+  if (!Object.hasOwn(query, 'q') && !Object.hasOwn(query, 'pagina')) return null
+  const requestedPage = typeof query.pagina === 'string' && /^[1-9]\d*$/.test(query.pagina) ? Number(query.pagina) : 1
+  return { q: typeof query.q === 'string' ? query.q : '', page: Number.isSafeInteger(requestedPage) ? requestedPage : 1, perPage: 25 as 25 | 50 | 100 }
+}
+const navigation = useOfficeErpListNavigation('clients', { q: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context, {}, explicitCriteria)
+const query = listNavigationField(navigation, 'q')
 const debouncedQuery = refDebounced(query, 300)
-const page = ref(1)
-const perPage = ref<25 | 50 | 100>(25)
+const page = listNavigationField(navigation, 'page')
+const perPage = listNavigationField(navigation, 'perPage')
 const clients = ref<OfficeErpPortfolioClient[]>([])
 const total = ref(0)
 const lastPage = ref(1)
@@ -24,11 +36,11 @@ const confirmedEmpty = ref(false)
 const copyingTrialLink = ref(false)
 let requestGeneration = 0
 
-const identityStamp = computed(() => JSON.stringify([
+const identityStamp = useOfficeErpReadIdentity(() => [
   user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null,
-  currentAccount.value?.status ?? null, currentAccount.value?.role ?? null,
-  context.capabilities.value?.capability_key ?? null
-]))
+  currentAccount.value?.status ?? null, currentAccount.value?.role ?? null
+], () => context.capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identityStamp)
 const columns: TableColumn<OfficeErpPortfolioClient>[] = [
   { accessorKey: 'name', header: 'Cliente' },
   { accessorKey: 'tax_id', header: 'CNPJ' },
@@ -54,6 +66,7 @@ function formatOfficeDate(value: string | null | undefined) {
 }
 
 async function loadClients() {
+  const read = reads.begin('loadClients')
   const request = ++requestGeneration
   const identity = identityStamp.value
   loading.value = true
@@ -61,7 +74,7 @@ async function loadClients() {
   confirmedEmpty.value = false
   try {
     await context.refresh()
-    if (request !== requestGeneration || identity !== identityStamp.value) return
+    if (!read.current() || request !== requestGeneration || identity !== identityStamp.value) return
     if (!context.capabilities.value?.can_read) {
       clients.value = []
       total.value = 0
@@ -72,38 +85,44 @@ async function loadClients() {
     const params: Record<string, string | number> = { page: page.value, per_page: perPage.value }
     const search = debouncedQuery.value.trim()
     if (search) params.q = search
-    const response = await api<OfficeErpPortfolioClientListResponse>('/erp-commercial/clients', { params })
-    if (request !== requestGeneration || identity !== identityStamp.value || !context.isCurrent(token)) return
+    const response = await api<OfficeErpPortfolioClientListResponse>('/erp-commercial/clients', { signal: read.signal, params })
+    if (!read.current() || request !== requestGeneration || identity !== identityStamp.value || !context.isCurrent(token)) return
     if (!Array.isArray(response?.data) || !response.meta || !Number.isSafeInteger(response.meta.total)
       || !Number.isSafeInteger(response.meta.current_page) || !Number.isSafeInteger(response.meta.last_page)
       || ![25, 50, 100].includes(response.meta.per_page)) throw new Error('A resposta da carteira está incompleta.')
+    const availablePage = officeErpAvailablePage(response.meta)
+    if (page.value !== availablePage) {
+      page.value = availablePage
+      return
+    }
     clients.value = response.data
     total.value = response.meta.total
     lastPage.value = Math.max(1, response.meta.last_page)
     page.value = response.meta.current_page
     confirmedEmpty.value = response.meta.total === 0
   } catch (error) {
-    if (request === requestGeneration && identity === identityStamp.value)
+    if (read.current() && request === requestGeneration && identity === identityStamp.value)
       loadError.value = apiErrorMessage(error) ?? 'Não foi possível consultar a carteira agora.'
   } finally {
-    if (request === requestGeneration && identity === identityStamp.value) loading.value = false
+    if (read.current() && request === requestGeneration && identity === identityStamp.value) loading.value = false
   }
 }
 
 async function copyTrialLink() {
   if (copyingTrialLink.value) return
+  const read = reads.begin('copyTrialLink')
   copyingTrialLink.value = true
   const identity = identityStamp.value
   try {
     await context.refresh()
-    if (identity !== identityStamp.value) return
+    if (!read.current() || identity !== identityStamp.value) return
     if (!context.capabilities.value?.can_manage_trial_link) {
       toast.add({ title: 'Ação indisponível', description: 'Sua conta não pode gerenciar o link de teste deste escritório.', color: 'warning' })
       return
     }
     const token = context.capture()
-    const response = await api<{ data: { configured: boolean, enabled: boolean, url: string | null } }>('/erp-commercial/trial-link')
-    if (identity !== identityStamp.value || !context.isCurrent(token)) return
+    const response = await api<{ data: { configured: boolean, enabled: boolean, url: string | null } }>('/erp-commercial/trial-link', { signal: read.signal })
+    if (!read.current() || identity !== identityStamp.value || !context.isCurrent(token)) return
     if (!response?.data?.configured || !response.data.enabled || !response.data.url) {
       toast.add({ title: 'Link de teste indisponível', description: 'Configure e ative o link de teste nas configurações do ERP.', color: 'warning' })
       return
@@ -114,10 +133,10 @@ async function copyTrialLink() {
     await navigator.clipboard.writeText(target.href)
     toast.add({ title: 'Link de teste copiado', description: 'Compartilhe o link para iniciar um teste de sete dias.', color: 'success' })
   } catch (error) {
-    if (identity === identityStamp.value)
+    if (read.current() && identity === identityStamp.value)
       toast.add({ title: 'Não foi possível copiar o link', description: apiErrorMessage(error) ?? 'Verifique a conexão e tente novamente.', color: 'error' })
   } finally {
-    if (identity === identityStamp.value) copyingTrialLink.value = false
+    if (read.current() && identity === identityStamp.value) copyingTrialLink.value = false
   }
 }
 
@@ -125,8 +144,10 @@ watch([debouncedQuery, page, perPage], () => {
   void loadClients()
 }, { immediate: true })
 watch([debouncedQuery, perPage], () => {
+  const explicit = explicitCriteria()
+  if (explicit && debouncedQuery.value === explicit.q && page.value === explicit.page && perPage.value === explicit.perPage) return
   page.value = 1
-})
+}, { flush: 'sync' })
 watch(identityStamp, () => {
   requestGeneration++
   copyingTrialLink.value = false

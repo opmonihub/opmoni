@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { listNavigationField } from '~/composables/useListNavigationState'
+import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type { TableColumn } from '@nuxt/ui'
 import type { OfficeErpCommandResult, OfficeErpOffer, OfficeErpOfferListResponse, OfficeErpOfferTerms } from '#shared/types/officeErpCommercial'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
@@ -11,16 +15,17 @@ const { api } = useAccessApi()
 const { user, currentAccount } = useAuth()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const context = useOfficeErpContext()
+const navigation = useOfficeErpListNavigation('plans', { q: '', status: 'active' as 'active' | 'archived', page: 1, perPage: 25 as 25 | 50 | 100 }, context, { status: ['active', 'archived'] })
 const command = useOfficeErpCommand()
 const route = useRoute()
 const toast = useToast()
 
 const offers = ref<OfficeErpOffer[]>([])
-const query = ref('')
+const query = listNavigationField(navigation, 'q')
 const debouncedQuery = refDebounced(query, 300)
-const status = ref<'active' | 'archived'>('active')
-const page = ref(1)
-const perPage = ref<25 | 50 | 100>(25)
+const status = listNavigationField(navigation, 'status')
+const page = listNavigationField(navigation, 'page')
+const perPage = listNavigationField(navigation, 'perPage')
 const total = ref(0)
 const lastPage = ref(1)
 const loading = ref(false)
@@ -40,14 +45,14 @@ let listRequest = 0
 let commandBusyGeneration = 0
 
 const capabilities = context.capabilities
-const identityStamp = computed(() => JSON.stringify([
+const identityStamp = useOfficeErpReadIdentity(() => [
   user.value?.id ?? null,
   sessionGeneration.value,
   currentAccount.value?.id ?? null,
   currentAccount.value?.status ?? null,
-  currentAccount.value?.role ?? null,
-  capabilities.value?.capability_key ?? null
-]))
+  currentAccount.value?.role ?? null
+], () => capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identityStamp)
 const moduleKeys = computed(() => capabilities.value?.allowance.module_keys ?? [])
 const capacityLabel = computed(() => {
   const allowance = capabilities.value?.allowance
@@ -99,6 +104,7 @@ function beginCommandRequest() {
 }
 
 async function loadOffers() {
+  const read = reads.begin('loadOffers')
   const request = ++listRequest
   const scope = identityStamp.value
   loading.value = true
@@ -106,7 +112,7 @@ async function loadOffers() {
   confirmedEmpty.value = false
   try {
     await context.refresh()
-    if (request !== listRequest || scope !== identityStamp.value) return
+    if (!read.current() || request !== listRequest || scope !== identityStamp.value) return
     const currentCapabilities = capabilities.value
     if (!currentCapabilities?.can_read) {
       offers.value = []
@@ -118,12 +124,17 @@ async function loadOffers() {
     }
 
     const token = context.capture()
-    const response = await api<OfficeErpOfferListResponse>('/erp-commercial/plans', { params: requestParams() })
-    if (request !== listRequest || scope !== identityStamp.value || !context.isCurrent(token)) return
+    const response = await api<OfficeErpOfferListResponse>('/erp-commercial/plans', { signal: read.signal, params: requestParams() })
+    if (!read.current() || request !== listRequest || scope !== identityStamp.value || !context.isCurrent(token)) return
     if (!response || !Array.isArray(response.data) || !response.meta
       || !Number.isSafeInteger(response.meta.total) || !Number.isSafeInteger(response.meta.current_page)
       || !Number.isSafeInteger(response.meta.last_page) || ![25, 50, 100].includes(response.meta.per_page)) {
       throw new Error('A resposta da lista de planos está incompleta.')
+    }
+    const availablePage = officeErpAvailablePage(response.meta)
+    if (page.value !== availablePage) {
+      page.value = availablePage
+      return
     }
     offers.value = response.data
     total.value = response.meta.total
@@ -131,10 +142,10 @@ async function loadOffers() {
     page.value = response.meta.current_page
     confirmedEmpty.value = response.meta.total === 0
   } catch (error) {
-    if (request === listRequest && scope === identityStamp.value)
+    if (read.current() && request === listRequest && scope === identityStamp.value)
       loadError.value = apiErrorMessage(error) ?? 'Não foi possível consultar os planos agora.'
   } finally {
-    if (request === listRequest && scope === identityStamp.value)
+    if (read.current() && request === listRequest && scope === identityStamp.value)
       loading.value = false
   }
 }
@@ -149,17 +160,18 @@ function openCreate() {
 
 async function openEdit(offer: OfficeErpOffer) {
   if (!capabilities.value?.can_sell_new || command.pending.value) return
+  const read = reads.begin('openEdit')
   const scope = identityStamp.value
   const token = context.capture()
   fieldErrors.value = {}
   mutationFailure.value = ''
   try {
-    const response = await api<{ data: OfficeErpOffer }>(`/erp-commercial/plans/${offer.id}`)
-    if (scope !== identityStamp.value || !context.isCurrent(token)) return
+    const response = await api<{ data: OfficeErpOffer }>(`/erp-commercial/plans/${offer.id}`, { signal: read.signal })
+    if (!read.current() || scope !== identityStamp.value || !context.isCurrent(token)) return
     editingOffer.value = response.data
     editorOpen.value = true
   } catch (error) {
-    if (scope === identityStamp.value && context.isCurrent(token))
+    if (read.current() && scope === identityStamp.value && context.isCurrent(token))
       toast.add({ title: apiErrorMessage(error) ?? 'Não foi possível abrir este plano agora.', color: 'error' })
   }
 }
@@ -268,9 +280,9 @@ watch(identityStamp, () => {
   mutationFailure.value = ''
   void loadOffers()
 }, { flush: 'sync' })
-watch([debouncedQuery, status], () => {
+watch([debouncedQuery, status, perPage], () => {
   page.value = 1
-})
+}, { flush: 'sync' })
 </script>
 
 <template>

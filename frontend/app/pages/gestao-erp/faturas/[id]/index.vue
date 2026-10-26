@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { formatOfficeErpMoney, parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
 definePageMeta({ middleware: 'auth' })
@@ -8,14 +10,16 @@ const { user, currentAccount } = useAuth(), sessionGeneration = useState('access
 const record = ref<Invoice | null>(null), contracts = ref<Array<{ id: number, client: { name: string } }>>([]), loadError = ref(''), error = ref(''), errors = ref<Record<string, string[]>>({}), busy = ref(false), unknown = ref(false), recovering = ref(false), open = ref(false), reason = ref('')
 const draftItems = ref<Array<{ description: string, amount: string, discount: string }>>([{ description: '', amount: '', discount: '0,00' }])
 const f = reactive({ contract_id: '', period_start: '', period_end: '', due_on: '' }), isNew = computed(() => String(route.params.id) === 'nova'), id = computed(() => String(route.params.id)), key = computed(() => command.recoveryKey.value), recoverable = computed(() => !!command.pending.value || !!key.value)
-const identity = computed(() => JSON.stringify([user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null, context.capabilities.value?.capability_key ?? null]))
+const identity = useOfficeErpReadIdentity(() => [user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null], () => context.capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identity)
 let generation = 0
 async function load() {
+  const read = reads.begin('load')
   const n = ++generation
   record.value = null
   loadError.value = ''
   await context.refresh()
-  if (n !== generation) return
+  if (!read.current() || n !== generation) return
   if (!context.capabilities.value?.can_read) {
     loadError.value = 'A conta atual não pode consultar faturas.'
     return
@@ -23,11 +27,11 @@ async function load() {
   try {
     const token = context.capture()
     if (isNew.value) {
-      const r = await api<{ data: Array<{ id: number, client: { name: string } }> }>('/erp-commercial/contracts', { params: { agreement_status: 'effective', per_page: 100 } })
-      if (n === generation && context.isCurrent(token))contracts.value = r.data
+      const r = await api<{ data: Array<{ id: number, client: { name: string } }> }>('/erp-commercial/contracts', { signal: read.signal, params: { agreement_status: 'effective', per_page: 100 } })
+      if (read.current() && n === generation && context.isCurrent(token))contracts.value = r.data
     } else {
-      const r = await api<{ data: Invoice }>('/erp-commercial/invoices/' + encodeURIComponent(id.value))
-      if (n !== generation || !context.isCurrent(token)) return
+      const r = await api<{ data: Invoice }>('/erp-commercial/invoices/' + encodeURIComponent(id.value), { signal: read.signal })
+      if (!read.current() || n !== generation || !context.isCurrent(token)) return
       if (!r.data || r.data.id !== Number(id.value)) throw Error('Fatura indisponível nesta conta.')
       record.value = r.data
       if (r.data.document_status === 'draft') {
@@ -38,7 +42,7 @@ async function load() {
         f.due_on = r.data.due_on
       }
     }
-  } catch (e) { if (n === generation)loadError.value = e instanceof Error ? e.message : 'Não foi possível consultar a fatura.' }
+  } catch (e) { if (read.current() && n === generation)loadError.value = e instanceof Error ? e.message : 'Não foi possível consultar a fatura.' }
 }
 function body() {
   if (!draftItems.value.length || draftItems.value.length > 100) throw Error('A fatura deve ter de uma a cem linhas.')

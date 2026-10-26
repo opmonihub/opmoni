@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { listNavigationField } from '~/composables/useListNavigationState'
+import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type { TableColumn } from '@nuxt/ui'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
@@ -22,14 +26,15 @@ const { api } = useAccessApi()
 const { user, currentAccount } = useAuth()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const context = useOfficeErpContext()
-const query = ref('')
-const status = ref<'all' | 'draft' | 'issued' | 'canceled'>('all')
-const from = ref('')
-const to = ref('')
-const dueFrom = ref('')
-const dueTo = ref('')
-const page = ref(1)
-const perPage = ref<25 | 50 | 100>(25)
+const navigation = useOfficeErpListNavigation('invoices', { q: '', status: 'all' as 'all' | 'draft' | 'issued' | 'canceled', from: '', to: '', dueFrom: '', dueTo: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context, { status: ['all', 'draft', 'issued', 'canceled'] })
+const query = listNavigationField(navigation, 'q')
+const status = listNavigationField(navigation, 'status')
+const from = listNavigationField(navigation, 'from')
+const to = listNavigationField(navigation, 'to')
+const dueFrom = listNavigationField(navigation, 'dueFrom')
+const dueTo = listNavigationField(navigation, 'dueTo')
+const page = listNavigationField(navigation, 'page')
+const perPage = listNavigationField(navigation, 'perPage')
 const rows = ref<InvoiceRow[]>([])
 const total = ref(0)
 const lastPage = ref(1)
@@ -38,7 +43,8 @@ const loadError = ref('')
 const confirmedEmpty = ref(false)
 const confirmedQueryKey = ref<string | null>(null)
 let generation = 0
-const identity = computed(() => JSON.stringify([user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null, context.capabilities.value?.capability_key ?? null]))
+const identity = useOfficeErpReadIdentity(() => [user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null], () => context.capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identity)
 const queryKey = computed(() => JSON.stringify([identity.value, query.value.trim(), status.value, from.value, to.value, dueFrom.value, dueTo.value, page.value, perPage.value]))
 const hasConfirmedResults = computed(() => confirmedQueryKey.value !== null && confirmedQueryKey.value === queryKey.value)
 const columns: TableColumn<InvoiceRow>[] = [{ accessorKey: 'number', header: 'Fatura' }, { id: 'client', header: 'Cliente' }, { accessorKey: 'document_status', header: 'Situação' }, { accessorKey: 'due_on', header: 'Vencimento' }, { id: 'total', header: 'Cobrança ajustada' }, { id: 'balance', header: 'Em aberto' }, { id: 'actions', header: '' }]
@@ -66,6 +72,7 @@ function isAccountContextChanged(error: unknown): boolean {
 }
 
 async function loadInvoices() {
+  const read = reads.begin('loadInvoices')
   const request = ++generation
   const stamp = identity.value
   const requestedQueryKey = queryKey.value
@@ -74,7 +81,7 @@ async function loadInvoices() {
   loadError.value = ''
   try {
     await context.refresh()
-    if (request !== generation || stamp !== identity.value) return
+    if (!read.current() || request !== generation || stamp !== identity.value) return
     if (!context.capabilities.value?.can_read) {
       clearConfirmedResults()
       throw new Error('A conta selecionada não tem permissão para consultar faturas.')
@@ -87,9 +94,14 @@ async function loadInvoices() {
     if (to.value) params.to_on = to.value
     if (dueFrom.value) params.due_from = dueFrom.value
     if (dueTo.value) params.due_to = dueTo.value
-    const response = await api<PageResponse>('/erp-commercial/invoices', { params })
-    if (request !== generation || stamp !== identity.value || !context.isCurrent(token)) return
+    const response = await api<PageResponse>('/erp-commercial/invoices', { signal: read.signal, params })
+    if (!read.current() || request !== generation || stamp !== identity.value || !context.isCurrent(token)) return
     if (!Array.isArray(response?.data) || !response.meta || !Number.isSafeInteger(response.meta.total)) throw new Error('A resposta de faturas está incompleta.')
+    const availablePage = officeErpAvailablePage(response.meta)
+    if (page.value !== availablePage) {
+      page.value = availablePage
+      return
+    }
     rows.value = response.data
     total.value = response.meta.total
     lastPage.value = Math.max(1, response.meta.last_page)
@@ -97,13 +109,13 @@ async function loadInvoices() {
     confirmedEmpty.value = response.meta.total === 0
     confirmedQueryKey.value = requestedQueryKey
   } catch (error) {
-    if (request === generation && stamp === identity.value) {
+    if (read.current() && request === generation && stamp === identity.value) {
       const statusCode = apiStatus(error)
       if ([401, 403].includes(statusCode ?? 0) || (statusCode === 409 && isAccountContextChanged(error))) clearConfirmedResults()
       loadError.value = apiErrorMessage(error) ?? (error instanceof Error ? error.message : 'Não foi possível consultar faturas.')
     }
   } finally {
-    if (request === generation && stamp === identity.value) loading.value = false
+    if (read.current() && request === generation && stamp === identity.value) loading.value = false
   }
 }
 watch([query, status, from, to, dueFrom, dueTo, page, perPage], () => {
@@ -111,7 +123,7 @@ watch([query, status, from, to, dueFrom, dueTo, page, perPage], () => {
 }, { immediate: true })
 watch([query, status, from, to, dueFrom, dueTo, perPage], () => {
   page.value = 1
-})
+}, { flush: 'sync' })
 watch(identity, () => {
   generation++
   clearConfirmedResults()

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type {
   OfficeErpCommandResult,
   OfficeErpEnrollmentInput,
@@ -84,23 +86,14 @@ let authorityGeneration = 0
 
 if (Number(route.query.cliente) > 0) source.value = 'portfolio'
 
-const identityStamp = computed(() => JSON.stringify([
-  user.value?.id ?? null,
-  sessionGeneration.value,
-  currentAccount.value?.id ?? null,
-  currentAccount.value?.status ?? null,
-  currentAccount.value?.role ?? null,
-  context.capabilities.value?.capability_key ?? null
-]))
-const authorityStamp = computed(() => JSON.stringify([
+const identityStamp = useOfficeErpReadIdentity(() => [
   user.value?.id ?? null,
   sessionGeneration.value,
   currentAccount.value?.id ?? null,
   currentAccount.value?.status ?? null,
   currentAccount.value?.role ?? null
-]))
-let lastAuthorityStamp = authorityStamp.value
-let lastCapabilityKey = context.capabilities.value?.capability_key ?? null
+], () => context.capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identityStamp)
 let mayApplyRoutePreselection = true
 const recoveryKey = computed(() => command.recoveryKey.value)
 const commandPending = computed(() => command.pending.value)
@@ -179,19 +172,20 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 async function loadClients() {
+  const read = reads.begin('loadClients')
   const request = ++clientRequest
   const identity = identityStamp.value
   clientsLoading.value = true
   clientsError.value = ''
   try {
     await context.refresh()
-    if (request !== clientRequest || identity !== identityStamp.value) return
+    if (!read.current() || request !== clientRequest || identity !== identityStamp.value) return
     if (!canManage.value) throw new Error('A conta selecionada não pode consultar a carteira do escritório.')
     const token = context.capture()
     const params: Record<string, string | number> = { page: clientPage.value, per_page: 25 }
     if (clientSearch.value.trim()) params.q = clientSearch.value.trim()
-    const response = await api<OfficeErpPortfolioClientListResponse>('/erp-commercial/clients', { params })
-    if (request !== clientRequest || identity !== identityStamp.value || !context.isCurrent(token)) return
+    const response = await api<OfficeErpPortfolioClientListResponse>('/erp-commercial/clients', { signal: read.signal, params })
+    if (!read.current() || request !== clientRequest || identity !== identityStamp.value || !context.isCurrent(token)) return
     if (!Array.isArray(response?.data) || !response.meta || !Number.isSafeInteger(response.meta.total))
       throw new Error('A resposta da carteira está incompleta.')
     clients.value = response.data
@@ -202,35 +196,36 @@ async function loadClients() {
     if (mayApplyRoutePreselection && !selectedClient.value && Number.isSafeInteger(requestedId) && requestedId > 0)
       selectedClient.value = clientOptions.value.find(client => client.id === requestedId) ?? null
   } catch (error) {
-    if (request === clientRequest && identity === identityStamp.value)
+    if (read.current() && request === clientRequest && identity === identityStamp.value)
       clientsError.value = errorMessage(error, 'Não foi possível consultar a carteira agora.')
   } finally {
-    if (request === clientRequest && identity === identityStamp.value) clientsLoading.value = false
+    if (read.current() && request === clientRequest && identity === identityStamp.value) clientsLoading.value = false
   }
 }
 
 async function loadPlans() {
+  const read = reads.begin('loadPlans')
   const request = ++plansRequest
   const identity = identityStamp.value
   plansLoading.value = true
   plansError.value = ''
   try {
     await context.refresh()
-    if (request !== plansRequest || identity !== identityStamp.value) return
+    if (!read.current() || request !== plansRequest || identity !== identityStamp.value) return
     if (!canManage.value) throw new Error('A conta selecionada não pode matricular clientes ERP.')
     const token = context.capture()
-    const response = await api<OfficeErpEnrollmentPlansResponse>('/erp-commercial/enrollment-plans')
-    if (request !== plansRequest || identity !== identityStamp.value || !context.isCurrent(token)) return
+    const response = await api<OfficeErpEnrollmentPlansResponse>('/erp-commercial/enrollment-plans', { signal: read.signal })
+    if (!read.current() || request !== plansRequest || identity !== identityStamp.value || !context.isCurrent(token)) return
     if (!Array.isArray(response?.data) || !response.eligibility || typeof response.eligibility.can_provision !== 'boolean')
       throw new Error('A resposta dos planos ERP está incompleta.')
     plans.value = response.data
     eligibility.value = response.eligibility
     if (selectedPlan.value && !response.data.some(plan => plan.id === selectedPlan.value?.id)) selectedPlan.value = null
   } catch (error) {
-    if (request === plansRequest && identity === identityStamp.value)
+    if (read.current() && request === plansRequest && identity === identityStamp.value)
       plansError.value = errorMessage(error, 'Não foi possível consultar os planos técnicos agora.')
   } finally {
-    if (request === plansRequest && identity === identityStamp.value) plansLoading.value = false
+    if (read.current() && request === plansRequest && identity === identityStamp.value) plansLoading.value = false
   }
 }
 
@@ -491,13 +486,6 @@ watch([clientPage, clientSearch, identityStamp], () => {
   if (source.value === 'portfolio') void loadClients()
 }, { immediate: true, flush: 'post' })
 watch(identityStamp, () => {
-  const currentAuthority = authorityStamp.value
-  const currentCapabilityKey = context.capabilities.value?.capability_key ?? null
-  const authorityChanged = currentAuthority !== lastAuthorityStamp
-  const rightsChanged = lastCapabilityKey !== null && currentCapabilityKey !== lastCapabilityKey
-  lastAuthorityStamp = currentAuthority
-  lastCapabilityKey = currentCapabilityKey
-  if (!authorityChanged && !rightsChanged) return
   mayApplyRoutePreselection = false
   authorityGeneration++
   clientRequest++
@@ -571,9 +559,7 @@ watch(() => newClient.tax_id, (next, previous) => {
     lookupError.value = ''
   }
 }, { flush: 'sync' })
-watch(() => context.capabilities.value?.capability_key, () => {
-  void loadPlans()
-}, { immediate: true })
+void loadPlans()
 </script>
 
 <template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { formatOfficeErpMoney, parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { panelBodyClass } from '~/components/data-table/panel'
@@ -100,11 +102,11 @@ const conversionError = ref('')
 let loadGeneration = 0
 let conversionGeneration = 0
 
-const identityStamp = computed(() => JSON.stringify([
+const identityStamp = useOfficeErpReadIdentity(() => [
   user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null,
-  currentAccount.value?.status ?? null, currentAccount.value?.role ?? null,
-  context.capabilities.value?.capability_key ?? null
-]))
+  currentAccount.value?.status ?? null, currentAccount.value?.role ?? null
+], () => context.capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identityStamp)
 const recoveryKey = computed(() => command.recoveryKey.value)
 const canMaintain = computed(() => !!context.capabilities.value?.can_maintain && !!record.value)
 const canConvertTrial = computed(() => canMaintain.value && ['trialing', 'expired'].includes(record.value?.trial?.situation ?? ''))
@@ -134,17 +136,18 @@ const moduleOptions = computed(() => [...new Set([
 ])].map(value => ({ label: value, value })))
 
 async function loadContract() {
+  const read = reads.begin('loadContract')
   const request = ++loadGeneration
   const identity = identityStamp.value
   loading.value = true
   loadError.value = ''
   try {
     await context.refresh()
-    if (request !== loadGeneration || identity !== identityStamp.value) return
+    if (!read.current() || request !== loadGeneration || identity !== identityStamp.value) return
     if (!context.capabilities.value?.can_read) throw new Error('A conta selecionada não tem permissão para consultar este contrato.')
     const token = context.capture()
-    const response = await api<{ data: ContractDetail }>(`/erp-commercial/contracts/${route.params.id}`)
-    if (request !== loadGeneration || identity !== identityStamp.value || !context.isCurrent(token)) return
+    const response = await api<{ data: ContractDetail }>(`/erp-commercial/contracts/${route.params.id}`, { signal: read.signal })
+    if (!read.current() || request !== loadGeneration || identity !== identityStamp.value || !context.isCurrent(token)) return
     if (!response?.data || response.data.id !== Number(route.params.id)) throw new Error('A resposta do contrato está incompleta.')
     record.value = response.data
     price.value = response.data.current_revision?.price ?? ''
@@ -152,9 +155,9 @@ async function loadContract() {
     dueInDays.value = String(response.data.current_revision?.due_in_days ?? 0)
     selectedModules.value = [...(response.data.current_revision?.module_keys ?? [])]
   } catch (error) {
-    if (request === loadGeneration && identity === identityStamp.value) loadError.value = apiErrorMessage(error) ?? (error instanceof Error ? error.message : 'Não foi possível carregar o contrato.')
+    if (read.current() && request === loadGeneration && identity === identityStamp.value) loadError.value = apiErrorMessage(error) ?? (error instanceof Error ? error.message : 'Não foi possível carregar o contrato.')
   } finally {
-    if (request === loadGeneration && identity === identityStamp.value) loading.value = false
+    if (read.current() && request === loadGeneration && identity === identityStamp.value) loading.value = false
   }
 }
 
@@ -234,19 +237,20 @@ function formatDate(value: string) {
 
 async function prepareTrialConversion() {
   if (!canConvertTrial.value || conversionLoading.value || command.pending.value || !record.value) return
+  const read = reads.begin('prepareTrialConversion')
   const request = ++conversionGeneration
   const scope = identityStamp.value
   conversionLoading.value = true
   conversionError.value = ''
   try {
     await context.refresh()
-    if (request !== conversionGeneration || scope !== identityStamp.value || !canConvertTrial.value) return
+    if (!read.current() || request !== conversionGeneration || scope !== identityStamp.value || !canConvertTrial.value) return
     const token = context.capture()
     const [plans, settings] = await Promise.all([
-      api<EnrollmentPlansResponse>(`/erp-commercial/enrollment-plans?contract_id=${record.value.id}`),
-      api<OfficeErpSettingsResponse>('/erp-commercial/settings')
+      api<EnrollmentPlansResponse>(`/erp-commercial/enrollment-plans?contract_id=${record.value.id}`, { signal: read.signal }),
+      api<OfficeErpSettingsResponse>('/erp-commercial/settings', { signal: read.signal })
     ])
-    if (request !== conversionGeneration || scope !== identityStamp.value || !context.isCurrent(token)) return
+    if (!read.current() || request !== conversionGeneration || scope !== identityStamp.value || !context.isCurrent(token)) return
     if (!Array.isArray(plans.data) || typeof settings.data?.billing_timezone !== 'string')
       throw new Error('Não foi possível carregar os termos disponíveis para conversão.')
     conversionPlans.value = plans.data.filter(plan => Number.isSafeInteger(plan.id) && typeof plan.name === 'string' && Array.isArray(plan.module_keys))
@@ -260,10 +264,10 @@ async function prepareTrialConversion() {
     conversionTimezone.value = settings.data.billing_timezone
     conversionOpen.value = true
   } catch (error) {
-    if (request === conversionGeneration && scope === identityStamp.value)
+    if (read.current() && request === conversionGeneration && scope === identityStamp.value)
       conversionError.value = apiErrorMessage(error) ?? (error instanceof Error ? error.message : 'Não foi possível preparar a conversão agora.')
   } finally {
-    if (request === conversionGeneration)
+    if (read.current() && request === conversionGeneration)
       conversionLoading.value = false
   }
 }

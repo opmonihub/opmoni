@@ -29,7 +29,11 @@ function compileSfcSetup(path: string, globals: Record<string, unknown>) {
   const exports = {} as { default: { setup: (props: Record<string, unknown>, context: Record<string, unknown>) => unknown } }
   new Function('require', 'exports', ...Object.keys(globals), compiled.outputText)(
     (specifier: string) => {
+      if (specifier === '~/composables/useOfficeErpListNavigation') return loadAppComposable('composables/useOfficeErpListNavigation.ts', globals)
+      if (specifier === '~/composables/useListNavigationState') return loadAppComposable('composables/useListNavigationState.ts', globals)
       if (specifier === 'vue') return Vue
+      if (specifier === '~/composables/useOfficeErpReadIdentity') return loadAppComposable('composables/useOfficeErpReadIdentity.ts', globals)
+      if (specifier === '~/composables/useOfficeErpReads') return loadAppComposable('composables/useOfficeErpReads.ts', globals)
       if (specifier === '#shared/utils/officeErpCommercial') return officeErpMoney
       if (specifier === '~/components/data-table/panel') return panel
       if (specifier === '~/composables/useApiError') return apiErrors
@@ -146,7 +150,7 @@ function mountPlansPage(command: Record<string, unknown>) {
       return listResponse()
     } }),
     useAuth: () => ({ user: currentUser, currentAccount }),
-    useState: () => session,
+    useState: (key: string, init: () => unknown) => key === 'access-session-generation' ? session : Vue.ref(init()),
     useOfficeErpContext: () => context,
     useOfficeErpCommand: () => command,
     useRoute: () => ({ query: {} }),
@@ -216,7 +220,7 @@ function plansSetup(api: (path: string, options?: Record<string, unknown>) => Pr
       return api(path, options)
     } }),
     useAuth: () => ({ user: currentUser, currentAccount }),
-    useState: () => session,
+    useState: (key: string, init: () => unknown) => key === 'access-session-generation' ? session : Vue.ref(init()),
     useOfficeErpContext: () => activeContext,
     useOfficeErpCommand: () => command,
     useRoute: () => ({ query: {} }),

@@ -69,7 +69,7 @@ function harness(path: string, recordData = detail, initialRecoveryKey: string |
       calls.push({ path: url, body: options?.body })
       return url.endsWith('/12') ? { data: recordData } : { data: listRows, meta: { current_page: 1, last_page: 1, per_page: 25, total: listRows.length } }
     } }),
-    useAuth: () => ({ user, currentAccount: account }), useState: () => Vue.ref(1), useOfficeErpContext: () => context,
+    useAuth: () => ({ user, currentAccount: account }), useState: (key: string, init: () => unknown) => key === 'access-session-generation' ? Vue.ref(1) : Vue.ref(init()), useOfficeErpContext: () => context,
     useOfficeErpCommand: () => ({
       pending: Vue.computed(() => recoveryKey.value !== null || recoveryInFlight.value),
       recoveryKey,

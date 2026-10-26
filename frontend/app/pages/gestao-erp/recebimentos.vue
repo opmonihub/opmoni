@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { listNavigationField } from '~/composables/useListNavigationState'
+import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type { TableColumn } from '@nuxt/ui'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
@@ -7,24 +11,27 @@ interface InvoiceChoice { id: number, number: string | null, document_status: st
 interface Receipt { id: number, amount: string, received_on: string, reference: string | null, proof_id: string | null, allocations: Array<{ invoice_id: number, amount: string }>, reversal: { id: number, reason: string } | null }
 interface ListResponse<T> { data: T[], meta: { current_page: number, last_page: number, per_page: number, total: number } }
 const { api } = useAccessApi(), context = useOfficeErpContext(), command = useOfficeErpCommand()
+const navigation = useOfficeErpListNavigation('receipts', { from: '', to: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context)
 const { user, currentAccount } = useAuth(), sessionGeneration = useState('access-session-generation', () => 0)
-const rows = ref<Receipt[]>([]), invoices = ref<InvoiceChoice[]>([]), total = ref(0), lastPage = ref(1), page = ref(1), perPage = ref<25 | 50 | 100>(25)
-const from = ref(''), to = ref(''), loading = ref(false), loadError = ref(''), empty = ref(false), open = ref(false), busy = ref(false), pending = ref(false), unknown = ref(false), recovering = ref(false), error = ref(''), errors = ref<Record<string, string[]>>({}), proofId = ref<string | null>(null), proofName = ref(''), proofError = ref('')
-const proofUploadPending = ref(false), proofRequired = ref(false)
+const rows = ref<Receipt[]>([]), invoices = ref<InvoiceChoice[]>([]), total = ref(0), lastPage = ref(1), page = listNavigationField(navigation, 'page'), perPage = listNavigationField(navigation, 'perPage')
+const from = listNavigationField(navigation, 'from'), to = listNavigationField(navigation, 'to'), loading = ref(false), loadError = ref(''), empty = ref(false), open = ref(false), busy = ref(false), pending = ref(false), unknown = ref(false), recovering = ref(false), error = ref(''), errors = ref<Record<string, string[]>>({}), proofId = ref<string | null>(null), proofName = ref(''), proofError = ref('')
+const proofUploadPending = ref(false), proofRequired = ref(false), invoiceChoicesLoading = ref(false)
 const key = computed(() => command.recoveryKey.value)
 const recoverable = computed(() => !!command.pending.value || !!key.value)
-const identity = computed(() => JSON.stringify([user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null, context.capabilities.value?.capability_key ?? null]))
+const identity = useOfficeErpReadIdentity(() => [user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null], () => context.capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identity)
 const reversing = ref<Receipt | null>(null)
 let generation = 0
 let proofUploadGeneration = 0
 const columns: TableColumn<Receipt>[] = [{ accessorKey: 'received_on', header: 'Data' }, { accessorKey: 'amount', header: 'Valor' }, { accessorKey: 'reference', header: 'Referência' }, { id: 'allocations', header: 'Alocações' }, { id: 'status', header: 'Situação' }, { id: 'actions', header: '' }]
 async function load() {
+  const read = reads.begin('load')
   const n = ++generation
   loading.value = true
   loadError.value = ''
   empty.value = false
   await context.refresh()
-  if (n !== generation) return
+  if (!read.current() || n !== generation) return
   if (!context.capabilities.value?.can_read) {
     rows.value = []
     loadError.value = 'A conta atual não pode consultar recebimentos.'
@@ -36,21 +43,54 @@ async function load() {
     const params: Record<string, string | number> = { page: page.value, per_page: perPage.value }
     if (from.value)params.received_from = from.value
     if (to.value)params.received_to = to.value
-    const [r, i] = await Promise.all([api<ListResponse<Receipt>>('/erp-commercial/receipts', { params }), api<ListResponse<InvoiceChoice>>('/erp-commercial/invoices', { params: { document_status: 'issued', per_page: 100 } })])
-    if (n !== generation || !context.isCurrent(token)) return
+    const r = await api<ListResponse<Receipt>>('/erp-commercial/receipts', { signal: read.signal, params })
+    if (!read.current() || n !== generation || !context.isCurrent(token)) return
     if (!Array.isArray(r.data) || !r.meta) throw Error('Resposta de recebimentos incompleta.')
+    const availablePage = officeErpAvailablePage(r.meta)
+    if (page.value !== availablePage) {
+      page.value = availablePage
+      return
+    }
     rows.value = r.data
     total.value = r.meta.total
     lastPage.value = Math.max(1, r.meta.last_page)
     page.value = r.meta.current_page
-    invoices.value = i.data.filter(x => x.document_status === 'issued' && x.balance.outstanding !== '0.00')
     empty.value = r.meta.total === 0
   } catch (e) {
-    if (n === generation) loadError.value = e instanceof Error ? e.message : 'Não foi possível consultar recebimentos.'
+    if (read.current() && n === generation) loadError.value = e instanceof Error ? e.message : 'Não foi possível consultar recebimentos.'
   } finally {
-    if (n === generation) loading.value = false
+    if (read.current() && n === generation) loading.value = false
   }
 }
+async function loadInvoiceChoices() {
+  if (!open.value || recoverable.value) return
+  const read = reads.begin('invoiceChoices')
+  const stamp = identity.value
+  invoiceChoicesLoading.value = true
+  invoices.value = []
+  try {
+    await context.refresh()
+    if (!read.current() || !open.value || stamp !== identity.value) return
+    if (!context.capabilities.value?.can_read) throw new Error('A conta atual não pode consultar faturas.')
+    const token = context.capture()
+    const result = await api<ListResponse<InvoiceChoice>>('/erp-commercial/invoices', { signal: read.signal, params: { document_status: 'issued', per_page: 100 } })
+    if (!read.current() || !open.value || !context.isCurrent(token)) return
+    if (!Array.isArray(result.data)) throw new Error('As faturas disponíveis retornaram dados incompletos.')
+    invoices.value = result.data.filter(value => value.document_status === 'issued' && value.balance.outstanding !== '0.00')
+  } catch (failure) {
+    if (read.current() && open.value && stamp === identity.value) error.value = failure instanceof Error ? failure.message : 'Não foi possível consultar as faturas disponíveis.'
+  } finally {
+    if (read.current() && stamp === identity.value) invoiceChoicesLoading.value = false
+  }
+}
+watch(open, (value) => {
+  if (value) void loadInvoiceChoices()
+  else {
+    reads.cancel('invoiceChoices')
+    invoiceChoicesLoading.value = false
+    invoices.value = []
+  }
+}, { flush: 'sync' })
 async function uploadProof(file: File) {
   const request = ++proofUploadGeneration
   proofId.value = null
@@ -84,7 +124,7 @@ function selectProof() {
   proofError.value = ''
 }
 async function create(payload: { amount: string, received_on: string, reference?: string, proof_id?: string, allocations: Array<{ invoice_id: number, amount: string }> }) {
-  if (busy.value || pending.value || unknown.value || recoverable.value || proofUploadPending.value) {
+  if (busy.value || pending.value || unknown.value || recoverable.value || proofUploadPending.value || invoiceChoicesLoading.value) {
     if (proofUploadPending.value) proofError.value = 'Aguarde o envio do comprovante privado antes de registrar o recebimento.'
     return
   }
@@ -167,9 +207,9 @@ async function recover() {
   } finally { if (context.isCurrent(token)) recovering.value = false }
 }
 watch([page, from, to, perPage], () => void load(), { immediate: true })
-watch([from, to], () => {
+watch([from, to, perPage], () => {
   page.value = 1
-})
+}, { flush: 'sync' })
 watch(identity, () => {
   generation++
   proofUploadGeneration++
@@ -275,7 +315,7 @@ watch(identity, () => {
       :proof-error="proofError"
       :errors="errors"
       :error="error"
-      :busy="busy||recovering||proofUploadPending"
+      :busy="busy||recovering||proofUploadPending||invoiceChoicesLoading"
       :pending="pending"
       :unknown="recoverable||unknown"
       :recovery-key="key"
