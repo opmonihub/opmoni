@@ -221,7 +221,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame('consumed', OfficeErpOwnerInvitation::query()->findOrFail($setup['invitation_id'])->status);
         self::assertSame($subscriptionBefore, ErpSubscription::query()->findOrFail($setup['subscription_id'])->getAttributes());
         self::assertSame($setup['subscription_id'], (int) ErpCompany::query()->findOrFail($setup['company_id'])->subscription->id);
-        self::assertSame($allocationBefore, DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first());
+        self::assertEquals($allocationBefore, DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first());
         self::assertSame($allocationCount, DB::table('office_erp_licence_allocations')->count());
         self::assertSame($invoiceCount, DB::table('office_erp_invoices')->count());
         self::assertSame($invoiceRowsBefore, DB::table('office_erp_invoices')->orderBy('id')->get()->toJson());
@@ -257,7 +257,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame('pending', OfficeErpOwnerInvitation::query()->findOrFail($reissueResult['invitation_id'])->status);
         self::assertSame($subscriptionBefore, ErpSubscription::query()->findOrFail($setup['subscription_id'])->getAttributes());
         self::assertSame($setup['subscription_id'], (int) ErpCompany::query()->findOrFail($setup['company_id'])->subscription->id);
-        self::assertSame($allocationBefore, DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first());
+        self::assertEquals($allocationBefore, DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first());
         self::assertSame($allocationCount, DB::table('office_erp_licence_allocations')->count());
         self::assertSame($invoiceCount, DB::table('office_erp_invoices')->count());
         self::assertSame($invoiceRowsBefore, DB::table('office_erp_invoices')->orderBy('id')->get()->toJson());

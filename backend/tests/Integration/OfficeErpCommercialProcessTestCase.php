@@ -761,7 +761,10 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
 
                 return;
             }
-            self::assertTrue($process->isRunning(), 'Worker exited before waiting for the PostgreSQL advisory lock.');
+            self::assertTrue(
+                $process->isRunning(),
+                'Worker exited before waiting for the PostgreSQL advisory lock. '.self::workerFailureFingerprint($process),
+            );
             self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL advisory lock wait observed.');
             usleep(10000);
         } while (true);
@@ -854,6 +857,24 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         self::assertSame(0, $result['transaction_level']);
 
         return $result;
+    }
+
+    private static function workerFailureFingerprint(Process $process): string
+    {
+        $stderr = $process->getErrorOutput();
+        $type = preg_match('/^([A-Za-z_\\\\][A-Za-z0-9_\\\\]*(?:Exception|Error)):/m', $stderr, $matches) === 1
+            ? $matches[1]
+            : 'unknown';
+        preg_match_all('/^#\\d+\\s+(.+?)(?:\\([^\\n]*\\))?:\\s+(?:.+)$/m', $stderr, $frames);
+        $locations = array_slice($frames[1] ?? [], 0, 4);
+        $locations = array_map(static function (string $location): string {
+            $location = preg_replace('/\\b\\d{14}\\b/', '[cnpj]', $location) ?? $location;
+            $location = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i', '[email]', $location) ?? $location;
+
+            return substr($location, 0, 200);
+        }, $locations);
+
+        return 'Worker diagnostic: '.$type.'; stderr bytes='.strlen($stderr).'; frames='.json_encode($locations, JSON_THROW_ON_ERROR);
     }
 
     /** @return array{pid: int, database_pid: int, checkout: string, source_hashes: array<string, string>} */
