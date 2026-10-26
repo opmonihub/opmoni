@@ -4,7 +4,7 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 import type { AccountListResponse, DetailResponse, ExtendedPlatformAccount } from '#shared/types/admin'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '~/composables/useApiError'
 import type { SerproConnectionMetadata, SerproConnectionPayload, SerproConnectivityResult, SerproContractingCertificateMetadata } from '~/types/serpro'
-import { createLatestRequestRunner, readPaginatedMeta } from '~/utils/adminListFilters'
+import { createLatestRequestRunner, pageWithinLastPage, readPaginatedMeta } from '~/utils/adminListFilters'
 import { formatMonitoringDate } from '~/utils/monitoringPresentation'
 import {
   connectivityIcon as serproConnectivityIcon,
@@ -38,9 +38,16 @@ const selectedAccount = ref<ExtendedPlatformAccount | null>(null)
 const sourceMetadata = ref<SerproContractingCertificateMetadata | null>(null)
 const sourceLoading = ref(false)
 const sourceAccountId = ref<number | null>(null)
-const accountQuery = ref('')
-const appliedQuery = ref('')
-const accountPage = ref(1)
+const catalogNavigation = useListNavigationState('admin:serpro-accounts', {
+  defaults: () => ({ q: '', applied: '', page: 1 }),
+  normalize: (value) => {
+    const input = value as Record<string, unknown> | undefined
+    return { q: typeof input?.q === 'string' ? input.q : '', applied: typeof input?.applied === 'string' ? input.applied : '', page: Number.isSafeInteger(input?.page) && Number(input?.page) > 0 ? Number(input?.page) : 1 }
+  }
+})
+const accountQuery = listNavigationField(catalogNavigation, 'q')
+const appliedQuery = listNavigationField(catalogNavigation, 'applied')
+const accountPage = listNavigationField(catalogNavigation, 'page')
 const accountTotal = ref(0)
 const accountPerPage = ref(15)
 const accountResults = ref<ExtendedPlatformAccount[]>([])
@@ -155,7 +162,7 @@ function load() {
   connectivityError.value = ''
   loading.value = true
   loadError.value = null
-  return runRead(connection, {
+  return runRead(signal => connection({ signal }), {
     onSuccess: (value) => {
       metadata.value = value
     },
@@ -172,10 +179,15 @@ function loadAccounts() {
     return
   catalogLoading.value = true
   catalogError.value = ''
-  return runCatalog(() => $api<AccountListResponse>('/admin/accounts', { query: { q: appliedQuery.value, page: accountPage.value } }), {
+  return runCatalog(signal => $api<AccountListResponse>('/admin/accounts', { query: { q: appliedQuery.value, page: accountPage.value }, signal }), {
     onSuccess: (value) => {
-      accountResults.value = value.data
       const meta = readPaginatedMeta(value)
+      const recovered = pageWithinLastPage(accountPage.value, meta.last_page)
+      if (recovered !== accountPage.value) {
+        accountPage.value = recovered
+        return
+      }
+      accountResults.value = value.data
       accountTotal.value = meta.total
       accountPerPage.value = meta.per_page
       catalogLoaded.value = true
@@ -209,9 +221,9 @@ function selectAccount(id: number) {
   sourceMetadata.value = null
   sourceCertificate.value = null
   sourcePassword.value = ''
-  return runSource(async () => {
+  return runSource(async (signal) => {
     const [detail, source] = await Promise.all([
-      $api<DetailResponse<ExtendedPlatformAccount>>(`/admin/accounts/${id}`), contractingCertificate(id)
+      $api<DetailResponse<ExtendedPlatformAccount>>(`/admin/accounts/${id}`, { signal }), contractingCertificate(id, { signal })
     ])
     return { account: detail.data, source }
   }, {
@@ -340,7 +352,8 @@ function onTestConnectivity() {
   })
 }
 watch(accountPage, loadAccounts)
-watch(certificateSource, () => {
+watch(certificateSource, (source) => {
+  if (source === 'account' && !catalogLoaded.value && (appliedQuery.value || accountPage.value > 1)) void loadAccounts()
   clearSensitive()
   fieldErrors.value = {}
   sourceFieldErrors.value = {}
@@ -355,6 +368,24 @@ onBeforeUnmount(() => {
   runDiagnostic.invalidate()
   clearSensitive()
   state.consumer_key = ''
+})
+useAdminReadAuthority(() => {
+  active = false
+  runRead.invalidate()
+  runSource.invalidate()
+  runCatalog.invalidate()
+  runDiagnostic.invalidate()
+  metadata.value = null
+  connectivity.value = null
+  connectivityError.value = ''
+  accountResults.value = []
+  accountTotal.value = 0
+  catalogLoaded.value = false
+  catalogError.value = ''
+  catalogLoading.value = false
+  loadError.value = null
+  loading.value = false
+  resetForm()
 })
 </script>
 

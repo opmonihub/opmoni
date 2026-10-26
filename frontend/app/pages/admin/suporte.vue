@@ -31,23 +31,41 @@ const tabs = [{
   value: 'auditoria',
   icon: 'i-lucide-scroll-text'
 }] satisfies TabsItem[]
-const query = ref('')
+const searchNavigation = useListNavigationState('admin:support-search', {
+  defaults: () => ({ q: '', applied: '', page: 1 }),
+  normalize: (value) => {
+    const input = value as Record<string, unknown> | undefined
+    return { q: typeof input?.q === 'string' ? input.q : '', applied: typeof input?.applied === 'string' ? input.applied : '', page: Number.isSafeInteger(input?.page) && Number(input?.page) > 0 ? Number(input?.page) : 1 }
+  }
+})
+const query = listNavigationField(searchNavigation, 'q')
 const found = ref<AdminAccount[]>([])
 const searching = ref(false)
 const searchError = ref<unknown>(null)
 const searchLoaded = ref(false)
-const searchPage = ref(1)
+const searchPage = listNavigationField(searchNavigation, 'page')
 const searchTotal = ref(0)
 const searchPerPage = ref(15)
-const appliedQuery = ref('')
+const appliedQuery = listNavigationField(searchNavigation, 'applied')
 const runSearch = createLatestRequestRunner()
 const runLogs = createLatestRequestRunner()
 const switching = ref(false)
 const logs = ref<SupportLog[]>([])
 const logsTotal = ref(0)
-const logsPage = ref(1)
+const logsNavigation = useListNavigationState('admin:support-audit', {
+  defaults: () => ({ q: '', page: 1 }),
+  normalize: (value) => {
+    const input = value as Record<string, unknown> | undefined
+    const q = typeof input?.q === 'string' && /^\d+$/.test(input.q.trim()) && Number.isSafeInteger(Number(input.q)) && Number(input.q) > 0 ? input.q : ''
+    return { q, page: Number.isSafeInteger(input?.page) && Number(input?.page) > 0 ? Number(input?.page) : 1 }
+  }
+})
+const logsPage = listNavigationField(logsNavigation, 'page')
 const logsPerPage = ref(15)
-const accountQuery = ref('')
+const accountQuery = ref(logsNavigation.value.q)
+watch(accountQuery, (q) => {
+  logsNavigation.value = { ...logsNavigation.value, q }
+}, { flush: 'sync' })
 const loadingLogs = ref(true)
 const logsAccountId = computed(() => {
   const value = Number(accountQuery.value)
@@ -108,10 +126,10 @@ function loadSearch() {
   }
   searching.value = true
   const numeric = /^\d+$/.test(term)
-  return runSearch(async () => {
+  return runSearch(async (signal) => {
     if (numeric) {
       try {
-        const result = await $api<DetailResponse<AdminAccount>>(`/admin/accounts/${term}`)
+        const result = await $api<DetailResponse<AdminAccount>>(`/admin/accounts/${term}`, { signal })
         return { data: [result.data], meta: { page: 1, last_page: 1, per_page: 15, total: 1 } }
       } catch (error) {
         const failure = error as {
@@ -123,7 +141,7 @@ function loadSearch() {
         throw error
       }
     }
-    return $api<AccountListResponse>('/admin/accounts', { params: { page: searchPage.value, q: term } })
+    return $api<AccountListResponse>('/admin/accounts', { params: { page: searchPage.value, q: term }, signal })
   }, {
     onSuccess: (result) => {
       const meta = readPaginatedMeta(result)
@@ -167,7 +185,7 @@ async function loadLogs() {
   const params: Record<string, number> = { page: logsPage.value }
   if (logsAccountId.value)
     params.account_id = logsAccountId.value
-  return runLogs(() => $api<ResourceListResponse<SupportLog>>('/admin/support/logs', { params }), {
+  return runLogs(signal => $api<ResourceListResponse<SupportLog>>('/admin/support/logs', { params, signal }), {
     onSuccess: (res) => {
       const meta = readPaginatedMeta(res)
       const recovered = pageWithinLastPage(logsPage.value, meta.last_page)
@@ -188,22 +206,34 @@ async function loadLogs() {
     }
   })
 }
-onMounted(loadLogs)
+onMounted(() => Promise.all([loadLogs(), appliedQuery.value ? loadSearch() : undefined]))
 onBeforeUnmount(() => {
   runSearch.invalidate()
   runLogs.invalidate()
 })
-watch(logsPage, loadLogs)
 watch(accountQuery, () => {
-  if (logsPage.value === 1) {
-    void loadLogs()
-    return
-  }
   logsPage.value = 1
-})
+}, { flush: 'sync' })
+watch(() => [logsPage.value, accountQuery.value], loadLogs)
+
 function actionMeta(action: string) {
   return ACTION_META[action] ?? { label: action, color: 'neutral' as const }
 }
+useAdminReadAuthority(() => {
+  runSearch.invalidate()
+  runLogs.invalidate()
+  found.value = []
+  logs.value = []
+  searchTotal.value = 0
+  logsTotal.value = 0
+  searchLoaded.value = false
+  logsLoaded.value = false
+  searchError.value = null
+  loadLogsError.value = null
+  searching.value = false
+  loadingLogs.value = false
+  accountQuery.value = ''
+})
 </script>
 
 <template>

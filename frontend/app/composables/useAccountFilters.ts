@@ -1,9 +1,11 @@
-import { ref, watch } from 'vue'
+import { watch } from 'vue'
+import { adminListNavigationOptions } from '~/utils/adminListFilters'
 
 export function useAccountFilters(load: () => unknown) {
-  const q = ref('')
-  const status = ref('all')
-  const page = ref(1)
+  const navigation = useListNavigationState('admin:contas', adminListNavigationOptions(['all', 'active', 'suspended']))
+  const q = listNavigationField(navigation, 'q')
+  const status = listNavigationField(navigation, 'filter')
+  const page = listNavigationField(navigation, 'page')
 
   watch(status, () => {
     page.value = 1

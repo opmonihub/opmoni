@@ -5,7 +5,7 @@ import type { ExtendedPlatformAccount, AccountListResponse as AccountPage, Detai
 import type { TableColumn } from '@nuxt/ui'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
-import { readPaginatedMeta, pageWithinLastPage } from '~/utils/adminListFilters'
+import { createLatestRequestRunner, readPaginatedMeta, pageWithinLastPage } from '~/utils/adminListFilters'
 import { brazilUfItems } from '~/utils/brazilUfs'
 import { apiFailure } from '#shared/utils/access'
 
@@ -72,33 +72,32 @@ function accountActions(account: ExtendedPlatformAccount) {
     ...(account.members_count === 0 ? [{ label: 'Reemitir primeiro acesso', icon: 'i-lucide-link', disabled: account.status !== 'active', onSelect: () => begin('reissue', account) }] : [])
   ]
 }
-let requestId = 0
+const runList = createLatestRequestRunner()
+const runDetail = createLatestRequestRunner()
 let operationId = 0
 async function load() {
   if (!user.value?.is_super_admin)
     return
-  const version = ++requestId
   loading.value = true
   error.value = ''
-  try {
-    const data = await api<AccountPage>('/admin/accounts', { query: { q: q.value, status: status.value === 'all' ? undefined : status.value, page: page.value } })
-    if (version === requestId) {
+  return runList(signal => api<AccountPage>('/admin/accounts', { signal, query: { q: q.value, status: status.value === 'all' ? undefined : status.value, page: page.value } }), {
+    onSuccess: (data) => {
       const nextPage = pageWithinLastPage(page.value, readPaginatedMeta(data).last_page)
       if (nextPage !== page.value) {
         page.value = nextPage
         return
       }
       result.value = data
-    }
-  } catch (e) {
-    if (version === requestId) {
-      error.value = apiFailure(e).message
-    }
-  } finally {
-    if (version === requestId)
+    },
+    onError: (failure) => {
+      error.value = apiFailure(failure).message
+    },
+    onSettled: () => {
       loading.value = false
-  }
+    }
+  })
 }
+
 async function begin(action: typeof mode.value, account?: ExtendedPlatformAccount) {
   if (busy.value)
     return
@@ -119,20 +118,23 @@ async function begin(action: typeof mode.value, account?: ExtendedPlatformAccoun
   open.value = true
   if (action === 'edit' && account) {
     busy.value = true
-    try {
-      const { data } = await api<DetailResponse<ExtendedPlatformAccount>>(`/admin/accounts/${account.id}`)
-      if (version !== operationId || !open.value)
-        return
-      detailLoaded.value = true
-      target.value = data
-      Object.assign(form, { name: data.name, status: data.status, phone: data.phone ?? '', phone_whatsapp: data.phone_whatsapp, state: data.state ?? '', city: data.city ?? '' })
-    } catch (error) {
-      if (version === operationId)
-        operationError.value = apiFailure(error).message
-    } finally {
-      if (version === operationId)
-        busy.value = false
-    }
+    await runDetail(signal => api<DetailResponse<ExtendedPlatformAccount>>(`/admin/accounts/${account.id}`, { signal }), {
+      onSuccess: ({ data }) => {
+        if (version !== operationId || !open.value)
+          return
+        detailLoaded.value = true
+        target.value = data
+        Object.assign(form, { name: data.name, status: data.status, phone: data.phone ?? '', phone_whatsapp: data.phone_whatsapp, state: data.state ?? '', city: data.city ?? '' })
+      },
+      onError: (error) => {
+        if (version === operationId)
+          operationError.value = apiFailure(error).message
+      },
+      onSettled: () => {
+        if (version === operationId)
+          busy.value = false
+      }
+    })
   }
 }
 async function save() {
@@ -189,6 +191,8 @@ async function copy() {
 watch(open, (value) => {
   if (!value) {
     operationId++
+    runDetail.invalidate()
+    if (!detailLoaded.value) busy.value = false
     link.value = null
     copied.value = false
   }
@@ -196,8 +200,25 @@ watch(open, (value) => {
 onMounted(load)
 onBeforeUnmount(() => {
   link.value = null
-  requestId++
+  runList.invalidate()
+  runDetail.invalidate()
   operationId++
+})
+useAdminReadAuthority(() => {
+  runList.invalidate()
+  runDetail.invalidate()
+  operationId++
+  result.value = null
+  error.value = ''
+  loading.value = false
+  open.value = false
+  commercialOpen.value = false
+  commercialAccount.value = null
+  target.value = null
+  link.value = null
+  fieldErrors.value = {}
+  operationError.value = ''
+  Object.assign(form, { name: '', owner_name: '', login_email: '', status: 'active', phone: '', phone_whatsapp: false, state: '', city: '' })
 })
 </script>
 

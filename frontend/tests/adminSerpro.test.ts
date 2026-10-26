@@ -33,11 +33,10 @@ function deferred() {
   })
   return { promise, resolve, reject }
 }
-async function page(request: (path: string, options?: Runtime) => Promise<Runtime>) {
+async function page(request: (path: string, options?: Runtime) => Promise<Runtime>, states = new Map()) {
   const mounted: (() => unknown)[] = []
   const unmounted: (() => unknown)[] = []
   const toasts: Runtime[] = []
-  const states = new Map()
   // Nuxt returns one app, and its plugin installs the real transport once.
   const nuxtApp: { $api?: Runtime } = {}
   const globals: Record<string, Runtime> = {
@@ -71,6 +70,8 @@ async function page(request: (path: string, options?: Runtime) => Promise<Runtim
     }, exports, ...Object.values(globals))
     return exports
   }
+  Object.assign(globals, evaluate(readFileSync(new URL('../app/composables/useListNavigationState.ts', import.meta.url), 'utf8')))
+  globals.useAdminReadAuthority = evaluate(readFileSync(new URL('../app/composables/useAdminReadAuthority.ts', import.meta.url), 'utf8')).useAdminReadAuthority
   globals.useAccessApi = evaluate(readFileSync(new URL('../app/composables/useAccessApi.ts', import.meta.url), 'utf8')).useAccessApi
   nuxtApp.$api = globals.useAccessApi().api
   globals.useSerpro = evaluate(readFileSync(new URL('../app/composables/useSerpro.ts', import.meta.url), 'utf8')).useSerpro
@@ -487,4 +488,53 @@ it('inline vault upload guards duplicate actions, maps field failures and cannot
   assert.equal(view.state.sourceCertificate.value, null)
   assert.equal(view.state.state.consumer_key, '')
   assert.equal(view.toasts.length, 0)
+})
+
+it('Admin SERPRO retains only the account-catalog search/page and forwards its read signal', async () => {
+  const states = new Map()
+  const calls: Runtime[] = []
+  const request = async (path: string, options: Runtime) => {
+    calls.push([path, options])
+    if (path.endsWith('/admin/accounts')) return { data: [account()], meta: { page: options.query.page, per_page: 15, total: 61, last_page: 5 } }
+    return standard(path)
+  }
+  const first = await page(request, states)
+  await first.start()
+  first.state.accountQuery.value = 'Needle'
+  await first.state.searchAccounts()
+  first.state.accountPage.value = 3
+  await flush()
+  first.stop()
+  const returned = await page(request, states)
+  assert.equal(returned.state.accountQuery.value, 'Needle')
+  assert.equal(returned.state.accountPage.value, 3)
+  await returned.start()
+  calls.length = 0
+  await returned.state.loadAccounts()
+  assert.equal(calls[0][1].query.page, 3)
+  assert.equal(calls[0][1].query.q, 'Needle')
+  assert.ok(!JSON.stringify(states.get('list-navigation-state').value).includes('Safe source'))
+  assert.ok(calls[0][1].signal instanceof AbortSignal)
+  returned.stop()
+})
+
+it('Admin SERPRO aborts an active account catalog when leaving and discards its late rows', async () => {
+  const pending = deferred()
+  let signal!: AbortSignal
+  const view = await page(async (path, options) => {
+    if (path.endsWith('/admin/accounts')) {
+      signal = options.signal
+      return pending.promise
+    }
+    return standard(path)
+  })
+  await view.start()
+  const read = view.state.loadAccounts()
+  await flush()
+  assert.ok(signal instanceof AbortSignal)
+  view.stop()
+  assert.equal(signal.aborted, true)
+  pending.resolve({ data: [account()], meta: { page: 1, per_page: 15, total: 1 } })
+  await read
+  assert.deepEqual(view.state.accountResults.value, [])
 })
