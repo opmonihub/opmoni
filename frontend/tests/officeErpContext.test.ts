@@ -10,6 +10,10 @@ type Capabilities = {
   can_maintain: boolean
   can_configure: boolean
   can_sell_new: boolean
+  can_provision: boolean
+  can_start_trial: boolean
+  can_manage_trial_link: boolean
+  capability_reasons: Record<string, string[]>
   capability_key: string
   reasons: Record<string, string[]>
   allowance: { enabled: boolean, licence_limit: number | null, module_keys: string[] }
@@ -25,6 +29,8 @@ type Context = {
 
 const fullCapabilities = (capabilityKey: string): Capabilities => ({
   can_read: true, can_maintain: true, can_configure: true, can_sell_new: true,
+  can_provision: true, can_start_trial: true, can_manage_trial_link: true,
+  capability_reasons: { can_configure: [], can_sell_new: [], can_provision: [], can_start_trial: [], can_manage_trial_link: [] },
   capability_key: capabilityKey, reasons: {}, allowance: { enabled: true, licence_limit: 12, module_keys: ['purchases'] },
   usage: { reserved: 1, occupied: 4 }
 })
@@ -77,6 +83,16 @@ describe('useOfficeErpContext', () => {
     assert.equal(harness.context.isCurrent(token), true)
     assert.equal(typeof token.key, 'string')
     assert.equal(Number.isSafeInteger(token.generation), true)
+  })
+
+  it('rejects a server context response that omits the new admission capabilities', async (t) => {
+    const incomplete = { ...fullCapabilities('incomplete'), can_provision: undefined }
+    const harness = mountContext({ api: async () => ({ data: incomplete }) })
+    t.after(harness.stop)
+
+    await harness.context.refresh()
+
+    assert.equal(harness.context.capabilities.value, null)
   })
 
   it('invalidates old tokens and clears private capabilities when Account, session or role changes', async (t) => {

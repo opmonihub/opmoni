@@ -5,7 +5,7 @@
 
 ## 2. Core customer administration
 
-- [ ] 2.1 Separate office-admin configuration/provisioning capabilities from the legacy retail resale flag while retaining active Account, real membership, active office subscription for new provisioning and explicit licence/module/client limits; verify role, inactive-subscription maintenance, zero/null capacity and cross-office cases in `CommercialAdmissionTest`.
+- [x] 2.1 Separate office-admin configuration/provisioning capabilities from the legacy retail resale flag while retaining active Account, real membership, active office subscription for new provisioning and explicit licence/module/client limits; verify role, inactive-subscription maintenance, zero/null capacity and cross-office cases in `CommercialAdmissionTest`.
 - [ ] 2.2 Extract reusable Client preflight/persistence and unclaimed Company provisioning without changing legacy owner signup behavior; verify CNPJ provider failure, same-office reuse, inactive/foreign Client denial and no automatic Company access in `CustomerEnrollmentTest` and existing `ClientCrudTest`/`ErpCommercialAccessTest`.
 - [ ] 2.3 Implement idempotent direct paid enrollment, plan discovery, exact frozen terms and existing contract/counter/invoice integration without a published offer or owner acceptance; verify actual route rollback and lost-response lookup in `CustomerEnrollmentTest`.
 - [ ] 2.4 Add optional purpose-scoped verified owner access setup without allocating, activating or billing again; verify existing-email/foreign-owner/consumed-token denial and existing invitation compatibility in `OwnerSetupTest`/`OwnerAcceptanceTest`.
