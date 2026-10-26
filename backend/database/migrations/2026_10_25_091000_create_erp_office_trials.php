@@ -73,9 +73,9 @@ return new class extends Migration
             if ($create) {
                 DB::statement("ALTER TABLE erp_subscription_trials ADD CONSTRAINT erp_subscription_trials_period_valid CHECK ({$condition})");
                 $comparisons = array_map(static fn (string $column): string => "NEW.{$column} IS NOT DISTINCT FROM OLD.{$column}", $immutable);
-                DB::unprepared('CREATE FUNCTION erp_subscription_trials_immutable() RETURNS trigger AS $$ BEGIN IF NOT ('.implode(' AND ', $comparisons).') OR (OLD.converted_at IS NOT NULL AND NEW.converted_at IS DISTINCT FROM OLD.converted_at) OR (OLD.expired_at IS NOT NULL AND NEW.expired_at IS DISTINCT FROM OLD.expired_at) THEN RAISE EXCEPTION \'erp_subscription_trials_immutable\'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql');
+                DB::unprepared('CREATE OR REPLACE FUNCTION erp_subscription_trials_immutable() RETURNS trigger AS $$ BEGIN IF NOT ('.implode(' AND ', $comparisons).') OR (OLD.converted_at IS NOT NULL AND NEW.converted_at IS DISTINCT FROM OLD.converted_at) OR (OLD.expired_at IS NOT NULL AND NEW.expired_at IS DISTINCT FROM OLD.expired_at) THEN RAISE EXCEPTION \'erp_subscription_trials_immutable\'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql');
                 DB::unprepared('CREATE TRIGGER erp_subscription_trials_immutable_update BEFORE UPDATE ON erp_subscription_trials FOR EACH ROW EXECUTE FUNCTION erp_subscription_trials_immutable()');
-                DB::unprepared("CREATE FUNCTION erp_subscription_trials_retain() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'erp_subscription_trials_retain'; END; $$ LANGUAGE plpgsql");
+                DB::unprepared("CREATE OR REPLACE FUNCTION erp_subscription_trials_retain() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'erp_subscription_trials_retain'; END; $$ LANGUAGE plpgsql");
                 DB::unprepared('CREATE TRIGGER erp_subscription_trials_retain_delete BEFORE DELETE ON erp_subscription_trials FOR EACH ROW EXECUTE FUNCTION erp_subscription_trials_retain()');
             } else {
                 DB::unprepared('DROP TRIGGER IF EXISTS erp_subscription_trials_retain_delete ON erp_subscription_trials');
