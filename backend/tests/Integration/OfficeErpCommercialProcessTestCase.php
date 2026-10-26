@@ -66,6 +66,10 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Erp/Commercial/OfficeErpReceiptProofs.php',
         'app/Erp/Commercial/OfficeErpOperations.php',
         'app/Erp/Commercial/OfficeErpOwnerAcceptance.php',
+        'app/Erp/Commercial/OfficeErpCustomerEnrollment.php',
+        'app/Erp/Commercial/OfficeErpTrialLinks.php',
+        'app/Erp/Commercial/OfficeErpTrialRegistration.php',
+        'app/Erp/Commercial/ErpTrialLifecycle.php',
         'app/Erp/Commercial/OfficeErpContracts.php',
         'app/Erp/Commercial/OfficeErpRecurringBilling.php',
         'app/Erp/Commercial/OfficeErpCalendar.php',
@@ -98,10 +102,20 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Models/Account.php',
         'app/Models/AccountMembership.php',
         'app/Models/Client.php',
+        'app/Actions/AccessAccounts.php',
+        'app/Services/ClientManager.php',
+        'app/Services/CnpjWsLookup.php',
         'app/Models/User.php',
         'app/Erp/ErpCompanyProvisioning.php',
         'app/Erp/ErpCompanyInitializer.php',
         'app/Erp/ErpCommercialCatalog.php',
+        'app/Erp/ErpCommercialGate.php',
+        'app/Http/Controllers/Api/V1/Erp/ErpTrialController.php',
+        'app/Http/Controllers/Api/V1/OfficeErp/OfficeErpEnrollmentController.php',
+        'routes/office-erp-trials.php',
+        'routes/office-erp-commercial.php',
+        'routes/api.php',
+        'config/erp.php',
         'app/Services/BrazilianTaxId.php',
         'app/Support/AccessSession.php',
         'app/Support/ErpSession.php',
@@ -221,6 +235,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     protected function trialLinkFixture(array $office): array
     {
         $plan = ErpPlan::factory()->create();
+        $plan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
         $code = (string) Str::uuid();
         $link = OfficeErpTrialLink::query()->create([
             'account_id' => $office['account_id'],
@@ -238,7 +253,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     /** @param array{code: string, link: OfficeErpTrialLink} $trialLink
      *  @return array<string, mixed>
      */
-    protected function trialRegistrationPayload(array $office, array $trialLink, string $cnpj, string $suffix, bool $holdAccountLock = false): array
+    protected function trialRegistrationPayload(array $office, array $trialLink, string $cnpj, string $suffix, bool $holdAccountLock = false, ?string $holdAdvisoryLock = null, bool $holdProvider = false, ?string $frozenNow = null): array
     {
         return [
             'account_id' => $office['account_id'],
@@ -256,6 +271,40 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
                 'establishment_name' => 'Matriz',
             ],
             'idempotency_key' => 'trial-race-'.$suffix,
+            'hold_row_lock' => $holdAccountLock ? 'accounts' : null,
+            'hold_advisory_lock' => $holdAdvisoryLock,
+            'hold_provider' => $holdProvider,
+            'frozen_now' => $frozenNow,
+        ];
+    }
+
+    /** @param array{link: OfficeErpTrialLink} $trialLink
+     *  @return array<string, mixed>
+     */
+    protected function trialRotationPayload(array $office, array $trialLink, string $suffix, bool $holdTrialLinkLock = false): array
+    {
+        return [
+            'account_id' => $office['account_id'],
+            'actor_id' => $office['actor_id'],
+            'membership_id' => $office['membership_id'],
+            'trial_link_id' => (int) $trialLink['link']->id,
+            'idempotency_key' => 'trial-rotate-'.$suffix,
+            'hold_row_lock' => $holdTrialLinkLock ? 'office_erp_trial_links' : null,
+        ];
+    }
+
+    /** @param array<string, mixed> $terms
+     *  @return array<string, mixed>
+     */
+    protected function trialConversionPayload(array $office, int $contractId, array $terms, string $suffix, bool $holdAccountLock = false): array
+    {
+        return [
+            'account_id' => $office['account_id'],
+            'actor_id' => $office['actor_id'],
+            'membership_id' => $office['membership_id'],
+            'contract_id' => $contractId,
+            'terms' => $terms,
+            'idempotency_key' => 'trial-convert-'.$suffix,
             'hold_row_lock' => $holdAccountLock ? 'accounts' : null,
         ];
     }
@@ -620,6 +669,15 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL advisory lock wait observed.');
             usleep(10000);
         } while (true);
+    }
+
+    protected function assertWorkerHeldAdvisoryLock(Process $process): void
+    {
+        $ready = $this->signalData($process, 'ready');
+        $held = $this->signalData($process, 'held');
+        self::assertSame($ready['database_pid'], $held['database_pid']);
+        self::assertGreaterThan(0, $held['transaction_level']);
+        self::assertStringContainsString('pg_advisory_xact_lock', strtolower($held['lock_query']));
     }
 
     /** @param array<string, mixed> $invitation @return array<string, mixed> */

@@ -2,6 +2,7 @@
 
 namespace Tests\Integration;
 
+use App\Erp\Commercial\ErpTrialLifecycle;
 use App\Erp\Commercial\OfficeErpContracts;
 use App\Erp\Commercial\OfficeErpCustomerEnrollment;
 use App\Erp\Commercial\OfficeErpExecutionContext;
@@ -12,10 +13,9 @@ use App\Erp\Commercial\OfficeErpOwnerAcceptance;
 use App\Erp\Commercial\OfficeErpReceiptProofs;
 use App\Erp\Commercial\OfficeErpReceipts;
 use App\Erp\Commercial\OfficeErpRecords;
+use App\Erp\Commercial\OfficeErpRecurringBilling;
 use App\Erp\Commercial\OfficeErpTrialLinks;
 use App\Erp\Commercial\OfficeErpTrialRegistration;
-use App\Erp\Commercial\OfficeErpRecurringBilling;
-use App\Erp\Commercial\ErpTrialLifecycle;
 use App\Http\Controllers\Api\V1\Admin\PlanController;
 use App\Http\Requests\Admin\UpdatePlanRequest;
 use App\Models\Account;
@@ -86,6 +86,8 @@ final class OfficeErpCommercialConcurrencyWorker
                 $sql = strtolower($query->sql);
                 $target = ($input['hold_advisory_lock'] ?? false)
                     ? str_contains($sql, 'pg_advisory_xact_lock')
+                        && (! is_string($input['hold_advisory_lock'])
+                            || str_contains(strtolower(json_encode($query->bindings, JSON_THROW_ON_ERROR)), strtolower($input['hold_advisory_lock'])))
                     : (isset($input['hold_row_lock'])
                     ? str_contains($sql, 'from "'.$input['hold_row_lock'].'"')
                     : (($input['hold_plan_lock'] ?? false)
@@ -134,27 +136,35 @@ final class OfficeErpCommercialConcurrencyWorker
                 if (! is_string($cnpj) || strlen($cnpj) !== 14) {
                     throw new RuntimeException('Trial race fixture requires a normalized 14-digit CNPJ.');
                 }
+                $lookup = [
+                    'razao_social' => 'Trial race company '.$cnpj,
+                    'estabelecimento' => [
+                        'cnpj' => $cnpj,
+                        'nome_fantasia' => 'Trial race company '.$cnpj,
+                        'situacao_cadastral' => 'Ativa',
+                        'data_situacao_cadastral' => '2020-01-01',
+                        'data_inicio_atividade' => '2020-01-01',
+                        'atividade_principal' => ['id' => '0000000', 'descricao' => 'Atividade de teste'],
+                        'tipo_logradouro' => 'Rua',
+                        'logradouro' => 'Teste',
+                        'numero' => '1',
+                        'cep' => '01001000',
+                        'cidade' => ['nome' => 'São Paulo'],
+                        'estado' => ['sigla' => 'SP'],
+                    ],
+                    'porte' => ['descricao' => 'Demais'],
+                    'natureza_juridica' => ['descricao' => 'Sociedade Empresária Limitada'],
+                    'simples' => ['mei' => 'Não', 'simples' => 'Sim'],
+                ];
                 Http::fake([
-                    'https://publica.cnpj.ws/cnpj/'.$cnpj => Http::response([
-                        'razao_social' => 'Trial race company '.$cnpj,
-                        'estabelecimento' => [
-                            'cnpj' => $cnpj,
-                            'nome_fantasia' => 'Trial race company '.$cnpj,
-                            'situacao_cadastral' => 'Ativa',
-                            'data_situacao_cadastral' => '2020-01-01',
-                            'data_inicio_atividade' => '2020-01-01',
-                            'atividade_principal' => ['id' => '0000000', 'descricao' => 'Atividade de teste'],
-                            'tipo_logradouro' => 'Rua',
-                            'logradouro' => 'Teste',
-                            'numero' => '1',
-                            'cep' => '01001000',
-                            'cidade' => ['nome' => 'São Paulo'],
-                            'estado' => ['sigla' => 'SP'],
-                        ],
-                        'porte' => ['descricao' => 'Demais'],
-                        'natureza_juridica' => ['descricao' => 'Sociedade Empresária Limitada'],
-                        'simples' => ['mei' => 'Não', 'simples' => 'Sim'],
-                    ]),
+                    'https://publica.cnpj.ws/cnpj/'.$cnpj => function () use ($base, $input, $lookup) {
+                        if ($input['hold_provider'] ?? false) {
+                            self::signal($base.'.provider-held', ['provider' => 'cnpj-ws']);
+                            self::await($base.'.provider-release');
+                        }
+
+                        return Http::response($lookup);
+                    },
                 ]);
                 $trialRequest = Request::create('http://localhost:3000/api/v1/erp/trials/'.$input['code'].'/register', 'POST', $input['registration']);
                 if (isset($input['owner_id'])) {
