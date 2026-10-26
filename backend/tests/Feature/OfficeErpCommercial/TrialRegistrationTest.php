@@ -2,16 +2,20 @@
 
 namespace Tests\Feature\OfficeErpCommercial;
 
+use App\Erp\Commercial\OfficeErpCustomerEnrollment;
 use App\Erp\ErpCommercialCatalog;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
+use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\Commercial\OfficeErpTrialLink;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpPlan;
 use App\Models\Erp\ErpPlanModule;
 use App\Models\Erp\ErpSubscription;
+use App\Models\Erp\ErpSubscriptionTrial;
 use App\Models\OwnerActivation;
 use App\Models\Plan;
 use App\Models\Subscription;
@@ -272,6 +276,64 @@ class TrialRegistrationTest extends OfficeErpCommercialTestCase
         $this->actingAs(User::factory()->create())
             ->getJson('/api/v1/erp/trials/current', ['Idempotency-Key' => $key])
             ->assertNotFound();
+    }
+
+    public function test_real_signup_expires_and_converts_without_replacing_the_company_or_trial_grant(): void
+    {
+        config(['erp.office_trial_enabled' => true, 'erp.registration_enabled' => false]);
+        $registeredAt = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($registeredAt);
+        $code = $this->enabledTrialLink();
+        Http::fake(['publica.cnpj.ws/cnpj/27865757000102' => Http::response($this->providerPayload())]);
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+        $key = 'trial-lifecycle-registration-0001';
+
+        $registration = $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', [
+                'name' => 'Pessoa responsável',
+                'email' => 'lifecycle-trial-owner@example.test',
+                'password' => 'never-store-this-password',
+                'company_name' => 'Globo Comunicação',
+                'cnpj' => '27.865.757/0001-02',
+                'tax_regime' => 'presumed_profit',
+            ], ['Idempotency-Key' => $key])
+            ->assertCreated();
+        $data = $registration->json('data');
+        $trial = ErpSubscriptionTrial::query()->findOrFail($data['trial_id']);
+        $end = $trial->ends_at;
+        self::assertSame($registeredAt->addHours(168)->toISOString(), $end->toISOString());
+
+        CarbonImmutable::setTestNow($end);
+        $this->artisan('office-erp:expire-trials', ['--batch' => 50])->assertExitCode(0);
+        $trial->refresh();
+        self::assertSame($end->toISOString(), $trial->expired_at->toISOString());
+        self::assertSame('trial_expired', ErpSubscription::query()->findOrFail($data['subscription_id'])->status);
+
+        $accountId = OfficeErpTrialLink::query()->where('public_code', $code)->value('account_id');
+        $ctx = $this->officeContextFor(Account::query()->findOrFail($accountId));
+        request()->attributes->remove('access.session_lock');
+        $contract = OfficeErpContract::query()->findOrFail($data['contract_id']);
+        $link = OfficeErpTrialLink::query()->where('public_code', $code)->firstOrFail();
+        $startOn = $end->setTimezone('America/Sao_Paulo')->toDateString();
+        $converted = $this->withOfficeAccount($ctx, fn (): array => app(OfficeErpCustomerEnrollment::class)->convertTrial($ctx, $contract, [
+            'erp_plan_id' => (int) $link->erp_plan_id,
+            'price' => '250.00',
+            'currency' => 'BRL',
+            'interval_months' => 1,
+            'due_in_days' => 10,
+            'start_on' => $startOn,
+            'billing_timezone' => 'America/Sao_Paulo',
+        ], 'trial-lifecycle-conversion-0001'));
+
+        self::assertSame((int) $data['company_id'], $converted['company_id']);
+        self::assertSame((int) $data['subscription_id'], $converted['subscription_id']);
+        self::assertSame((int) $data['contract_id'], $converted['contract_id']);
+        self::assertSame((int) $data['trial_id'], $converted['trial_id']);
+        self::assertSame($end->toISOString(), $trial->fresh()->expired_at->toISOString());
+        self::assertNotNull($trial->fresh()->converted_at);
+        self::assertSame('active', ErpSubscription::query()->findOrFail($data['subscription_id'])->status);
+        self::assertSame('effective', $contract->fresh()->agreement_status);
+        self::assertSame(1, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
     }
 
     public function test_provider_failure_leaves_identity_and_trial_aggregate_unmodified(): void

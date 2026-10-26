@@ -16,7 +16,10 @@ final class OfficeErpEnrollmentController extends Controller
 {
     public function plans(Request $request, OfficeErpAdmission $admission, OfficeErpCustomerEnrollment $enrollment): JsonResponse
     {
-        return response()->json($enrollment->plans($admission->context($request)))->header('Cache-Control', 'no-store');
+        $validated = $request->validate(['contract_id' => ['sometimes', 'integer', 'min:1']]);
+
+        return response()->json($enrollment->plans($admission->context($request), isset($validated['contract_id']) ? (int) $validated['contract_id'] : null))
+            ->header('Cache-Control', 'no-store');
     }
 
     public function store(Request $request, OfficeErpAdmission $admission, ErpOperationJournal $journal, OfficeErpCustomerEnrollment $enrollment): JsonResponse

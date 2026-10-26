@@ -27,6 +27,7 @@ final class ExpireErpTrialsCommand extends Command
             ->whereNull('converted_at')
             ->whereNull('expired_at')
             ->where('ends_at', '<=', $now)
+            ->whereHas('subscription', fn ($query) => $query->where('status', 'trialing'))
             ->orderBy('ends_at')
             ->orderBy('id')
             ->limit($batch)

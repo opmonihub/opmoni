@@ -14,8 +14,8 @@
 
 - [x] 3.1 Implement guarded trial-link read/configure/rotate and safe public availability, keeping release flags and sponsor resolution server-controlled; verify revocation, rotation, stale revision, missing capacity and foreign-office isolation in `TrialLinkTest`.
 - [x] 3.2 Implement atomic public owner registration, same-office Client creation/reuse and one 168-hour trial per normalized CNPJ, with CSRF/origin/rate guards and password-free recovery; verify full route behavior and failed pre-commit/session-after-commit cases in `TrialRegistrationTest`.
-- [ ] 3.3 Enforce live trial deadlines and frozen module grants in HTTP and queued effects, preserve authorized reads, and reconcile expiry without deleting data or inventing debt; verify frozen-clock exact-end and scheduler-delay cases in `TrialLifecycleTest`.
-- [ ] 3.4 Implement explicit paid conversion on the same Company/subscription/allocation, preserving holds and trial history and issuing one first invoice from confirmed paid terms; verify valid/expired/capacity-denied/replayed cases in `TrialLifecycleTest` and `RecurringInvoiceTest`.
+- [x] 3.3 Enforce live trial deadlines and frozen module grants in HTTP and queued effects, preserve authorized reads, and reconcile expiry without deleting data or inventing debt; verify frozen-clock exact-end and scheduler-delay cases in `TrialLifecycleTest`.
+- [x] 3.4 Implement explicit paid conversion on the same Company/subscription/allocation, preserving holds and trial history and issuing one first invoice from confirmed paid terms; verify valid/expired/capacity-denied/replayed cases in `TrialLifecycleTest` and `RecurringInvoiceTest`.
 
 ## 4. Customer-first Nuxt flows
 
