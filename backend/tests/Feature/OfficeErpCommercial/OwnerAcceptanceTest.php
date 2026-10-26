@@ -114,6 +114,50 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
         self::assertSame(1, ErpCompany::query()->whereKey($companyId)->count());
     }
 
+    public function test_legacy_token_reexchange_keeps_the_original_acceptance_operation_key(): void
+    {
+        $issued = $this->issueInvitation();
+        $invitation = OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id']);
+        $identity = hash('sha256', $invitation->id.':'.mb_strtolower(trim($invitation->owner_email)));
+        $originalKey = hash_hmac('sha256', 'office-erp-owner-acceptance:'.$invitation->id.':'.$identity, (string) config('app.key'));
+        $legacyContinuation = [
+            'invitation_id' => (int) $invitation->id,
+            'account_id' => (int) $invitation->account_id,
+            'contract_id' => (int) $invitation->contract_id,
+            'owner_email' => $invitation->owner_email,
+            'owner_name' => $invitation->owner_name,
+            'owner_identity' => $identity,
+            'operation_key' => $originalKey,
+            'expires_at' => now()->addMinutes(15)->timestamp,
+        ];
+        $legacyContinuation['signature'] = hash_hmac('sha256', json_encode($legacyContinuation, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), (string) config('app.key'));
+        $accepted = $this->requestFromIsolatedIngress()->withSession(['office_erp.owner_continuation' => $legacyContinuation])
+            ->withHeaders(['X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => $originalKey])
+            ->postJson('/api/v1/erp-invitations/accept', ['password' => 'new-owner-secret'])->assertCreated();
+        $companyId = (int) $accepted->json('data.company.id');
+        $owner = User::query()->where('email', 'owner@example.test')->firstOrFail();
+        $counts = [
+            ErpCompany::query()->count(),
+            ErpCompanyMembership::query()->count(),
+            ErpSubscription::query()->count(),
+            OfficeErpCommercialOperation::query()->count(),
+        ];
+
+        $this->login($owner, 'new-owner-secret');
+        $this->requestFromIsolatedIngress()->withHeader('X-CSRF-Token', $this->csrf())
+            ->postJson('/api/v1/erp-invitations/resolve', ['token' => $issued['token']])
+            ->assertOk()->assertJsonPath('state', 'accepted');
+
+        self::assertSame($originalKey, $this->operationKey());
+        $this->accept($originalKey)->assertOk()->assertJsonPath('data.company.id', $companyId);
+        self::assertSame($counts, [
+            ErpCompany::query()->count(),
+            ErpCompanyMembership::query()->count(),
+            ErpSubscription::query()->count(),
+            OfficeErpCommercialOperation::query()->count(),
+        ]);
+    }
+
     public function test_committed_acceptance_replays_after_contract_becomes_effective_without_new_writes(): void
     {
         $issued = $this->issueInvitation();
