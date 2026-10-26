@@ -137,25 +137,32 @@ test('Work shell owns normalization while child month consumers remain read-only
   const route = Vue.reactive({ path: '/work/tarefas', query: { search: 'preserved' } as Record<string, unknown> })
   const state = new Map<string, Vue.Ref>()
   const replacements: unknown[] = []
+  const useState = (key: string, initial: () => unknown) => {
+    if (!state.has(key)) state.set(key, Vue.ref(initial()))
+    return state.get(key)
+  }
+  const foundation = loadAppComposable<{ useListNavigationState: (...args: unknown[]) => Vue.Ref }>('composables/useListNavigationState.ts', { useState })
   const { useWorkReferenceMonth } = loadAppComposable<{ useWorkReferenceMonth: (options?: { syncRoute?: boolean }) => { referenceMonth: Vue.Ref<string> } }>('composables/useWorkReferenceMonth.ts', {
-    ref: Vue.ref, computed: Vue.computed, watch: Vue.watch,
+    ref: Vue.ref, computed: Vue.computed, watch: Vue.watch, useListNavigationState: foundation.useListNavigationState,
     useRoute: () => route,
-    useRouter: () => ({ replace: (target: unknown) => { replacements.push(target) } }),
-    useState(key: string, initial: () => unknown) {
-      if (!state.has(key)) state.set(key, Vue.ref(initial()))
-      return state.get(key)
-    }
+    useRouter: () => ({ replace: (target: { query: Record<string, unknown> }) => {
+      replacements.push(target)
+      route.query = target.query
+    } }),
+    useState
   })
   const scope = Vue.effectScope()
+  let selectedMonth = ''
   try {
     scope.run(() => {
       const shell = useWorkReferenceMonth({ syncRoute: true })
+      selectedMonth = shell.referenceMonth.value
       const child = useWorkReferenceMonth()
       assert.equal(shell.referenceMonth.value, child.referenceMonth.value)
     })
     await Vue.nextTick()
     assert.equal(replacements.length, 1)
-    assert.deepEqual(replacements[0], { query: { search: 'preserved', reference_month: state.get('work-reference-month')?.value } })
+    assert.deepEqual(replacements[0], { query: { search: 'preserved', reference_month: selectedMonth } })
   } finally { scope.stop() }
 })
 
