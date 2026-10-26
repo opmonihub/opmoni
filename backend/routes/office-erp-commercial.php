@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpClientController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContextController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContractController;
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpEnrollmentController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvitationController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvoiceController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvoicePrintController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpReceiptProofController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpSalesPlanController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpSettingsController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpSummaryController;
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpTrialLinkController;
 use App\Http\Middleware\ResolveOfficeErpCommercial;
 use Illuminate\Support\Facades\Route;
 
@@ -19,6 +21,11 @@ Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->
     Route::get('/context', OfficeErpContextController::class)->name('office-erp-commercial.context');
     Route::get('/summary', OfficeErpSummaryController::class)->name('office-erp-commercial.summary');
     Route::get('/operations/{key}', OfficeErpOperationController::class)->name('office-erp-commercial.operations.lookup');
+    Route::get('/enrollment-plans', [OfficeErpEnrollmentController::class, 'plans'])->name('office-erp-commercial.enrollment-plans.index');
+    Route::post('/enrollments', [OfficeErpEnrollmentController::class, 'store'])->name('office-erp-commercial.enrollments.store');
+    Route::get('/trial-link', [OfficeErpTrialLinkController::class, 'show'])->name('office-erp-commercial.trial-link.show');
+    Route::put('/trial-link', [OfficeErpTrialLinkController::class, 'update'])->name('office-erp-commercial.trial-link.update');
+    Route::post('/trial-link/rotate', [OfficeErpTrialLinkController::class, 'rotate'])->name('office-erp-commercial.trial-link.rotate');
     Route::get('/receipts', [OfficeErpReceiptController::class, 'index'])->name('office-erp-commercial.receipts.index');
     Route::post('/receipts', [OfficeErpReceiptController::class, 'store'])->name('office-erp-commercial.receipts.store');
     Route::get('/receipts/{receipt}', [OfficeErpReceiptController::class, 'show'])->whereNumber('receipt')->name('office-erp-commercial.receipts.show');
@@ -28,6 +35,7 @@ Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->
     Route::get('/clients', [OfficeErpClientController::class, 'index'])->name('office-erp-commercial.clients.index');
     Route::get('/contracts', [OfficeErpContractController::class, 'index'])->name('office-erp-commercial.contracts.index');
     Route::get('/contracts/{contract}', [OfficeErpContractController::class, 'show'])->whereNumber('contract')->name('office-erp-commercial.contracts.show');
+    Route::post('/contracts/{contract}/convert-trial', [OfficeErpEnrollmentController::class, 'convertTrial'])->whereNumber('contract')->name('office-erp-commercial.contracts.convert-trial');
     Route::post('/contracts/{contract}/activate', [OfficeErpContractController::class, 'activate'])->whereNumber('contract')->name('office-erp-commercial.contracts.activate');
     Route::patch('/contracts/{contract}/terms', [OfficeErpContractController::class, 'amend'])->whereNumber('contract')->name('office-erp-commercial.contracts.amend');
     Route::post('/contracts/{contract}/renew', [OfficeErpContractController::class, 'renew'])->whereNumber('contract')->name('office-erp-commercial.contracts.renew');

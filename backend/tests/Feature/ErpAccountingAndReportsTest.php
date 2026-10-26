@@ -15,6 +15,7 @@ use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
 use App\Models\Erp\ErpSubscription;
+use App\Models\Erp\ErpSubscriptionTrial;
 use App\Models\Erp\ErpUnit;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Reports\ErpReportExport;
@@ -24,6 +25,7 @@ use App\Models\Erp\Stock\ErpStockBalance;
 use App\Models\FiscalDocument;
 use App\Models\User;
 use App\Tenant\CurrentTenant;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\ApprovesErpAccountingMappings;
@@ -163,6 +165,78 @@ class ErpAccountingAndReportsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.status', 'delivered')
             ->assertJsonPath('data.0.fiscal_document_id', $result->fiscal_document_id);
+    }
+
+    public function test_expired_trial_blocks_pending_accounting_publication(): void
+    {
+        $ctx = $this->ownerContext();
+        $office = Account::factory()->create();
+        $delegation = ErpOfficeDelegation::factory()->create([
+            'erp_company_id' => $ctx['company']->id,
+            'account_id' => $office->id,
+            'authorized_by_user_id' => $ctx['user']->id,
+        ]);
+        $client = $this->officeClient($office);
+        $this->approveAccountingMapping($delegation, $ctx['establishment'], $client);
+        $document = $this->authorizedFiscalDocument($ctx['company'], $ctx['establishment']);
+        $handoff = app(ErpAccountingHandoffService::class);
+        $delivery = $handoff->ensureDeliveryIntent($document);
+        $this->assertNotNull($delivery);
+
+        $now = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($now);
+        $subscription = $ctx['company']->subscription()->firstOrFail();
+        $subscription->forceFill(['status' => 'trialing'])->save();
+        ErpSubscriptionTrial::query()->create([
+            'erp_subscription_id' => $subscription->id,
+            'erp_company_id' => $ctx['company']->id,
+            'account_id' => $office->id,
+            'cnpj' => $ctx['company']->cnpj,
+            'started_at' => $now->subDays(7),
+            'ends_at' => $now,
+            'link_revision' => 1,
+        ]);
+
+        $blocked = $handoff->deliver($delivery);
+
+        $this->assertSame(ErpAccountingDelivery::STATUS_BLOCKED, $blocked->status);
+        $this->assertSame('erp_trial_expired', $blocked->reason_code);
+        $this->assertSame(0, FiscalDocument::withoutGlobalScope('account')->count());
+    }
+
+    public function test_trial_expiry_preserves_already_delivered_accounting_history(): void
+    {
+        $ctx = $this->ownerContext();
+        $office = Account::factory()->create();
+        $delegation = ErpOfficeDelegation::factory()->create([
+            'erp_company_id' => $ctx['company']->id,
+            'account_id' => $office->id,
+            'authorized_by_user_id' => $ctx['user']->id,
+        ]);
+        $client = $this->officeClient($office);
+        $this->approveAccountingMapping($delegation, $ctx['establishment'], $client);
+        $document = $this->authorizedFiscalDocument($ctx['company'], $ctx['establishment']);
+        $handoff = app(ErpAccountingHandoffService::class);
+        $delivered = $handoff->deliver($handoff->ensureDeliveryIntent($document));
+        $this->assertSame(ErpAccountingDelivery::STATUS_DELIVERED, $delivered->status);
+        $history = $delivered->getAttributes();
+
+        $now = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($now);
+        $subscription = $ctx['company']->subscription()->firstOrFail();
+        $subscription->forceFill(['status' => 'trialing'])->save();
+        ErpSubscriptionTrial::query()->create([
+            'erp_subscription_id' => $subscription->id,
+            'erp_company_id' => $ctx['company']->id,
+            'account_id' => $office->id,
+            'cnpj' => $ctx['company']->cnpj,
+            'started_at' => $now->subDays(7),
+            'ends_at' => $now,
+            'link_revision' => 1,
+        ]);
+
+        $this->assertSame($history, $handoff->retry($delivered)->getAttributes());
+        $this->assertSame($history, $delivered->fresh()->getAttributes());
     }
 
     public function test_accounting_retry_recovers_after_storage_becomes_available(): void

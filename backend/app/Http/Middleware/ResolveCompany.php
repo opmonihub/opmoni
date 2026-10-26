@@ -84,8 +84,12 @@ class ResolveCompany
             }
             $effectiveWrite = ! $request->isMethodSafe() || $operationLookup || $request->routeIs('erp.payments.allocation-candidates');
             $foundationSettingsWrite = $request->routeIs('erp.company.settings.update');
-            if ($effectiveWrite && ! $foundationSettingsWrite && ! $this->commercialGate->allowsOperatingWrites($company)) {
-                abort(response()->json(['code' => 'erp_subscription_inactive', 'message' => 'Contrato ERP inativo'], 403));
+            if ($effectiveWrite && ! $foundationSettingsWrite) {
+                $commercialDenial = $this->commercialGate->operatingWriteDenialCode($company);
+                if ($commercialDenial !== null) {
+                    $message = $commercialDenial === 'erp_trial_expired' ? 'Período de teste encerrado' : 'Contrato ERP inativo';
+                    abort(response()->json(['code' => $commercialDenial, 'message' => $message], 403));
+                }
             }
             if ($effectiveWrite
                 && ! config('erp.operating_writes_enabled')

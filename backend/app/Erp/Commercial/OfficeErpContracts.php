@@ -4,6 +4,7 @@ namespace App\Erp\Commercial;
 
 use App\Enums\Erp\ErpSubscriptionStatus;
 use App\Erp\ErpCoreModules;
+use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
@@ -53,47 +54,142 @@ final class OfficeErpContracts
                 abort_unless($contract->agreement_status === 'accepted' && $contract->erp_company_id !== null, 409, 'contract_not_accepted');
                 $allocation = $this->allocation($ctx, $contractId, true);
                 abort_unless($allocation?->state === 'occupied' && (int) $allocation->erp_company_id === (int) $contract->erp_company_id, 409, 'occupied_allocation_required');
-
-                $company = ErpCompany::query()->whereKey($contract->erp_company_id)->firstOrFail();
-                abort_unless($company->status === 'active', 403, 'company_inactive');
-                $subscription = ErpSubscription::query()->where('erp_company_id', $company->id)->lockForUpdate()->firstOrFail();
-                abort_unless($this->subscriptionCanLink($ctx, $subscription, $contractId), 409, 'company_already_linked');
-                abort_unless((int) $contract->current_revision_id > 0, 409, 'contract_revision_missing');
-                $revision = $this->revision($ctx, $contract, (int) $contract->current_revision_id);
                 $now = CarbonImmutable::now($contract->billing_timezone);
-                $anchor = $now->toDateString();
-                $period = $this->calendar->periodAtMonthOffset($anchor, (int) $revision->interval_months, 0, $contract->billing_timezone, (int) $revision->due_in_days);
+                $outcome = $this->activateLocked($ctx, $contract, $now, $this->invoiceOperationKey($key));
 
-                $contract->forceFill([
-                    'agreement_status' => 'effective',
-                    'service_anchor_on' => $anchor,
-                    'effective_at' => $now,
-                    'next_period_index' => 1,
-                    'next_period_month_offset' => (int) $revision->interval_months,
-                ]);
-                OfficeErpRecords::persist($ctx, $contract);
-                $subscription->forceFill([
-                    'office_erp_contract_id' => $contractId,
-                    'status' => in_array($subscription->status, [
-                        ErpSubscriptionStatus::Pending->value,
-                        ErpSubscriptionStatus::Canceled->value,
-                    ], true)
-                        ? ErpSubscriptionStatus::Active->value
-                        : $subscription->status,
-                ]);
-                $subscription->save();
-
-                $invoice = $this->invoices->issuePeriod($ctx, $contract, $revision, $period, $this->invoiceOperationKey($key));
-
-                return ['data' => [
-                    'contract_id' => $contractId,
-                    'invoice_id' => (int) $invoice->getKey(),
-                    'subscription_id' => (int) $subscription->getKey(),
-                ]];
+                return ['data' => $outcome];
             },
         );
 
         return $outcome['data'];
+    }
+
+    /**
+     * Activate an already provisioned administrative or trial contract inside its caller's transaction.
+     * The caller owns operation journaling and has locked the commercial aggregate.
+     *
+     * @return array{contract_id:int,invoice_id:int,subscription_id:int}
+     */
+    public function activateProvisioned(OfficeErpExecutionContext $ctx, OfficeErpContract $contract, CarbonImmutable $start, string $invoiceOperationKey): array
+    {
+        abort_unless($ctx->actorKind === 'office_admin', 403);
+        abort_unless(in_array($contract->provisioning_source, ['office_admin', 'office_trial'], true), 409, 'provisioned_contract_required');
+        abort_unless($contract->agreement_status === 'accepted' && $contract->erp_company_id !== null, 409, 'contract_not_accepted');
+        $allocation = $this->allocation($ctx, (int) $contract->id, true);
+        abort_unless($allocation?->state === 'occupied' && (int) $allocation->erp_company_id === (int) $contract->erp_company_id, 409, 'occupied_allocation_required');
+
+        return $this->activateLocked($ctx, $contract, $start->setTimezone($contract->billing_timezone), $invoiceOperationKey);
+    }
+
+    /** @return array{contract_id:int,invoice_id:int,subscription_id:int} */
+    private function activateLocked(OfficeErpExecutionContext $ctx, OfficeErpContract $contract, CarbonImmutable $start, string $invoiceOperationKey): array
+    {
+        $contractId = (int) $contract->id;
+        $company = ErpCompany::query()->whereKey($contract->erp_company_id)->firstOrFail();
+        abort_unless($company->status === 'active', 403, 'company_inactive');
+        $subscription = ErpSubscription::query()->where('erp_company_id', $company->id)->lockForUpdate()->firstOrFail();
+        abort_unless($this->subscriptionCanLink($ctx, $subscription, $contractId), 409, 'company_already_linked');
+        abort_unless((int) $contract->current_revision_id > 0, 409, 'contract_revision_missing');
+        $revision = $this->revision($ctx, $contract, (int) $contract->current_revision_id);
+        $anchor = $start->toDateString();
+        $period = $this->calendar->periodAtMonthOffset($anchor, (int) $revision->interval_months, 0, $contract->billing_timezone, (int) $revision->due_in_days);
+
+        $contract->forceFill([
+            'agreement_status' => 'effective',
+            'service_anchor_on' => $anchor,
+            'effective_at' => $start,
+            'next_period_index' => 1,
+            'next_period_month_offset' => (int) $revision->interval_months,
+        ]);
+        OfficeErpRecords::persist($ctx, $contract);
+        $subscription->forceFill([
+            'office_erp_contract_id' => $contractId,
+            'status' => in_array($subscription->status, [ErpSubscriptionStatus::Pending->value, ErpSubscriptionStatus::Canceled->value], true)
+                ? ErpSubscriptionStatus::Active->value
+                : $subscription->status,
+        ]);
+        $subscription->save();
+        $invoice = $this->invoices->issuePeriod($ctx, $contract, $revision, $period, $invoiceOperationKey);
+
+        return ['contract_id' => $contractId, 'invoice_id' => (int) $invoice->getKey(), 'subscription_id' => (int) $subscription->getKey()];
+    }
+
+    /**
+     * Create the frozen commercial record for direct enrollment or office trial provisioning.
+     * Trial callers must leave the linked subscription trialing and must not call activation.
+     *
+     * @param  array{price:string,currency:'BRL',interval_months:int,due_in_days:int,module_keys:list<string>,billing_timezone?:string}  $terms
+     * @return array{contract:OfficeErpContract,revision:OfficeErpContractRevision}
+     */
+    public function createProvisioned(
+        OfficeErpExecutionContext $ctx,
+        Client $client,
+        ErpCompany $company,
+        int $erpPlanId,
+        array $terms,
+        string $source,
+    ): array {
+        abort_unless(
+            ($source === 'office_admin' && $ctx->actorKind === 'office_admin')
+                || ($source === 'office_trial' && $ctx->actorKind === 'owner' && $ctx->purpose === 'trial.register'),
+            403,
+        );
+        $normalized = $this->provisioningTerms($terms);
+        $timezone = $terms['billing_timezone'] ?? 'America/Sao_Paulo';
+        abort_unless((int) $client->account_id === $ctx->accountId && $client->exists, 404);
+        abort_unless($company->exists && $company->status === 'active', 404);
+
+        $contract = new OfficeErpContract;
+        $contract->forceFill([
+            'account_id' => $ctx->accountId,
+            'client_id' => $client->id,
+            'erp_company_id' => $company->id,
+            'agreement_status' => 'accepted',
+            'billing_timezone' => $timezone,
+            'accepted_at' => CarbonImmutable::now('UTC'),
+            'provisioning_source' => $source,
+            'erp_plan_id' => $erpPlanId,
+            'authorized_by_user_id' => $source === 'office_admin' ? $ctx->actor?->id : null,
+            'authorized_at' => $source === 'office_admin' ? CarbonImmutable::now('UTC') : null,
+        ]);
+        $contract = OfficeErpRecords::persist($ctx, $contract);
+
+        $revision = new OfficeErpContractRevision;
+        $revision->forceFill([
+            'account_id' => $ctx->accountId,
+            'contract_id' => $contract->id,
+            'revision_number' => 1,
+            'sales_plan_revision_id' => null,
+            'price' => $normalized['price'],
+            'currency' => 'BRL',
+            'interval_months' => $normalized['interval_months'],
+            'due_in_days' => $normalized['due_in_days'],
+            'module_keys' => $normalized['module_keys'],
+            'reason' => $source === 'office_trial' ? 'office_trial_registration' : 'office_admin_enrollment',
+            'created_by_user_id' => $ctx->actor?->id,
+        ]);
+        $revision = OfficeErpRecords::persist($ctx, $revision);
+        $contract->forceFill(['current_revision_id' => $revision->id]);
+        $contract = OfficeErpRecords::persist($ctx, $contract);
+
+        return ['contract' => $contract, 'revision' => $revision];
+    }
+
+    /** @param array<string,mixed> $terms @return array{price:string,interval_months:int,due_in_days:int,module_keys:list<string>} */
+    private function provisioningTerms(array $terms): array
+    {
+        $validated = Validator::make($terms, [
+            'price' => ['required', 'string'],
+            'currency' => ['required', 'string', Rule::in(['BRL'])],
+            'interval_months' => ['required', 'integer', Rule::in([1, 3, 6, 12])],
+            'due_in_days' => ['required', 'integer', 'between:0,65535'],
+            'module_keys' => ['required', 'array', 'list'],
+            'module_keys.*' => ['required', 'string', 'distinct:strict', Rule::in(ErpCoreModules::BASIC)],
+        ])->validate();
+        $validated['price'] = OfficeErpMoney::canonical($validated['price'], 'price');
+        sort($validated['module_keys'], SORT_STRING);
+
+        return $validated;
     }
 
     /** @param array<string, mixed> $terms */
@@ -230,7 +326,9 @@ final class OfficeErpContracts
     {
         $this->admission->assertCommand($ctx, 'contract.read');
         $perPage = min(100, max(1, (int) ($filters['per_page'] ?? 25)));
-        $query = OfficeErpRecords::query($ctx, OfficeErpContract::class)->with(['client', 'company.subscription', 'currentRevision', 'pendingRevision']);
+        $query = OfficeErpRecords::query($ctx, OfficeErpContract::class)->with([
+            'client', 'company.subscription.trial', 'company.subscription.plan', 'currentRevision', 'pendingRevision',
+        ]);
         if (($filters['agreement_status'] ?? '') !== '') {
             $query->where('agreement_status', $filters['agreement_status']);
         }
@@ -248,7 +346,9 @@ final class OfficeErpContracts
 
     public function show(OfficeErpExecutionContext $ctx, int $contractId): array
     {
-        $contract = $this->contract($ctx, $contractId)->load(['client', 'company.subscription', 'currentRevision', 'pendingRevision', 'revisions']);
+        $contract = $this->contract($ctx, $contractId)->load([
+            'client', 'company.subscription.trial', 'company.subscription.plan', 'currentRevision', 'pendingRevision', 'revisions',
+        ]);
         $this->admission->assertCommand($ctx, 'contract.read', $contract);
 
         return ['data' => $this->contractData($ctx, $contract, true)];
@@ -378,7 +478,7 @@ final class OfficeErpContracts
     }
 
     /** @param array<string, mixed> $terms @return array{price:string,interval_months:int,due_in_days:int,module_keys:list<string>} */
-    private function terms(OfficeErpExecutionContext $ctx, OfficeErpContract $contract, array $terms): array
+    public function terms(OfficeErpExecutionContext $ctx, OfficeErpContract $contract, array $terms): array
     {
         abort_unless(array_diff(array_keys($terms), ['price', 'interval_months', 'due_in_days', 'module_keys']) === [], 422, 'invalid_contract_terms');
         $current = $this->revision($ctx, $contract, (int) $contract->current_revision_id);
@@ -449,14 +549,17 @@ final class OfficeErpContracts
         }
         $current = $contract->currentRevision;
         $subscription = $contract->company?->subscription;
+        $subscriptionSummary = $this->linkedSubscriptionSummary($contract, $subscription);
         $data = [
             'id' => (int) $contract->id,
             'client' => ['id' => (int) $contract->client_id, 'name' => (string) $contract->client?->name],
-            'company' => $contract->company === null ? null : ['id' => (int) $contract->company->id, 'name' => (string) $contract->company->name],
+            'company' => $contract->company === null ? null : [
+                'id' => (int) $contract->company->id,
+                'name' => (string) $contract->company->name,
+                'owner_setup_status' => (string) $contract->company->owner_setup_status,
+            ],
             'agreement_status' => (string) $contract->agreement_status,
-            'licence_status' => $subscription !== null && (int) $subscription->office_erp_contract_id === (int) $contract->id
-                ? $subscription->status
-                : null,
+            ...$subscriptionSummary,
             'current_revision' => $current === null ? null : $this->revisionData($current),
             'pending_revision' => $contract->pendingRevision === null ? null : $this->revisionData($contract->pendingRevision),
             'service_anchor_on' => $contract->service_anchor_on?->toDateString(),
@@ -474,6 +577,67 @@ final class OfficeErpContracts
         }
 
         return $data;
+    }
+
+    /** @return array{licence_status:?string,erp_plan_id:?int,erp_plan:?array{id:int,name:string},trial:?array,next_billing_on:?string} */
+    public function linkedSubscriptionSummary(OfficeErpContract $contract, ?ErpSubscription $subscription): array
+    {
+        $linked = $subscription !== null && (int) $subscription->office_erp_contract_id === (int) $contract->id;
+        if (! $linked) {
+            return [
+                'licence_status' => null,
+                'erp_plan_id' => null,
+                'erp_plan' => null,
+                'trial' => null,
+                'next_billing_on' => null,
+            ];
+        }
+
+        $subscription->loadMissing(['trial', 'plan']);
+        $planId = $contract->erp_plan_id === null ? (int) $subscription->erp_plan_id : (int) $contract->erp_plan_id;
+
+        return [
+            'licence_status' => (string) $subscription->status,
+            'erp_plan_id' => $planId,
+            'erp_plan' => $subscription->plan === null ? null : [
+                'id' => $planId,
+                'name' => (string) $subscription->plan->name,
+            ],
+            'trial' => ErpTrialSummary::forLinkedContract($subscription, $contract),
+            'next_billing_on' => $this->nextBillingOn($contract, $subscription),
+        ];
+    }
+
+    private function nextBillingOn(OfficeErpContract $contract, ErpSubscription $subscription): ?string
+    {
+        if ($subscription->status === ErpSubscriptionStatus::Trialing->value
+            || $contract->agreement_status !== 'effective'
+            || $contract->service_anchor_on === null
+            || $contract->next_period_month_offset === null
+            || $contract->currentRevision === null) {
+            return null;
+        }
+
+        $now = CarbonImmutable::now($contract->billing_timezone);
+        $revision = $contract->pendingRevision;
+        if ($revision === null || $revision->service_period_start === null
+            || $revision->service_period_start->toDateString() > $now->toDateString()) {
+            $revision = $contract->currentRevision;
+        }
+
+        $period = $this->calendar->periodAtMonthOffset(
+            $contract->service_anchor_on->toDateString(),
+            (int) $revision->interval_months,
+            (int) $contract->next_period_month_offset,
+            $contract->billing_timezone,
+            (int) $revision->due_in_days,
+        );
+        if ($contract->cancel_effective_on !== null
+            && $contract->cancel_effective_on->toDateString() <= $period['start']) {
+            return null;
+        }
+
+        return $period['due_on'];
     }
 
     /** @return array<string, mixed> */

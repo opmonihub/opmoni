@@ -3,6 +3,7 @@
 namespace App\Erp\Commercial;
 
 use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\ErpCompany;
 use Carbon\CarbonImmutable;
@@ -115,6 +116,61 @@ final class OfficeErpLicenceAllocator
                 'accepted_at' => $lockedContract->accepted_at ?? now(),
             ]);
             OfficeErpRecords::persist($ctx, $lockedContract);
+
+            return OfficeErpRecords::persist($ctx, $allocation);
+        }, 3));
+    }
+
+    /**
+     * Allocate capacity directly for an already provisioned office assignment or trial.
+     * No invitation reservation is created or impersonated.
+     */
+    public function allocateProvisioned(OfficeErpExecutionContext $ctx, OfficeErpContract $contract, ErpCompany $company): OfficeErpLicenceAllocation
+    {
+        abort_unless(in_array($contract->provisioning_source, ['office_admin', 'office_trial'], true), 409, 'provisioned_contract_required');
+        abort_unless(
+            ($contract->provisioning_source === 'office_admin' && $ctx->actorKind === 'office_admin')
+                || ($contract->provisioning_source === 'office_trial' && $ctx->actorKind === 'owner' && $ctx->purpose === 'trial.register'),
+            403,
+        );
+        $ctx->assertVerified();
+
+        return $ctx->run(fn (): OfficeErpLicenceAllocation => DB::transaction(function () use ($ctx, $contract, $company): OfficeErpLicenceAllocation {
+            $this->admission->lockCommercialAggregate($ctx);
+            $candidate = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+                ->whereKey($contract->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+            $lockedCompany = ErpCompany::query()->whereKey($company->getKey())->lockForUpdate()->firstOrFail();
+            abort_unless($candidate->agreement_status === 'accepted' && $candidate->erp_company_id === $lockedCompany->id, 409, 'contract_not_accepted');
+            abort_unless($lockedCompany->status === 'active', 403, 'company_inactive');
+            $revision = OfficeErpContractRevision::query()
+                ->where('account_id', $ctx->accountId)
+                ->where('contract_id', $candidate->id)
+                ->whereKey($candidate->current_revision_id)
+                ->firstOrFail();
+            $action = $candidate->provisioning_source === 'office_trial' ? 'trial.register' : 'customer.enroll';
+            $this->admission->assertCommand($ctx, $action, $candidate, $revision->module_keys ?? []);
+
+            $existing = OfficeErpRecords::query($ctx, OfficeErpLicenceAllocation::class)
+                ->where('contract_id', $candidate->id)
+                ->lockForUpdate()
+                ->first();
+            abort_if($existing !== null && $existing->state !== 'released', 409, 'licence_already_allocated');
+            abort_if(OfficeErpRecords::query($ctx, OfficeErpLicenceAllocation::class)
+                ->where('erp_company_id', $lockedCompany->id)
+                ->whereIn('state', ['reserved', 'occupied'])
+                ->exists(), 409, 'company_already_licensed');
+
+            $allocation = $existing ?? new OfficeErpLicenceAllocation;
+            $allocation->forceFill([
+                'account_id' => $ctx->accountId,
+                'contract_id' => $candidate->id,
+                'erp_company_id' => $lockedCompany->id,
+                'state' => 'occupied',
+                'expires_at' => null,
+                'released_at' => null,
+            ]);
 
             return OfficeErpRecords::persist($ctx, $allocation);
         }, 3));

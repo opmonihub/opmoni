@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpContracts;
+use App\Erp\Commercial\OfficeErpCustomerEnrollment;
 use App\Erp\Commercial\OfficeErpDelinquency;
 use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpOperations;
 use App\Erp\Commercial\OfficeErpOwnerInvitations;
 use App\Erp\Commercial\OfficeErpReceipts;
 use App\Erp\Commercial\OfficeErpSalesPlans;
+use App\Erp\Commercial\OfficeErpTrialLinks;
 use App\Erp\ErpOperationJournal;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -18,7 +20,7 @@ use Illuminate\Validation\ValidationException;
 
 final class OfficeErpOperationController extends Controller
 {
-    public function __invoke(Request $request, string $key, OfficeErpAdmission $admission, OfficeErpOperations $operations, ErpOperationJournal $journal, OfficeErpSalesPlans $plans, OfficeErpDelinquency $delinquency, OfficeErpInvoices $invoices, OfficeErpOwnerInvitations $invitations, OfficeErpReceipts $receipts, OfficeErpContracts $contracts): JsonResponse
+    public function __invoke(Request $request, string $key, OfficeErpAdmission $admission, OfficeErpOperations $operations, ErpOperationJournal $journal, OfficeErpSalesPlans $plans, OfficeErpDelinquency $delinquency, OfficeErpInvoices $invoices, OfficeErpOwnerInvitations $invitations, OfficeErpReceipts $receipts, OfficeErpContracts $contracts, OfficeErpCustomerEnrollment $enrollment, OfficeErpTrialLinks $trialLinks): JsonResponse
     {
         $routeKey = $key;
         $headerKey = $request->header('Idempotency-Key');
@@ -34,7 +36,17 @@ final class OfficeErpOperationController extends Controller
         $outcome = $operations->lookup(
             $ctx,
             $validatedKey,
-            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey, $delinquency, $invoices, $invitations, $receipts, $contracts): void {
+            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey, $delinquency, $invoices, $invitations, $receipts, $contracts, $enrollment, $trialLinks): void {
+                if ($action === 'customer.enroll') {
+                    $enrollment->authorizeOperation($ctx, $action, $payload, $validatedKey);
+
+                    return;
+                }
+                if ($action === 'trial.convert') {
+                    $enrollment->authorizeTrialConversion($ctx, $action, $payload, $validatedKey);
+
+                    return;
+                }
                 if ($action === 'policy.configure') {
                     $delinquency->authorizeOperation($ctx, $action, $payload);
 
@@ -47,6 +59,11 @@ final class OfficeErpOperationController extends Controller
                 }
                 if (in_array($action, ['invitation.issue', 'invitation.revoke'], true)) {
                     $invitations->authorizeOperation($ctx, $admission, $action, $payload, $validatedKey);
+
+                    return;
+                }
+                if (in_array($action, ['trial.link.configure', 'trial.link.rotate'], true)) {
+                    $trialLinks->authorizeOperation($ctx, $admission, $action, $payload, $validatedKey);
 
                     return;
                 }
