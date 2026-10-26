@@ -16,6 +16,7 @@ use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpPlan;
 use App\Models\Erp\ErpSubscription;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\OfficeErpCommercialTestCase;
@@ -69,7 +70,7 @@ class DelinquencyTest extends OfficeErpCommercialTestCase
         self::assertSame('pending', $this->reconcileAt($ctx, $service, $pending, $now));
     }
 
-    public function test_legacy_direct_subscription_is_not_adopted_and_unknown_status_is_preserved(): void
+    public function test_legacy_direct_subscription_is_not_adopted_and_unknown_status_is_rejected(): void
     {
         $ctx = $this->officeContext();
         $contract = $this->effectiveContract($ctx);
@@ -82,9 +83,23 @@ class DelinquencyTest extends OfficeErpCommercialTestCase
         self::assertNull($subscription->fresh()->office_erp_contract_id);
         self::assertSame('active', $subscription->fresh()->status);
 
-        $subscription->forceFill(['office_erp_contract_id' => $contract->id, 'status' => 'legacy_unknown'])->save();
-        self::assertSame('legacy_unknown', $this->reconcileAt($ctx, $service, $contract->fresh(), $now));
-        self::assertSame('legacy_unknown', $subscription->fresh()->status);
+        try {
+            DB::transaction(function () use ($subscription, $contract): void {
+                $subscription->forceFill(['office_erp_contract_id' => $contract->id, 'status' => 'legacy_unknown'])->save();
+            });
+            self::fail('The ERP subscription status constraint must reject unknown values.');
+        } catch (QueryException $exception) {
+            $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+            $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+            $isConstraintViolation = str_starts_with($sqlState, '23')
+                || (DB::connection()->getDriverName() === 'sqlite' && in_array($driverCode, [19, 787, 1555, 2067], true));
+
+            self::assertTrue($isConstraintViolation, 'Expected a database integrity-constraint violation, got SQLSTATE '.$sqlState.'.');
+        }
+
+        $persistedSubscription = $subscription->fresh();
+        self::assertNull($persistedSubscription->office_erp_contract_id);
+        self::assertSame('active', $persistedSubscription->status);
     }
 
     public function test_automatic_policy_requires_explicit_confirmation_without_effects(): void

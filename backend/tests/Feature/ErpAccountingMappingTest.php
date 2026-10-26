@@ -299,7 +299,10 @@ class ErpAccountingMappingTest extends TestCase
         $user = User::factory()->create();
         ErpCompanyMembership::factory()->create(['erp_company_id' => $s['company']->id, 'user_id' => $user->id, 'role' => 'owner']);
         $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
-        ErpSubscription::factory()->create(['erp_company_id' => $s['company']->id, 'erp_plan_id' => $plan->id, 'status' => 'active']);
+        $subscription = $s['company']->subscription()->first();
+        if ($subscription === null) {
+            ErpSubscription::factory()->create(['erp_company_id' => $s['company']->id, 'erp_plan_id' => $plan->id, 'status' => 'active']);
+        }
         $this->loginUser($user);
         $this->withHeader('X-Company-Id', (string) $s['company']->id);
 
@@ -475,6 +478,8 @@ class ErpAccountingMappingTest extends TestCase
     {
         $account = Account::factory()->create();
         $company = ErpCompany::factory()->create(['cnpj' => '30288513000100']);
+        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        ErpSubscription::factory()->create(['erp_company_id' => $company->id, 'erp_plan_id' => $plan->id, 'status' => 'active']);
         $client = resolve(CurrentTenant::class)->run($account->id, fn () => Client::factory()->company()->create(['account_id' => $account->id, 'tax_id' => $company->cnpj]));
         $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $account->id]);
         $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
