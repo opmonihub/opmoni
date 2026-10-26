@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Erp;
 
+use App\Erp\Commercial\OfficeErpTrialLinks;
 use App\Erp\Commercial\OfficeErpTrialRegistration;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -9,6 +10,12 @@ use Illuminate\Http\Request;
 
 class ErpTrialController extends Controller
 {
+    public function show(Request $request, string $code, OfficeErpTrialLinks $links): JsonResponse
+    {
+        return response()->json(['data' => $links->resolvePublic($code)])
+            ->header('Cache-Control', 'no-store');
+    }
+
     public function register(Request $request, string $code, OfficeErpTrialRegistration $registration): JsonResponse
     {
         $input = $request->validate([
