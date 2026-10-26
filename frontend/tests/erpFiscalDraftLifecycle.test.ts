@@ -5,6 +5,7 @@ import { describe, it } from 'node:test'
 import * as Vue from 'vue'
 import ts from 'typescript'
 import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import * as apiErrors from '../app/composables/useApiError.ts'
 import * as fiscalHelpers from '../shared/utils/erpFiscal.ts'
 import * as companyPermissions from '../app/utils/erpModulesNav.ts'
@@ -59,6 +60,7 @@ function mountLifecycle(api: Api = defaultApi) {
     useState: (key: string, initialize: () => unknown) => key === 'access-session-generation' ? session : Vue.ref(initialize())
   }
   const imports: Record<string, unknown> = {
+    '~/composables/useErpReadScope': loadAppComposable('composables/useErpReadScope.ts', globals),
     'vue': Vue, './useApiError': apiErrors, './useAccessApi': { useAccessApi: () => ({ api: request }) },
     './useErpAdministrationContext': { useErpAdministrationContext: useContext },
     '~/utils/erpModulesNav': companyPermissions, '#shared/utils/erpFiscal': fiscalHelpers
