@@ -774,7 +774,7 @@ describe('Office ERP policy settings page', () => {
       company: { id: 12, name: 'Empresa em teste' },
       erp_plan_id: 73,
       trial: { id: 81, started_at: '2026-10-18T10:00:00Z', ends_at: '2026-10-25T10:00:00Z', converted_at: null, expired_at: null, situation: 'trialing' },
-      contract_type: 'office_trial', agreement_status: 'accepted', licence_status: 'trialing', current_revision: null, pending_revision: null,
+      agreement_status: 'accepted', licence_status: 'trialing', current_revision: null, pending_revision: null,
       service_anchor_on: null, next_period_month_offset: null, cancel_effective_on: null, cancellation_reason: null,
       manual_hold: false, balance: { outstanding: '0.00', invoice_count: 0 }, revisions: []
     }

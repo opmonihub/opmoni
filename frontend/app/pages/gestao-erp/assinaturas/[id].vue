@@ -28,7 +28,6 @@ interface ContractDetail {
   id: number
   erp_plan_id?: number | null
   erp_plan?: { id: number, name: string } | null
-  contract_type?: string
   client: { id: number, name: string }
   company: { id: number, name: string, owner_setup_status?: 'unclaimed' | 'claimed' } | null
   trial: ContractTrial | null
@@ -586,7 +585,7 @@ watch(identityStamp, () => {
         </div>
       </section>
 
-      <section v-if="record.agreement_status === 'accepted' && record.contract_type !== 'office_trial' && !record.trial" class="border-t border-default pt-4">
+      <section v-if="record.agreement_status === 'accepted' && !record.trial" class="border-t border-default pt-4">
         <h2 class="font-semibold text-highlighted">
           Ativar contrato aceito
         </h2>

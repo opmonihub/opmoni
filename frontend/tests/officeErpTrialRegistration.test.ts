@@ -207,10 +207,17 @@ describe('office ERP trial registration surface', () => {
         submit: async () => {},
         recover: async () => {}
       }
-      const mounted = renderPublicPage(trial)
+      const authUser = Vue.ref<unknown>(code === 'confirm_existing_association_required' ? { id: 41, name: 'Ana', email: 'ana@example.test' } : null)
+      const mounted = renderPublicPage(trial, authUser)
       t.after(mounted.app.unmount)
-      assert.equal(mounted.nodes().some(node => node.type === 'UAlert' && node.props.title === 'Confirme a associação ao escritório'), true)
-      assert.ok(mounted.nodes().some(node => node.type === 'UCheckbox'))
+      if (code === 'client_association_requires_owner_verification') {
+        assert.equal(mounted.nodes().some(node => node.type === 'UAlert' && node.props.title === 'Esta conta já está cadastrada'), true)
+        assert.equal(mounted.nodes().some(node => node.type === 'UButton' && node.props.target === '_blank'), true)
+        assert.equal(mounted.nodes().some(node => node.type === 'UCheckbox'), false)
+      } else {
+        assert.equal(mounted.nodes().some(node => node.type === 'UAlert' && node.props.title === 'Confirme a associação ao escritório'), true)
+        assert.equal(mounted.nodes().some(node => node.type === 'UCheckbox'), true)
+      }
     }
   })
 
@@ -414,6 +421,71 @@ describe('office ERP trial registration surface', () => {
       assert.equal((app.view.phase as Vue.Ref<string>).value, 'confirmed')
       app.stop()
     }
+  })
+
+  it('requires login for anonymous existing-client verification, then submits only an explicit authenticated confirmation', async () => {
+    const owner = { id: 88, name: 'Ana Owner', email: 'ana@example.test' }
+    let loggedIn = false
+    let posts = 0
+    const bodies: Array<Record<string, unknown>> = []
+    const app = setupTrial(async (_path, options) => {
+      if (options?.method === 'POST') {
+        posts++
+        bodies.push(options.body as Record<string, unknown>)
+        if (posts === 1)
+          throw { statusCode: 409, data: { code: 'client_association_requires_owner_verification', message: 'Entre para confirmar a associação.' } }
+        return { identity: owner, data: trialOutcome }
+      }
+      return { data: { sponsor: { name: 'Escritório Exemplo' }, plan: { name: 'ERP Essencial' }, duration_days: 7, available: true } }
+    }, async () => loggedIn ? owner : null)
+    const mounted = renderPublicPage(app.view, app.states.get('access-user') as Vue.Ref<unknown>)
+    try {
+      const settle = async () => {
+        for (let index = 0; index < 6; index++) await Promise.resolve()
+        await Vue.nextTick()
+      }
+      await app.view.load('public-code')
+      const initialForm = mounted.form
+      assert.equal(!!initialForm, true)
+      ;(initialForm.props.onSubmit as (event: { data: TrialRegistrationInput }) => void)({ data: input() })
+      await settle()
+      assert.equal(posts, 1)
+      assert.equal(!!mounted.form, false, 'the anonymous association response cannot resubmit or present a checkbox loop')
+      assert.equal(mounted.nodes().some(node => node.type === 'UButton' && node.props.target === '_blank' && (node.props.to ?? node.props.href) === '/login'), true)
+      assert.equal(mounted.nodes().some(node => node.type === 'UCheckbox'), false)
+
+      loggedIn = true
+      const refresh = mounted.nodes().find(node => node.type === 'UButton' && String(node.children.map(child => child.text).join('')).includes('Já entrei'))
+      assert.equal(!!refresh, true)
+      await (refresh.props.onClick as () => Promise<void>)()
+      await settle()
+      assert.equal((app.states.get('access-user') as Vue.Ref<typeof owner>).value.id, owner.id)
+      assert.equal(posts, 1, 'refreshing the logged-in identity never replays the registration')
+      assert.equal(!!mounted.form, true)
+      const checkbox = mounted.nodes().find(node => node.type === 'UCheckbox')
+      assert.equal(!!checkbox, true, 'the association confirmation appears only after authentication refresh')
+      ;(checkbox.props['onUpdate:modelValue'] as (value: boolean) => void)(true)
+      ;(mounted.form!.props.onSubmit as (event: { data: TrialRegistrationInput }) => void)({ data: { ...input(), name: owner.name, email: owner.email, password: undefined, confirm_existing_association: true } })
+      await settle()
+      assert.equal(posts, 2)
+      assert.equal(bodies[1]?.confirm_existing_association, true)
+      assert.equal('password' in (bodies[1] ?? {}), false)
+      assert.equal((app.view.phase as Vue.Ref<string>).value, 'confirmed')
+    } finally {
+      mounted.app.unmount()
+      app.stop()
+    }
+  })
+
+  it('maps public trial availability reason codes to safe Portuguese copy', async (t) => {
+    const app = setupTrial(async () => ({
+      data: { sponsor: { name: 'Escritório Exemplo' }, plan: { name: 'ERP Essencial' }, duration_days: 7, available: false, reason: 'trial_capacity_unavailable' }
+    }), async () => null)
+    t.after(app.stop)
+    await app.view.load('public-code')
+    const message = (app.view.failure as Vue.Ref<{ message: string } | null>).value?.message ?? ''
+    assert.match(message, /limite de avaliações disponíveis/)
+    assert.doesNotMatch(message, /trial_capacity_unavailable/)
   })
 
   it('refreshes identity before reading public availability and allows an anonymous refresh result', async (t) => {

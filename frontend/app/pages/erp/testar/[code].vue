@@ -47,8 +47,13 @@ const regimeOptions = [
   { label: 'Outro', value: 'other' }
 ]
 const fieldError = (name: string) => trial.failure.value?.fieldErrors[name]?.[0]
-const requiresAssociationConfirmation = computed(() => ['company_association_required', 'client_association_requires_owner_verification', 'confirm_existing_association_required'].includes(trial.failure.value?.code ?? ''))
-const loginRequired = computed(() => trial.failure.value?.code === 'login_required')
+const associationConfirmationCode = ref('')
+watch(() => trial.failure.value?.code, (code) => {
+  if (['company_association_required', 'client_association_requires_owner_verification', 'confirm_existing_association_required'].includes(code ?? ''))
+    associationConfirmationCode.value = String(route.params.code ?? '')
+}, { immediate: true })
+const requiresAssociationConfirmation = computed(() => !!user.value && associationConfirmationCode.value === String(route.params.code ?? ''))
+const loginRequired = computed(() => ['login_required', 'client_association_requires_owner_verification'].includes(trial.failure.value?.code ?? ''))
 const busy = computed(() => trial.phase.value === 'submitting')
 const recoveryBusy = ref(false)
 const taxRegimeValue = computed({

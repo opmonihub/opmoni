@@ -15,6 +15,13 @@ type PendingTrialRegistration = { key: string, email: string, expires_at: number
 
 const storageKey = 'office-erp.trial-registration.pending'
 const recoveryRetention = 15 * 60 * 1000
+const publicAvailabilityMessages: Record<string, string> = {
+  trial_capacity_unavailable: 'O escritório atingiu o limite de avaliações disponíveis. Entre em contato com o escritório para saber como continuar.',
+  subscription_inactive: 'O escritório responsável não pode iniciar avaliações neste momento. Entre em contato com o escritório.',
+  modules_not_allowed: 'Os módulos deste teste não estão disponíveis para o escritório responsável neste momento. Entre em contato com ele.',
+  commercial_module_not_allowed: 'Os módulos deste teste não estão disponíveis para o escritório responsável neste momento. Entre em contato com ele.',
+  trial_registration_disabled: 'O escritório não está aceitando novos testes neste momento. Entre em contato com ele.'
+}
 
 export function useErpTrialRegistration() {
   const { api, refreshCsrf } = useAccessApi()
@@ -102,7 +109,7 @@ export function useErpTrialRegistration() {
       if (!response.data.available) {
         failure.value = {
           code: 'trial_unavailable',
-          message: response.data.reason || 'Este link não pode iniciar um teste agora.',
+          message: publicAvailabilityMessages[response.data.reason ?? ''] ?? 'Este link não pode iniciar um teste agora.',
           http_status: 403,
           fieldErrors: {}
         }
