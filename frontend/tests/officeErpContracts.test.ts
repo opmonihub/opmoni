@@ -187,6 +187,61 @@ test('shows factual trial dates without inventing a next invoice', async () => {
   }
 })
 
+test('keeps paid subscription status and next billing visible after trial conversion', async () => {
+  const rows = ['active', 'suspended', 'past_due', 'canceled'].map((licence_status, index) => ({
+    ...detail,
+    id: 81 + index,
+    licence_status,
+    trial: {
+      id: 91 + index,
+      started_at: '2026-10-18T12:00:00Z',
+      ends_at: '2026-10-25T12:00:00Z',
+      converted_at: '2026-10-25T12:00:00Z',
+      expired_at: null,
+      situation: 'converted'
+    },
+    next_billing_on: '2026-11-25'
+  }))
+  const page = harness('pages/gestao-erp/assinaturas/index.vue', detail, null, rows)
+  try {
+    await settle()
+    const rendered = text(page.root)
+    assert.match(rendered, /Ativa/)
+    assert.match(rendered, /Suspensa/)
+    assert.match(rendered, /Em atraso/)
+    assert.match(rendered, /Cancelada/)
+    assert.equal((rendered.match(/Próxima cobrança 25\/11\/2026/g) ?? []).length, 4)
+    assert.equal((rendered.match(/Período de teste convertido: 25\/10\/2026/g) ?? []).length, 4)
+  } finally {
+    page.app.unmount()
+  }
+})
+
+test('distinguishes an accepted trial while owner activation is pending', async () => {
+  const acceptedTrial = {
+    ...detail,
+    agreement_status: 'accepted',
+    licence_status: 'trialing',
+    trial: {
+      id: 71,
+      started_at: '2026-10-25T12:00:00Z',
+      ends_at: '2026-11-01T12:00:00Z',
+      converted_at: null,
+      expired_at: null,
+      situation: 'trialing'
+    },
+    next_billing_on: null
+  }
+  const page = harness('pages/gestao-erp/assinaturas/[id].vue', acceptedTrial)
+  try {
+    await settle()
+    assert.match(text(page.root), /Teste iniciado · aguardando ativação/)
+    assert.match(text(page.root), /Teste de 7 dias/)
+  } finally {
+    page.app.unmount()
+  }
+})
+
 test('renders the contract detail SFC, dispatches lifecycle actions, and recovers unknown outcomes', async () => {
   const page = harness('pages/gestao-erp/assinaturas/[id].vue')
   try {

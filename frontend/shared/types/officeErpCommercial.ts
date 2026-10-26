@@ -161,6 +161,24 @@ export interface OfficeErpPortfolioClient {
   name: string
   trade_name: string | null
   tax_id: string | null
+  subscription?: OfficeErpClientSubscriptionSummary | null
+}
+
+export interface OfficeErpClientSubscriptionSummary {
+  contract_id: number
+  agreement_status: string
+  licence_status: string | null
+  erp_plan_id: number | null
+  erp_plan: { id: number, name: string } | null
+  trial: {
+    id: number
+    started_at: string
+    ends_at: string
+    converted_at: string | null
+    expired_at: string | null
+    situation: 'trialing' | 'expired' | 'converted'
+  } | null
+  next_billing_on: string | null
 }
 
 export interface OfficeErpPortfolioClientListResponse {

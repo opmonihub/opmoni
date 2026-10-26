@@ -58,7 +58,16 @@ const agreementStatusLabels: Record<string, string> = {
   effective: 'Vigente',
   canceled: 'Cancelado'
 }
-const trialStatusLabels = { trialing: 'Em teste', expired: 'Teste encerrado', converted: 'Convertido' } as const
+const trialStatusLabels = { trialing: 'Em teste', expired: 'Teste encerrado', converted: 'Período de teste convertido' } as const
+const licenceStatusLabels: Record<string, string> = {
+  active: 'Ativa',
+  pending: 'Pendente',
+  suspended: 'Suspensa',
+  past_due: 'Em atraso',
+  canceled: 'Cancelada',
+  trialing: 'Em teste',
+  trial_expired: 'Teste encerrado'
+}
 
 function formatDate(value: string) {
   const date = new Date(value)
@@ -192,12 +201,15 @@ watch(identityStamp, () => {
             </template>
             <template #licence-cell="{ row }">
               <UBadge :color="row.original.licence_status === 'active' ? 'success' : 'warning'" variant="subtle">
-                {{ row.original.trial ? trialStatusLabels[row.original.trial.situation] : row.original.licence_status === 'active' ? 'Ativa' : row.original.licence_status === 'suspended' ? 'Suspensa' : row.original.licence_status === 'past_due' ? 'Em atraso' : row.original.licence_status === 'canceled' ? 'Cancelada' : row.original.licence_status === 'trialing' ? 'Em teste' : row.original.licence_status === 'trial_expired' ? 'Teste encerrado' : row.original.licence_status === 'pending' ? 'Pendente' : 'Situação não reconhecida' }}
+                {{ row.original.trial?.situation === 'trialing' ? 'Em teste' : row.original.trial?.situation === 'expired' ? 'Teste encerrado' : licenceStatusLabels[row.original.licence_status ?? ''] ?? 'Situação não reconhecida' }}
               </UBadge>
-              <p v-if="row.original.trial" class="mt-1 text-xs text-muted">
-                {{ row.original.trial.situation === 'trialing' ? 'Encerra' : row.original.trial.situation === 'expired' ? 'Encerrou' : 'Período original até' }} {{ formatDate(row.original.trial.ends_at) }}
+              <p v-if="row.original.trial?.situation === 'trialing' || row.original.trial?.situation === 'expired'" class="mt-1 text-xs text-muted">
+                {{ row.original.trial.situation === 'trialing' ? 'Encerra' : 'Encerrou' }} {{ formatDate(row.original.trial.ends_at) }}
               </p>
-              <p v-else-if="row.original.next_billing_on" class="mt-1 text-xs text-muted">
+              <p v-else-if="row.original.trial?.situation === 'converted'" class="mt-1 text-xs text-muted">
+                {{ trialStatusLabels.converted }}: {{ formatDate(row.original.trial.ends_at) }}
+              </p>
+              <p v-if="row.original.next_billing_on && row.original.trial?.situation !== 'trialing' && row.original.trial?.situation !== 'expired'" class="mt-1 text-xs text-muted">
                 Próxima cobrança {{ formatDate(row.original.next_billing_on) }}
               </p>
             </template>

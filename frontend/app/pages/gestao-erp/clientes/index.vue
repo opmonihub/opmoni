@@ -32,8 +32,26 @@ const identityStamp = computed(() => JSON.stringify([
 const columns: TableColumn<OfficeErpPortfolioClient>[] = [
   { accessorKey: 'name', header: 'Cliente' },
   { accessorKey: 'tax_id', header: 'CNPJ' },
+  { id: 'subscription', header: 'Plano e situação' },
+  { id: 'billing', header: 'Próxima data' },
   { id: 'actions', header: '' }
 ]
+
+const licenceLabels: Record<string, string> = {
+  active: 'Assinatura ativa',
+  pending: 'Assinatura pendente',
+  suspended: 'Assinatura suspensa',
+  past_due: 'Assinatura em atraso',
+  canceled: 'Assinatura cancelada'
+}
+const trialLabels = { trialing: 'Em teste', expired: 'Teste encerrado', converted: 'Convertido em assinatura' }
+
+function formatOfficeDate(value: string | null | undefined) {
+  if (!value) return null
+  const date = new Date(`${value.slice(0, 10)}T00:00:00Z`)
+  if (!Number.isFinite(date.getTime())) return null
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(date)
+}
 
 async function loadClients() {
   const request = ++requestGeneration
@@ -195,22 +213,57 @@ watch(identityStamp, () => {
           <template #tax_id-cell="{ row }">
             <span class="text-sm text-muted">{{ row.original.tax_id || '—' }}</span>
           </template>
+          <template #subscription-cell="{ row }">
+            <div v-if="row.original.subscription" class="min-w-0">
+              <p class="truncate font-medium text-highlighted">
+                {{ row.original.subscription.erp_plan?.name || 'Plano ERP' }}
+              </p>
+              <p class="text-sm text-muted">
+                {{ row.original.subscription.trial ? trialLabels[row.original.subscription.trial.situation] : licenceLabels[row.original.subscription.licence_status || ''] || 'Situação indisponível' }}
+              </p>
+            </div>
+            <span v-else-if="row.original.subscription === null" class="text-sm text-muted">Sem contrato ERP vinculado</span>
+            <span v-else class="text-sm text-muted">Resumo do contrato indisponível</span>
+          </template>
+          <template #billing-cell="{ row }">
+            <template v-if="row.original.subscription?.trial">
+              <span class="text-sm text-muted">Termina em {{ formatOfficeDate(row.original.subscription.trial.ends_at) || 'data indisponível' }}</span>
+            </template>
+            <template v-else-if="row.original.subscription">
+              <span class="text-sm text-muted">
+                {{ formatOfficeDate(row.original.subscription.next_billing_on) ? `Próxima cobrança ${formatOfficeDate(row.original.subscription.next_billing_on)}` : 'Próxima cobrança indisponível' }}
+              </span>
+            </template>
+            <span v-else-if="row.original.subscription === null" class="text-sm text-muted">—</span>
+            <span v-else class="text-sm text-muted">Data indisponível</span>
+          </template>
           <template #actions-cell="{ row }">
-            <UButton
-              :to="{
-                path: '/gestao-erp/clientes/novo',
-                query: {
-                  cliente: row.original.id,
-                  pagina: page,
-                  ...(debouncedQuery.trim() ? { q: debouncedQuery.trim() } : {})
-                }
-              }"
-              color="neutral"
-              variant="ghost"
-              size="sm"
-            >
-              Selecionar da carteira
-            </UButton>
+            <div class="flex flex-wrap gap-1">
+              <UButton
+                v-if="row.original.subscription"
+                :to="`/gestao-erp/assinaturas/${row.original.subscription.contract_id}`"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+              >
+                Ver contrato
+              </UButton>
+              <UButton
+                :to="{
+                  path: '/gestao-erp/clientes/novo',
+                  query: {
+                    cliente: row.original.id,
+                    pagina: page,
+                    ...(debouncedQuery.trim() ? { q: debouncedQuery.trim() } : {})
+                  }
+                }"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+              >
+                Selecionar da carteira
+              </UButton>
+            </div>
           </template>
           <template #empty>
             <div class="py-8 text-center text-sm text-muted">

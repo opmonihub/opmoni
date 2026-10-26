@@ -78,6 +78,7 @@ const legacyInvitation = ref<OfficeErpInvitationOutcome | null>(null)
 const ownerSetupError = ref('')
 const ownerSetupBusy = ref(false)
 if (command.recoveryKey.value) recoveryAction.value = 'detect'
+let authorityGeneration = 0
 
 if (Number(route.query.cliente) > 0) source.value = 'portfolio'
 
@@ -121,6 +122,25 @@ const taxRegimes = [
   { label: 'Lucro real', value: 'actual_profit' },
   { label: 'Outro', value: 'other' }
 ]
+const eligibilityReasons: Record<string, string> = {
+  subscription_inactive: 'A assinatura do escritório está inativa.',
+  licence_capacity_reached: 'Não há licenças disponíveis para outra matrícula.',
+  commercial_module_not_allowed: 'O plano do escritório não permite os módulos ERP necessários.',
+  trial_registration_disabled: 'A abertura de novos testes está desativada para este escritório.'
+}
+
+function eligibilityGuidance(reasons: string[]) {
+  const explanations = [...new Set(reasons.map(reason => eligibilityReasons[reason]).filter((reason): reason is string => !!reason))]
+  const message = explanations.length ? explanations.join(' ') : 'A elegibilidade atual do escritório não permite novas matrículas.'
+  const nextStep = reasons.includes('subscription_inactive')
+    ? 'Próximo passo: peça à administradora do escritório para regularizar a assinatura.'
+    : reasons.includes('licence_capacity_reached')
+      ? 'Próximo passo: aumente a capacidade do escritório ou libere uma licença.'
+      : reasons.includes('commercial_module_not_allowed')
+        ? 'Próximo passo: revise os módulos ERP permitidos no plano do escritório.'
+        : 'Próximo passo: peça à administradora para revisar a configuração comercial do escritório.'
+  return `${message} ${nextStep}`
+}
 
 function todayLocal() {
   const now = new Date()
@@ -193,6 +213,7 @@ async function loadPlans() {
 async function lookupCompany() {
   if (source.value !== 'new' || companyTaxIdEntry(newClient.tax_id) !== 'lookup' || lookupBusy.value) return
   const request = ++lookupRequest
+  const generation = authorityGeneration
   const identity = identityStamp.value
   const taxId = newClient.tax_id
   lookupBusy.value = true
@@ -209,7 +230,7 @@ async function lookupCompany() {
     if (request === lookupRequest && identity === identityStamp.value)
       lookupError.value = errorMessage(error, 'Não foi possível consultar o CNPJ agora. Os dados digitados foram mantidos.')
   } finally {
-    if (request === lookupRequest && identity === identityStamp.value) lookupBusy.value = false
+    if (generation === authorityGeneration) lookupBusy.value = false
   }
 }
 
@@ -282,6 +303,7 @@ function collectFailure(result: Extract<OfficeErpCommandResult<unknown>, { statu
 async function enroll() {
   if (!canSubmit.value) return
   const identity = identityStamp.value
+  const generation = authorityGeneration
   const token = context.capture()
   let input: OfficeErpEnrollmentInput
   try {
@@ -303,7 +325,7 @@ async function enroll() {
     } else if (result.status === 'failed') collectFailure(result)
     else if (result.status === 'stale') formError.value = 'O contexto do escritório mudou. Atualize a página antes de continuar.'
   } finally {
-    if (identity === identityStamp.value) commandBusy.value = false
+    if (generation === authorityGeneration) commandBusy.value = false
   }
 }
 
@@ -342,6 +364,7 @@ function safeOwnerSetupUrl(value: unknown) {
 async function setupOwner() {
   if (!enrollment.value || ownerName.value.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.value.trim()) || commandBusy.value || commandPending.value) return
   const identity = identityStamp.value
+  const generation = authorityGeneration
   const token = context.capture()
   ownerSetup.value = null
   ownerSetupBusy.value = true
@@ -363,7 +386,7 @@ async function setupOwner() {
     } else if (result.status === 'failed') ownerSetupError.value = result.failure.message
     else if (result.status === 'stale') ownerSetupError.value = 'O contexto do escritório mudou. A operação não foi repetida.'
   } finally {
-    if (identity === identityStamp.value) ownerSetupBusy.value = false
+    if (generation === authorityGeneration) ownerSetupBusy.value = false
   }
 }
 
@@ -372,6 +395,7 @@ async function recoverOperation() {
   const action = recoveryAction.value
   if (!key || !action || commandBusy.value) return
   const identity = identityStamp.value
+  const generation = authorityGeneration
   const token = context.capture()
   commandBusy.value = true
   try {
@@ -418,7 +442,7 @@ async function recoverOperation() {
       }
     }
   } finally {
-    if (identity === identityStamp.value) commandBusy.value = false
+    if (generation === authorityGeneration) commandBusy.value = false
   }
 }
 
@@ -438,6 +462,7 @@ watch([clientPage, clientSearch, identityStamp], () => {
   if (source.value === 'portfolio') void loadClients()
 }, { immediate: true, flush: 'post' })
 watch(identityStamp, () => {
+  authorityGeneration++
   clientRequest++
   plansRequest++
   lookupRequest++
@@ -450,12 +475,56 @@ watch(identityStamp, () => {
   ownerSetup.value = null
   recoveryAction.value = null
   legacyInvitation.value = null
+  lookupBusy.value = false
+  commandBusy.value = false
+  ownerSetupBusy.value = false
+  clientsLoading.value = false
+  plansLoading.value = false
+  source.value = 'new'
+  newClient.tax_id = ''
+  newClient.name = ''
+  newClient.tax_regime = 'presumed_profit'
+  newClient.email = ''
+  newClient.phone = ''
+  lookedUpTaxId.value = ''
+  ownerName.value = ''
+  ownerEmail.value = ''
+  clientQuery.value = ''
+  clientPage.value = 1
+  price.value = ''
+  intervalMonths.value = 1
+  dueInDays.value = '7'
+  startOn.value = todayLocal()
+  billingTimezone.value = 'America/Sao_Paulo'
   clientsError.value = ''
   plansError.value = ''
   lookupError.value = ''
   formError.value = ''
   ownerSetupError.value = ''
   void loadPlans()
+}, { flush: 'sync' })
+watch(recoveryKey, (key) => {
+  if (!key) recoveryAction.value = null
+  else if (!recoveryAction.value) recoveryAction.value = 'detect'
+}, { flush: 'post' })
+watch(() => [
+  source.value,
+  selectedClient.value?.id,
+  selectedPlan.value?.id,
+  newClient.tax_id,
+  newClient.name,
+  newClient.tax_regime,
+  newClient.email,
+  newClient.phone,
+  price.value,
+  intervalMonths.value,
+  dueInDays.value,
+  startOn.value,
+  billingTimezone.value
+], () => {
+  if (commandPending.value) return
+  formError.value = ''
+  fieldErrors.value = {}
 }, { flush: 'sync' })
 watch(() => newClient.tax_id, (next, previous) => {
   if (taxIdEditInvalidatesLookup(previous ?? '', next)) {
@@ -615,7 +684,7 @@ watch(() => context.capabilities.value?.capability_key, () => {
             color="warning"
             variant="subtle"
             title="Matrícula indisponível"
-            :description="eligibility.reasons.join(' ') || 'A capacidade atual do escritório não permite novas matrículas.'"
+            :description="eligibilityGuidance(eligibility.reasons)"
           />
           <UAlert
             v-if="formError"
