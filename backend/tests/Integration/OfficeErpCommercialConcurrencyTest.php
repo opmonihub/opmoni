@@ -698,6 +698,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $contractId = (int) $subscription->office_erp_contract_id;
         $allocation = DB::table('office_erp_licence_allocations')->where('contract_id', $contractId)->firstOrFail();
         $endsAt = CarbonImmutable::parse($trial->ends_at);
+        $conversionAt = $endsAt->subSeconds(1);
         $expiryNow = $endsAt->addSecond();
         $terms = [
             'erp_plan_id' => $trialLink['plan_id'],
@@ -705,7 +706,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
             'currency' => 'BRL',
             'interval_months' => 1,
             'due_in_days' => 10,
-            'start_on' => $endsAt->setTimezone('America/Sao_Paulo')->toDateString(),
+            'start_on' => $conversionAt->setTimezone('America/Sao_Paulo')->toDateString(),
             'billing_timezone' => 'America/Sao_Paulo',
         ];
 
@@ -715,7 +716,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
             $terms,
             'conversion-wins-'.bin2hex(random_bytes(4)),
             holdAccountLock: true,
-            frozenNow: $endsAt->toISOString(),
+            frozenNow: $conversionAt->toISOString(),
         ));
         $this->waitFor($conversion, 'held');
         $this->assertWorkerHeldLock($conversion, 'accounts');
