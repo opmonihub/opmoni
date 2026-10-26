@@ -13,6 +13,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
+import { parse } from 'vue/compiler-sfc'
+import ts from 'typescript'
 import type { FiscalTone } from '../app/utils/fiscalPresentation.ts'
 import type { FiscalAttentionItem, FiscalAttentionReason, FiscalClientCertificateStatus, FiscalSummary } from '../app/types/fiscal.ts'
 import {
@@ -861,13 +863,20 @@ describe('a reancoragem do relógio das janelas', () => {
 
   /** O corpo do handler que a busca entrega ao `useAsyncData`. */
   function fetchHandler(source: string): string {
-    const call = source.indexOf('useAsyncData<FiscalSummary>(')
-    assert.notEqual(call, -1, 'a página não busca o resumo com useAsyncData')
-
-    const at = source.indexOf('async () =>', call)
-    assert.notEqual(at, -1, 'a busca não tem um handler')
-
-    return bodyOf(source.slice(at), 'async () =>')
+    const { descriptor } = parse(source)
+    assert.ok(descriptor.scriptSetup)
+    const script = ts.createSourceFile('fiscal-index.ts', descriptor.scriptSetup.content, ts.ScriptTarget.Latest, true)
+    let handler: ts.Expression | undefined
+    function visit(node: ts.Node) {
+      if (ts.isCallExpression(node)
+        && node.expression.getText(script) === 'useAsyncData'
+        && ts.isStringLiteral(node.arguments[0]!)
+        && node.arguments[0]!.text === 'fiscal-summary') handler = node.arguments[1]
+      ts.forEachChild(node, visit)
+    }
+    visit(script)
+    assert.ok(handler && ts.isArrowFunction(handler) && ts.isBlock(handler.body), 'a busca não tem um handler com corpo de bloco')
+    return handler.body.getText(script).slice(1, -1)
   }
 
   /**
@@ -903,7 +912,7 @@ describe('a reancoragem do relógio das janelas', () => {
     // sem pestanejar.
     const handler = fetchHandler(page)
 
-    assert.match(handler, /await summary\(\)/, 'o recorte não é o handler que busca o resumo')
+    assert.match(handler, /await summary\([^)]*\)/, 'o recorte não é o handler que busca o resumo')
 
     const reancora = topLevelIndex(handler, /^referenceNow\.value\s*=/)
     assert.notEqual(
