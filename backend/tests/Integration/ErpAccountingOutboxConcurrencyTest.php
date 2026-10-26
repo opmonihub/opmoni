@@ -242,8 +242,6 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
             $this->assertSame($fixture['company']->id, $delegation->erp_company_id);
             $this->assertFalse(in_array($delegation->id, $protected['erp_office_delegations']['ids'], true));
             ErpCompanyMembership::factory()->create(['erp_company_id' => $fixture['company']->id, 'user_id' => $fixture['actor']->id, 'role' => 'owner']);
-            ErpSubscription::factory()->create(['erp_company_id' => $fixture['company']->id,
-                'erp_plan_id' => app(ErpCommercialCatalog::class)->ensureBasicPlan()->id, 'status' => 'active']);
 
             DB::transaction(fn () => app(ErpAccountingHandoffService::class)->queueAfterCommit($fixture['delivery']));
             $this->assertSame(0, DB::transactionLevel());
@@ -331,16 +329,10 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
 
         try {
             $fixture = $this->handoffFixture($storageRoot);
-            $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
             ErpCompanyMembership::factory()->create([
                 'erp_company_id' => $fixture['company']->id,
                 'user_id' => $fixture['actor']->id,
                 'role' => 'owner',
-            ]);
-            ErpSubscription::factory()->create([
-                'erp_company_id' => $fixture['company']->id,
-                'erp_plan_id' => $plan->id,
-                'status' => 'active',
             ]);
 
             $ingressHeaders = [
@@ -456,6 +448,8 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
         $cnpj = fake('pt_BR')->unique()->cnpj(false);
         $accessKey = substr_replace('35251030288513000100550010000090011234567890', $cnpj, 6, 14);
         $company = ErpCompany::factory()->create(['cnpj' => $cnpj]);
+        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        ErpSubscription::factory()->create(['erp_company_id' => $company->id, 'erp_plan_id' => $plan->id, 'status' => 'active']);
         $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $cnpj]);
         $office = Account::factory()->create();
         $actor = User::factory()->create();
