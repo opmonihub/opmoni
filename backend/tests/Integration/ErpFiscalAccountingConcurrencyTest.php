@@ -70,6 +70,8 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     private function assertConcurrentDeliveryPublishesSingleOfficeDocument(): void
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
+        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        ErpSubscription::factory()->create(['erp_company_id' => $company->id, 'erp_plan_id' => $plan->id, 'status' => 'active']);
         $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create([
@@ -154,6 +156,8 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     private function assertDeliveryBlockedWhenDelegationRevoked(): void
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
+        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        ErpSubscription::factory()->create(['erp_company_id' => $company->id, 'erp_plan_id' => $plan->id, 'status' => 'active']);
         $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create([
@@ -192,7 +196,9 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
         $worker->start();
         $result = $this->response($worker);
         $this->assertTrue($result['ok'] ?? false);
-        $this->assertSame(ErpAccountingDelivery::STATUS_BLOCKED, ErpAccountingDelivery::query()->findOrFail($delivery->id)->status);
+        $blockedDelivery = ErpAccountingDelivery::query()->findOrFail($delivery->id);
+        $this->assertSame(ErpAccountingDelivery::STATUS_BLOCKED, $blockedDelivery->status);
+        $this->assertSame('delegation_revoked', $blockedDelivery->reason_code);
     }
 
     public function test_crossing_parent_locks_fail_fast_and_rollback_without_consuming_attempts(): void
@@ -270,8 +276,6 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
         ErpAccountingDelivery::whereKey($s['delivery_id'])->delete();
         $owner = User::factory()->create();
         ErpCompanyMembership::factory()->create(['erp_company_id' => $s['company_id'], 'user_id' => $owner->id, 'role' => 'owner']);
-        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
-        ErpSubscription::factory()->create(['erp_company_id' => $s['company_id'], 'erp_plan_id' => $plan->id, 'status' => 'active']);
         $session = $this->httpLogin($owner);
         $intents = ErpAccountingDelivery::count();
         $jobs = DB::table('jobs')->count();
@@ -297,8 +301,6 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
         ErpAccountingDelivery::whereKey($s['delivery_id'])->delete();
         $owner = User::factory()->create();
         ErpCompanyMembership::factory()->create(['erp_company_id' => $s['company_id'], 'user_id' => $owner->id, 'role' => 'owner']);
-        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
-        ErpSubscription::factory()->create(['erp_company_id' => $s['company_id'], 'erp_plan_id' => $plan->id, 'status' => 'active']);
         $session = $this->httpLogin($owner);
         $intents = ErpAccountingDelivery::count();
         $jobs = DB::table('jobs')->count();
@@ -461,8 +463,6 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
         });
         $owner = User::factory()->create();
         ErpCompanyMembership::factory()->create(['erp_company_id' => $s['company_id'], 'user_id' => $owner->id, 'role' => 'owner']);
-        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
-        ErpSubscription::factory()->create(['erp_company_id' => $s['company_id'], 'erp_plan_id' => $plan->id, 'status' => 'active']);
         $ownerSession = $this->httpLogin($owner);
         DB::transaction(function () use ($s, $ownerSession): void {
             Account::whereKey($s['account_id'])->lockForUpdate()->firstOrFail();
@@ -561,6 +561,8 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     private function mappingScenario(): array
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
+        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        ErpSubscription::factory()->create(['erp_company_id' => $company->id, 'erp_plan_id' => $plan->id, 'status' => 'active']);
         $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $office->id]);
