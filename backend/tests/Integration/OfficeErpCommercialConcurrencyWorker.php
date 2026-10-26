@@ -10,6 +10,7 @@ use App\Erp\Commercial\OfficeErpInvitationContinuation;
 use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpLicenceAllocator;
 use App\Erp\Commercial\OfficeErpOwnerAcceptance;
+use App\Erp\Commercial\OfficeErpOwnerSetup;
 use App\Erp\Commercial\OfficeErpReceiptProofs;
 use App\Erp\Commercial\OfficeErpReceipts;
 use App\Erp\Commercial\OfficeErpRecords;
@@ -60,14 +61,14 @@ final class OfficeErpCommercialConcurrencyWorker
 
         $request = Request::create('http://localhost:3000');
         app()->instance('request', $request);
-        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'remove_allowance', 'cancel_contract', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'trial_convert'], true)) {
+        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'owner_setup_accept', 'owner_setup_issue', 'remove_allowance', 'cancel_contract', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'trial_convert'], true)) {
             throw new RuntimeException('Unsupported action in the accepted commercial race subset: '.$input['action']);
         }
         if (isset($input['hold_row_lock']) && (! is_string($input['hold_row_lock']) || preg_match('/\A[a-z_]+\z/', $input['hold_row_lock']) !== 1)) {
             throw new RuntimeException('Invalid table name for the commercial row-lock barrier.');
         }
         $context = null;
-        if (! in_array($input['action'], ['owner_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_expire'], true)) {
+        if (! in_array($input['action'], ['owner_accept', 'owner_setup_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_expire'], true)) {
             $account = Account::query()->findOrFail($input['account_id']);
             $actor = User::query()->findOrFail($input['actor_id']);
             $membership = AccountMembership::query()
@@ -126,7 +127,7 @@ final class OfficeErpCommercialConcurrencyWorker
                 Carbon::setTestNow($frozenNow);
             }
             $contract = null;
-            if (! in_array($input['action'], ['owner_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire'], true)) {
+            if (! in_array($input['action'], ['owner_accept', 'owner_setup_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire'], true)) {
                 $contract = OfficeErpRecords::query($context, OfficeErpContract::class)
                     ->whereKey($input['contract_id'])
                     ->firstOrFail();
@@ -195,6 +196,34 @@ final class OfficeErpCommercialConcurrencyWorker
                     (string) $input['idempotency_key'],
                 );
                 $result = ['status' => 201, ...$result];
+            } elseif ($input['action'] === 'owner_setup_issue') {
+                $setup = app(OfficeErpOwnerSetup::class)->issue(
+                    $context,
+                    $contract,
+                    $input['owner'],
+                    (string) $input['idempotency_key'],
+                );
+                $result = [
+                    'status' => 201,
+                    'contract_id' => (int) $input['contract_id'],
+                    'invitation_id' => (int) $setup['invitation_id'],
+                ];
+            } elseif ($input['action'] === 'owner_setup_accept') {
+                $request = self::ownerSetupRequest($input);
+                $continuation = app(OfficeErpInvitationContinuation::class)->current($request);
+                abort_unless(($continuation['state'] ?? null) === 'valid'
+                    && ($continuation['purpose'] ?? null) === 'access_setup'
+                    && is_string($continuation['operation_key'] ?? null), 410, 'invitation_continuation_required');
+                $contract = app(OfficeErpOwnerSetup::class)->accept(
+                    $request,
+                    ['password' => (string) $input['password']],
+                    $continuation['operation_key'],
+                );
+                $result = [
+                    'status' => 201,
+                    'contract_id' => (int) $contract->id,
+                    'company_id' => (int) $contract->erp_company_id,
+                ];
             } elseif ($input['action'] === 'reserve') {
                 $allocation = $context->run(fn () => app(OfficeErpLicenceAllocator::class)->reserve(
                     $context,
@@ -343,6 +372,29 @@ final class OfficeErpCommercialConcurrencyWorker
         $guard->setRequest($request);
         $guard->login($owner);
         $request->setUserResolver(static fn (): ?User => $guard->user());
+
+        return $request;
+    }
+
+    /** @param array<string, mixed> $input */
+    private static function ownerSetupRequest(array $input): Request
+    {
+        $session = app('session')->driver();
+        $session->setId(bin2hex(random_bytes(20)));
+        $session->start();
+        $request = Request::create('http://localhost:3000/api/v1/erp-invitations/accept', 'POST');
+        $request->setLaravelSession($session);
+        $lock = Cache::lock('access-session:'.hash('sha256', $session->getId()), (int) config('access.lock_seconds', 30));
+        if (! $lock->get()) {
+            throw new RuntimeException('Unable to acquire the isolated owner setup session lock.');
+        }
+        $request->attributes->set('access.session_lock', $lock);
+        app()->instance('request', $request);
+
+        $continuation = app(OfficeErpInvitationContinuation::class)->exchange($request, (string) $input['token']);
+        abort_unless(($continuation['state'] ?? null) === 'valid'
+            && ($continuation['purpose'] ?? null) === 'access_setup'
+            && is_string($continuation['operation_key'] ?? null), 410, 'invitation_continuation_required');
 
         return $request;
     }

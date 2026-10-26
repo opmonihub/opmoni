@@ -185,6 +185,80 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame(0, DB::table('office_erp_commercial_operations')->where('action', 'owner.accept')->where('account_id', $secondInvitation['account_id'])->count());
     }
 
+    public function test_owner_setup_accept_winning_company_lock_rejects_reissue_without_financial_changes(): void
+    {
+        $office = $this->commercialFixture(2);
+        $setup = $this->ownerSetupFixture($office);
+        $subscriptionBefore = ErpSubscription::query()->findOrFail($setup['subscription_id'])->getAttributes();
+        $allocationBefore = DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first();
+        $invoiceRowsBefore = DB::table('office_erp_invoices')->orderBy('id')->get()->toJson();
+        $allocationCount = DB::table('office_erp_licence_allocations')->count();
+        $invoiceCount = DB::table('office_erp_invoices')->count();
+
+        $acceptance = $this->worker('owner_setup_accept', $this->ownerSetupAcceptPayload($setup, holdCompanyLock: true));
+        $this->waitFor($acceptance, 'held');
+        $this->assertWorkerHeldLock($acceptance, 'erp_companies');
+        $reissue = $this->worker('owner_setup_issue', $this->ownerSetupIssuePayload($setup));
+        $this->assertWaitingOnTableLock($reissue, 'accounts');
+
+        $this->release($acceptance);
+        $acceptanceResult = $this->workerResult($acceptance);
+        $reissueResult = $this->workerResult($reissue);
+
+        self::assertSame(201, $acceptanceResult['status']);
+        self::assertSame(409, $reissueResult['status']);
+        self::assertSame('company_owner_already_claimed', $reissueResult['code']);
+        self::assertSame($setup['company_id'], $acceptanceResult['company_id']);
+        self::assertSame('claimed', ErpCompany::query()->findOrFail($setup['company_id'])->owner_setup_status);
+        self::assertSame(1, User::query()->where('email', $setup['owner']['email'])->count());
+        $ownerMembership = ErpCompanyMembership::query()->with('user')->where('erp_company_id', $setup['company_id'])->where('role', 'owner')->firstOrFail();
+        self::assertSame($setup['owner']['email'], $ownerMembership->user->email);
+        self::assertSame(1, ErpCompanyMembership::query()->where('erp_company_id', $setup['company_id'])->where('role', 'owner')->count());
+        self::assertSame('consumed', OfficeErpOwnerInvitation::query()->findOrFail($setup['invitation_id'])->status);
+        self::assertSame($subscriptionBefore, ErpSubscription::query()->findOrFail($setup['subscription_id'])->getAttributes());
+        self::assertSame($setup['subscription_id'], (int) ErpCompany::query()->findOrFail($setup['company_id'])->subscription->id);
+        self::assertSame($allocationBefore, DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first());
+        self::assertSame($allocationCount, DB::table('office_erp_licence_allocations')->count());
+        self::assertSame($invoiceCount, DB::table('office_erp_invoices')->count());
+        self::assertSame($invoiceRowsBefore, DB::table('office_erp_invoices')->orderBy('id')->get()->toJson());
+    }
+
+    public function test_owner_setup_reissue_winning_company_lock_rejects_old_accept_without_financial_changes(): void
+    {
+        $office = $this->commercialFixture(2);
+        $setup = $this->ownerSetupFixture($office);
+        $subscriptionBefore = ErpSubscription::query()->findOrFail($setup['subscription_id'])->getAttributes();
+        $allocationBefore = DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first();
+        $invoiceRowsBefore = DB::table('office_erp_invoices')->orderBy('id')->get()->toJson();
+        $allocationCount = DB::table('office_erp_licence_allocations')->count();
+        $invoiceCount = DB::table('office_erp_invoices')->count();
+
+        $reissue = $this->worker('owner_setup_issue', $this->ownerSetupIssuePayload($setup, holdCompanyLock: true));
+        $this->waitFor($reissue, 'held');
+        $this->assertWorkerHeldLock($reissue, 'erp_companies');
+        $acceptance = $this->worker('owner_setup_accept', $this->ownerSetupAcceptPayload($setup));
+        $this->assertWaitingOnTableLock($acceptance, 'accounts');
+
+        $this->release($reissue);
+        $reissueResult = $this->workerResult($reissue);
+        $acceptanceResult = $this->workerResult($acceptance);
+
+        self::assertSame(201, $reissueResult['status']);
+        self::assertSame(409, $acceptanceResult['status']);
+        self::assertSame('owner_setup_not_pending', $acceptanceResult['code']);
+        self::assertSame('unclaimed', ErpCompany::query()->findOrFail($setup['company_id'])->owner_setup_status);
+        self::assertSame(0, User::query()->where('email', $setup['owner']['email'])->count());
+        self::assertSame(0, ErpCompanyMembership::query()->where('erp_company_id', $setup['company_id'])->where('role', 'owner')->count());
+        self::assertSame('revoked', OfficeErpOwnerInvitation::query()->findOrFail($setup['invitation_id'])->status);
+        self::assertSame('pending', OfficeErpOwnerInvitation::query()->findOrFail($reissueResult['invitation_id'])->status);
+        self::assertSame($subscriptionBefore, ErpSubscription::query()->findOrFail($setup['subscription_id'])->getAttributes());
+        self::assertSame($setup['subscription_id'], (int) ErpCompany::query()->findOrFail($setup['company_id'])->subscription->id);
+        self::assertSame($allocationBefore, DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first());
+        self::assertSame($allocationCount, DB::table('office_erp_licence_allocations')->count());
+        self::assertSame($invoiceCount, DB::table('office_erp_invoices')->count());
+        self::assertSame($invoiceRowsBefore, DB::table('office_erp_invoices')->orderBy('id')->get()->toJson());
+    }
+
     public function test_allowance_removal_wins_plan_lock_before_owner_acceptance(): void
     {
         $office = $this->commercialFixture(2);

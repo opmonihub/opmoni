@@ -8,6 +8,7 @@ use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpMoney;
 use App\Erp\Commercial\OfficeErpOwnerInvitations;
+use App\Erp\Commercial\OfficeErpOwnerSetup;
 use App\Erp\Commercial\OfficeErpReceiptProofs;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Account;
@@ -74,6 +75,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Erp/Commercial/OfficeErpRecurringBilling.php',
         'app/Erp/Commercial/OfficeErpCalendar.php',
         'app/Erp/Commercial/OfficeErpOwnerInvitations.php',
+        'app/Erp/Commercial/OfficeErpOwnerSetup.php',
         'app/Erp/Commercial/OfficeErpInvitationContinuation.php',
         'app/Erp/Commercial/OfficeErpRecords.php',
         'app/Models/Erp/Commercial/OfficeErpContract.php',
@@ -98,6 +100,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Models/Erp/ErpSubscription.php',
         'app/Models/Erp/ErpSubscriptionTrial.php',
         'app/Models/Erp/Commercial/OfficeErpTrialLink.php',
+        'database/migrations/2026_10_25_090000_add_erp_customer_enrollment.php',
         'database/migrations/2026_10_25_091000_create_erp_office_trials.php',
         'app/Models/Account.php',
         'app/Models/AccountMembership.php',
@@ -112,8 +115,11 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Erp/ErpCommercialGate.php',
         'app/Http/Controllers/Api/V1/Erp/ErpTrialController.php',
         'app/Http/Controllers/Api/V1/OfficeErp/OfficeErpEnrollmentController.php',
+        'app/Http/Controllers/Api/V1/OfficeErp/OfficeErpOwnerSetupController.php',
+        'app/Http/Controllers/Api/V1/OfficeErp/OfficeErpInvitationController.php',
         'routes/office-erp-trials.php',
         'routes/office-erp-commercial.php',
+        'routes/office-erp-invitations.php',
         'routes/api.php',
         'config/erp.php',
         'app/Services/BrazilianTaxId.php',
@@ -250,6 +256,68 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         return ['link' => $link, 'code' => $code, 'plan_id' => (int) $plan->id];
     }
 
+    /** @return array<string, mixed> */
+    protected function ownerSetupFixture(array $office): array
+    {
+        $context = $office['context'];
+        $contract = $office['contracts'][0];
+        $tag = bin2hex(random_bytes(6));
+        $company = $this->officeAdmin($office, fn (): ErpCompany => $context->run(function () use ($context, $contract, $tag): ErpCompany {
+            $contract = OfficeErpRecords::query($context, OfficeErpContract::class)
+                ->with('client')
+                ->whereKey($contract->id)
+                ->firstOrFail();
+            $company = ErpCompany::factory()->create([
+                'name' => 'Owner setup race company '.$tag,
+                'cnpj' => $contract->client->tax_id,
+                'owner_setup_status' => 'unclaimed',
+            ]);
+            $plan = ErpPlan::factory()->create();
+            $plan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
+            $contract->forceFill([
+                'erp_company_id' => $company->id,
+                'agreement_status' => 'effective',
+                'provisioning_source' => 'administrative',
+            ])->save();
+            $subscription = ErpSubscription::factory()->active()->create([
+                'erp_company_id' => $company->id,
+                'erp_plan_id' => $plan->id,
+                'office_erp_contract_id' => $contract->id,
+            ]);
+            OfficeErpLicenceAllocation::factory()->create([
+                'account_id' => $context->accountId,
+                'contract_id' => $contract->id,
+                'erp_company_id' => $company->id,
+                'state' => 'occupied',
+                'expires_at' => null,
+            ]);
+
+            return $company->setRelation('subscription', $subscription);
+        }));
+        $owner = ['full_name' => 'Trial Race Owner '.$tag, 'email' => 'owner-setup-race-'.$tag.'@example.test'];
+        $issued = $this->officeAdmin($office, fn (): array => $context->run(
+            fn (): array => app(OfficeErpOwnerSetup::class)->issue($context, $contract, $owner, 'owner-setup-seed-'.$tag),
+        ));
+        $url = (string) ($issued['url'] ?? '');
+        $fragment = strpos($url, '#token=');
+        if ($fragment === false) {
+            throw new RuntimeException('Owner setup race fixture did not receive a one-time invitation URL.');
+        }
+
+        return [
+            'account_id' => $office['account_id'],
+            'actor_id' => $office['actor_id'],
+            'membership_id' => $office['membership_id'],
+            'contract_id' => (int) $contract->id,
+            'company_id' => (int) $company->id,
+            'subscription_id' => (int) $company->subscription->id,
+            'allocation_id' => (int) DB::table('office_erp_licence_allocations')->where('contract_id', $contract->id)->value('id'),
+            'owner' => $owner,
+            'invitation_id' => (int) $issued['invitation_id'],
+            'token' => substr($url, $fragment + strlen('#token=')),
+        ];
+    }
+
     /** @param array{code: string, link: OfficeErpTrialLink} $trialLink
      * @return array<string, mixed>
      */
@@ -307,6 +375,30 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             'idempotency_key' => 'trial-convert-'.$suffix,
             'hold_row_lock' => $holdAccountLock ? 'accounts' : null,
             'frozen_now' => $frozenNow,
+        ];
+    }
+
+    /** @param array<string, mixed> $setup */
+    protected function ownerSetupIssuePayload(array $setup, bool $holdCompanyLock = false): array
+    {
+        return [
+            'account_id' => $setup['account_id'],
+            'actor_id' => $setup['actor_id'],
+            'membership_id' => $setup['membership_id'],
+            'contract_id' => $setup['contract_id'],
+            'owner' => $setup['owner'],
+            'idempotency_key' => 'owner-setup-race-'.bin2hex(random_bytes(12)),
+            'hold_row_lock' => $holdCompanyLock ? 'erp_companies' : null,
+        ];
+    }
+
+    /** @param array<string, mixed> $setup */
+    protected function ownerSetupAcceptPayload(array $setup, bool $holdCompanyLock = false): array
+    {
+        return [
+            'token' => $setup['token'],
+            'password' => 'Race-Owner-Password-123',
+            'hold_row_lock' => $holdCompanyLock ? 'erp_companies' : null,
         ];
     }
 
