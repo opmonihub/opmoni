@@ -89,5 +89,7 @@ test('Work calendar restores its date and supported filters, with URL/history da
     assert.equal(next.processId.value, null)
     assert.equal(next.priority.value, '')
     assert.equal(next.statusVisible.value.done, true)
+    assert.equal(next.focusDate.value, '2027-03-01', 'Authority reset retains the explicit URL date')
+    assert.equal(next.view.value, 'day', 'Authority reset retains the explicit URL view')
   } finally { nextScope.stop() }
 })

@@ -55,7 +55,7 @@ export function useListNavigationState<T extends { [K in keyof T]: ListNavigatio
   key: string,
   options: ListNavigationOptions<T>
 ): Ref<T> {
-  const { current } = useListNavigationRegistry()
+  const { current, registry } = useListNavigationRegistry()
   const normalize = (value: unknown, previous?: Record<string, ListNavigationValue>): T => {
     const normalized = options.normalize(value)
     const result: Record<string, ListNavigationValue> = {}
@@ -103,7 +103,8 @@ export function useListNavigationState<T extends { [K in keyof T]: ListNavigatio
     }, { immediate: true, flush: 'sync' })
   }
   if (options.fromQuery) {
-    watch(options.fromQuery, (value) => {
+    // A new authority discards memory; an explicit URL still supplies its criteria.
+    watch([options.fromQuery, () => registry.value?.authority] as const, ([value]) => {
       if (value !== null) state.value = value
     }, { immediate: true, deep: true, flush: 'sync' })
   }

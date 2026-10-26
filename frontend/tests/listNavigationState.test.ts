@@ -110,6 +110,23 @@ test('first capability confirmation keeps criteria, later revocation discards ev
   app.scope.stop()
 })
 
+test('a valid URL remains authoritative when an identity change discards remembered criteria', () => {
+  const app = application()
+  const scope = effectScope()
+  const query = ref({ q: 'from-url', page: 2, status: 'active' })
+  const state = scope.run(() => useListNavigationState('url-list', { ...options, fromQuery: () => query.value }))!
+  const privateState = scope.run(() => useListNavigationState('private-list', options))!
+  privateState.value.q = 'remembered-only'
+
+  app.session.value++
+
+  assert.deepEqual(state.value, { q: 'from-url', page: 2, status: 'active' })
+  assert.equal(privateState.value.q, '')
+  assert.ok(!JSON.stringify(app.values.get('list-navigation-state')!.value).includes('remembered-only'))
+  scope.stop()
+  app.scope.stop()
+})
+
 test('effective membership permissions invalidate independently of selected identity metadata', () => {
   const app = application()
   app.identity.value.accounts = [{ ...app.identity.value.current_account }]

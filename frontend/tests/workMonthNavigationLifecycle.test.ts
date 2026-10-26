@@ -41,6 +41,13 @@ test('one Work owner normalizes entry and history while children admit one read 
     assert.equal(replacements.length, 1, 'Valid history does not write the URL')
     assert.deepEqual(reads, [month, '2027-02'])
 
+    state.get('access-session-generation')!.value++
+    await Vue.nextTick()
+    assert.equal(shell.referenceMonth.value, '2027-02', 'Authority reset retains the explicit valid URL month')
+    assert.equal(route.query.reference_month, '2027-02')
+    assert.equal(replacements.length, 1, 'Authority reset must not replace a valid URL with the current month')
+    assert.deepEqual(reads, [month, '2027-02'], 'Authority reset must not announce a different logical month')
+
     route.query = { q: 'preserved', reference_month: '2027-13' }
     await Vue.nextTick()
     assert.equal(replacements.length, 2, 'Invalid history normalizes once')

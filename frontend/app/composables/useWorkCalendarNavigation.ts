@@ -5,6 +5,7 @@ const statuses: WorkTaskStatus[] = ['todo', 'doing', 'done', 'dismissed']
 
 export function useWorkCalendarNavigation() {
   const route = useRoute()
+  const { registry } = useListNavigationRegistry()
   const defaults = () => ({
     ...parseCalendarQuery(undefined, undefined), processId: null as number | null,
     clientId: null as number | null, assigneeId: null as number | null,
@@ -22,7 +23,7 @@ export function useWorkCalendarNavigation() {
     }
   }
   const state = useListNavigationState('work-calendar', { defaults, normalize })
-  watch(() => [route.query.view, route.query.date] as const, ([view, date], previous) => {
+  watch(() => [route.query.view, route.query.date, registry.value?.authority] as const, ([view, date], previous) => {
     if (view === undefined && date === undefined && previous === undefined) return
     state.value = { ...state.value, ...parseCalendarQuery(view, date) }
   }, { immediate: true, flush: 'sync' })
