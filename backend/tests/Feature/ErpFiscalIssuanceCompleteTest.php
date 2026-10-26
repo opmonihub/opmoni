@@ -8,6 +8,8 @@ use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
 use App\Erp\Fiscal\ErpFiscalActionCatalog;
 use App\Erp\Fiscal\ErpFiscalAttemptAuthorization;
 use App\Erp\Fiscal\ErpFiscalAttemptService;
+use App\Erp\Fiscal\ErpFiscalCertificateRevisionService;
+use App\Erp\Fiscal\ErpFiscalCertificateValidator;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
 use App\Erp\Fiscal\ErpFiscalFrozenSaleSourceProjection;
 use App\Erp\Fiscal\ErpFiscalNumberAllocator;
@@ -19,18 +21,23 @@ use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\Client;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
+use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpContractRevision;
+use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\ErpOperationNature;
 use App\Models\Erp\ErpSubscription;
+use App\Models\Erp\ErpSubscriptionTrial;
 use App\Models\Erp\Fiscal\ErpFiscalAttempt;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Fiscal\ErpFiscalEvent;
 use App\Models\Erp\Sales\ErpSale;
 use App\Models\FiscalDocument;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -129,6 +136,78 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $this->withHeader('X-CSRF-Token', $this->csrf())
             ->postJson('/api/v1/login', ['email' => $user->email, 'password' => 'password'])
             ->assertOk();
+    }
+
+    public function test_valid_trial_transmit_dispatches_before_expiry_and_is_blocked_at_inclusive_end(): void
+    {
+        $ctx = $this->ownerContext();
+        $now = CarbonImmutable::now('UTC')->addMinute();
+        CarbonImmutable::setTestNow($now);
+        $expiresAt = $now->addMinute();
+        $beforeExpiry = $this->createQueuedDocument($ctx, '55', 'trial-valid-before-expiry');
+        $atExpiry = $this->createQueuedDocument($ctx, '65', 'trial-valid-at-expiry');
+        $headers = [...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()];
+        $beforeExpiryAttemptId = $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/documents/'.$beforeExpiry['id'].'/transmit')->assertOk()->json('data.attempt.id');
+        $atExpiryAttemptId = $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/documents/'.$atExpiry['id'].'/transmit')->assertOk()->json('data.attempt.id');
+        $this->attachValidTrial($ctx, $now, $expiresAt);
+
+        $provider = \Mockery::mock(ErpFiscalProvider::class);
+        $provider->shouldReceive('transmit')->once()->andReturn(ErpFiscalProviderResult::rejected('synthetic control rejection'));
+        $provider->shouldNotReceive('consult');
+        $this->app->instance(ErpFiscalProvider::class, $provider);
+
+        $beforeExpiryAttempt = ErpFiscalAttempt::query()->findOrFail($beforeExpiryAttemptId);
+        app()->call([new ProcessErpFiscalAttempt((int) $beforeExpiryAttempt->id), 'handle']);
+        $this->assertSame('rejected', $beforeExpiryAttempt->fresh()->status);
+        $this->assertSame('rejected', ErpFiscalDocument::query()->findOrFail($beforeExpiry['id'])->status);
+
+        CarbonImmutable::setTestNow($expiresAt);
+        $atExpiryAttempt = ErpFiscalAttempt::query()->findOrFail($atExpiryAttemptId);
+        app()->call([new ProcessErpFiscalAttempt((int) $atExpiryAttempt->id), 'handle']);
+
+        $this->assertSame('blocked_authority', $atExpiryAttempt->fresh()->status);
+        $this->assertSame('authority_revoked', $atExpiryAttempt->fresh()->last_error_code);
+        $this->assertSame(0, $atExpiryAttempt->fresh()->dispatch_attempts);
+        $this->assertSame('queued', ErpFiscalDocument::query()->findOrFail($atExpiry['id'])->status);
+    }
+
+    public function test_trial_expiring_during_fiscal_preparation_has_no_contingency_artifact_or_state_effect(): void
+    {
+        $ctx = $this->ownerContext();
+        $now = CarbonImmutable::now('UTC')->addMinute();
+        CarbonImmutable::setTestNow($now);
+        $expiresAt = $now->addMinute();
+        $draft = $this->createDraftDocument($ctx, '65', 'trial-contingency-expiry-contingency');
+        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
+            ->postJson('/api/v1/erp/fiscal/documents/'.$draft['id'].'/contingency')
+            ->assertOk();
+        $this->attachValidTrial($ctx, $now, $expiresAt);
+        $attempt = ErpFiscalDocument::query()->findOrFail($draft['id'])->attempts()->where('action', 'document:contingency')->firstOrFail();
+
+        $actualCertificates = new ErpFiscalCertificateRevisionService(app(ErpFiscalCertificateValidator::class));
+        $certificates = \Mockery::mock(ErpFiscalCertificateRevisionService::class, [app(ErpFiscalCertificateValidator::class)])->makePartial();
+        $certificates->shouldReceive('material')->once()->andReturnUsing(function ($revision, $issuer) use ($actualCertificates, $expiresAt) {
+            $material = $actualCertificates->material($revision, $issuer);
+            CarbonImmutable::setTestNow($expiresAt);
+
+            return $material;
+        });
+        $this->app->instance(ErpFiscalCertificateRevisionService::class, $certificates);
+        $provider = \Mockery::mock(ErpFiscalProvider::class);
+        $provider->shouldNotReceive('transmit');
+        $provider->shouldNotReceive('consult');
+        $this->app->instance(ErpFiscalProvider::class, $provider);
+
+        app()->call([new ProcessErpFiscalAttempt((int) $attempt->id), 'handle']);
+
+        $document = ErpFiscalDocument::query()->findOrFail($draft['id']);
+        $this->assertSame('blocked_authority', $attempt->fresh()->status);
+        $this->assertSame('authority_revoked_before_local_effects', $attempt->fresh()->safe_result['code']);
+        $this->assertSame(1, $attempt->fresh()->dispatch_attempts);
+        $this->assertSame('draft', $document->status);
+        $this->assertNull($document->storage_path);
+        $this->assertNull($document->artifact_sha256);
+        Storage::disk('local')->assertDirectoryEmpty('fiscal');
     }
 
     public function test_action_catalog_covers_core_models_and_fixtures(): void
@@ -829,6 +908,52 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
             ->assertOk();
 
         return $draft;
+    }
+
+    /** @param array{company: ErpCompany, user: User} $ctx */
+    private function attachValidTrial(array $ctx, CarbonImmutable $startedAt, CarbonImmutable $endsAt): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->company()->create([
+            'account_id' => $account->id,
+            'tax_id' => $ctx['company']->cnpj,
+        ]);
+        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        $contract = OfficeErpContract::factory()->create([
+            'account_id' => $account->id,
+            'client_id' => $client->id,
+            'erp_company_id' => $ctx['company']->id,
+            'agreement_status' => 'accepted',
+            'provisioning_source' => 'office_trial',
+            'erp_plan_id' => $plan->id,
+            'accepted_at' => $startedAt,
+        ]);
+        $revision = OfficeErpContractRevision::factory()->create([
+            'account_id' => $account->id,
+            'contract_id' => $contract->id,
+            'module_keys' => ['sales'],
+        ]);
+        $contract->forceFill(['current_revision_id' => $revision->id])->save();
+        OfficeErpLicenceAllocation::query()->create([
+            'account_id' => $account->id,
+            'contract_id' => $contract->id,
+            'erp_company_id' => $ctx['company']->id,
+            'state' => 'occupied',
+        ]);
+        $subscription = $ctx['company']->subscription()->firstOrFail();
+        $subscription->forceFill([
+            'office_erp_contract_id' => $contract->id,
+            'status' => 'trialing',
+        ])->save();
+        ErpSubscriptionTrial::query()->create([
+            'erp_subscription_id' => $subscription->id,
+            'erp_company_id' => $ctx['company']->id,
+            'account_id' => $account->id,
+            'cnpj' => $ctx['company']->cnpj,
+            'started_at' => $startedAt,
+            'ends_at' => $endsAt,
+            'link_revision' => 1,
+        ]);
     }
 
     /**

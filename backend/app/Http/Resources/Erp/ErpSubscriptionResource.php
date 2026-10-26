@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Erp;
 
 use App\Enums\Erp\ErpCompanyRole;
+use App\Erp\Commercial\ErpTrialSummary;
 use App\Erp\Commercial\OfficeErpMoney;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
@@ -39,21 +40,11 @@ class ErpSubscriptionResource extends JsonResource
         ];
 
         $context = $request->attributes->get(CurrentCompany::class);
-        if ($context instanceof CurrentCompany
-            && $context->accessKind === 'direct'
-            && $context->membership?->roleEnum() === ErpCompanyRole::Owner
-            && $context->company->id === $this->company->id
-            && $this->trial !== null) {
-            $trial = $this->trial;
-            $data['trial'] = [
-                'started_at' => $trial->started_at->toIso8601String(),
-                'ends_at' => $trial->ends_at->toIso8601String(),
-                'converted_at' => $trial->converted_at?->toIso8601String(),
-                'expired_at' => $trial->expired_at?->toIso8601String(),
-                'situation' => $trial->converted_at !== null
-                    ? 'converted'
-                    : ($trial->expired_at !== null || $trial->ends_at->lessThanOrEqualTo(now()) ? 'expired' : 'trialing'),
-            ];
+        if ($context instanceof CurrentCompany && $context->company->id === $this->company->id) {
+            $trial = ErpTrialSummary::from($this->trial);
+            if ($trial !== null) {
+                $data['trial'] = $trial;
+            }
         }
 
         if ($context instanceof CurrentCompany
