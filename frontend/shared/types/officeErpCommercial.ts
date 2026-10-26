@@ -43,9 +43,7 @@ export interface OfficeErpEnrollmentPlansResponse {
 }
 
 export interface OfficeErpNewClientInput {
-  person_type: 'company'
   tax_id: string
-  status: 'active'
   tax_regime: 'mei' | 'simple_national' | 'presumed_profit' | 'actual_profit' | 'other'
   name?: string
   email?: string

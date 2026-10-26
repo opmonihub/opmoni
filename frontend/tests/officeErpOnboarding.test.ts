@@ -445,6 +445,11 @@ describe('Office ERP seller onboarding SFC', () => {
     assert.equal('password' in body, false)
     assert.equal(body.currency, 'BRL')
     assert.equal(body.erp_plan_id, 7)
+    assert.deepEqual(body.new_client, {
+      tax_id: '12345678000199',
+      tax_regime: 'presumed_profit',
+      name: 'Mercado São José'
+    })
     assert.match(textOf(page.root), /Assinatura cadastrada/)
     page.app.unmount()
   })

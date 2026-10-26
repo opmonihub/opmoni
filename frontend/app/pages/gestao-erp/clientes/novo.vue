@@ -216,9 +216,7 @@ async function lookupCompany() {
 function newClientInput(): OfficeErpNewClientInput {
   const taxId = newClient.tax_id.replace(/[./-]/g, '').toUpperCase()
   const input: OfficeErpNewClientInput = {
-    person_type: 'company',
     tax_id: taxId,
-    status: 'active',
     tax_regime: newClient.tax_regime
   }
   if (newClient.name.trim()) input.name = newClient.name.trim()
