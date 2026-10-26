@@ -30,10 +30,16 @@ class AccessSecurity
 
         $ip = (string) $request->attributes->get('access.client_ip');
         $limit = match ($name) {
-            'access.register', 'erp.register' => 5,'access.login','access.activate' => 10,'access.csrf','access.registration-status','access.activation-status','erp.registration-status' => 30,default => null
+            'access.register', 'erp.register', 'erp.trials.register' => 5,
+            'access.login', 'access.activate' => 10,
+            'access.csrf', 'access.registration-status', 'access.activation-status', 'erp.registration-status', 'erp.trials.show', 'erp.trials.current' => 30,
+            default => null,
         };
         if ($limit) {
             $this->budget($name.':ip:'.$ip, $limit);
+            if ($name === 'erp.trials.register' && $request->user() !== null) {
+                $this->budget($name.':actor:'.(int) $request->user()->getAuthIdentifier(), $limit);
+            }
             if ($name === 'access.login') {
                 $this->budget('login:email:'.hash('sha256', mb_strtolower(trim(is_string($request->input('email')) ? $request->input('email') : ''))), 10);
             }

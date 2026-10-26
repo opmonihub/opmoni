@@ -396,8 +396,26 @@ class TrialSchemaTest extends OfficeErpCommercialTestCase
             ->assertJsonPath('data.trial.situation', 'trialing')
             ->assertJsonPath('data.trial.ends_at', $endsAt->toIso8601String());
 
+        $viewer = User::factory()->create();
+        ErpCompanyMembership::factory()->create([
+            'erp_company_id' => $company->id,
+            'user_id' => $viewer->id,
+            'role' => 'viewer',
+        ]);
+        $this->actingAs($viewer)
+            ->withSession(['current_company_id' => $company->id])
+            ->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/subscription')
+            ->assertOk()
+            ->assertJsonPath('data.trial.started_at', $startedAt->toIso8601String())
+            ->assertJsonPath('data.trial.ends_at', $endsAt->toIso8601String())
+            ->assertJsonPath('data.trial.situation', 'trialing');
+
         $this->travelTo($endsAt);
-        $this->getJson('/api/v1/erp/subscription')
+        $this->actingAs($owner)
+            ->withSession(['current_company_id' => $company->id])
+            ->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/subscription')
             ->assertOk()
             ->assertJsonPath('data.trial.situation', 'expired');
     }

@@ -25,12 +25,14 @@ use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\ErpOperationNature;
 use App\Models\Erp\ErpSubscription;
+use App\Models\Erp\ErpSubscriptionTrial;
 use App\Models\Erp\Fiscal\ErpFiscalAttempt;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Fiscal\ErpFiscalEvent;
 use App\Models\Erp\Sales\ErpSale;
 use App\Models\FiscalDocument;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -129,6 +131,48 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $this->withHeader('X-CSRF-Token', $this->csrf())
             ->postJson('/api/v1/login', ['email' => $user->email, 'password' => 'password'])
             ->assertOk();
+    }
+
+    public function test_queued_trial_expiry_blocks_fiscal_provider_dispatch(): void
+    {
+        $ctx = $this->ownerContext();
+        $subscription = $ctx['company']->subscription()->firstOrFail();
+        $subscription->forceFill(['status' => 'trialing'])->save();
+        $now = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($now);
+        ErpSubscriptionTrial::query()->create([
+            'erp_subscription_id' => $subscription->id,
+            'erp_company_id' => $ctx['company']->id,
+            'account_id' => Account::factory()->create()->id,
+            'cnpj' => $ctx['company']->cnpj,
+            'started_at' => $now->subDays(7),
+            'ends_at' => $now,
+            'link_revision' => 1,
+        ]);
+        $attempt = ErpFiscalAttempt::query()->create([
+            'erp_company_id' => $ctx['company']->id,
+            'erp_establishment_id' => $ctx['establishment']->id,
+            'action' => 'document:transmit',
+            'model' => '55',
+            'environment' => 'homologation',
+            'actor_user_id' => $ctx['user']->id,
+            'idempotency_key' => 'trial-expired-before-provider',
+            'request_sha256' => hash('sha256', 'expired-trial-attempt'),
+            'status' => 'pending',
+            'outbox_state' => 'new',
+            'available_at' => $now,
+        ]);
+        $provider = \Mockery::mock(ErpFiscalProvider::class);
+        $provider->shouldNotReceive('transmit');
+        $provider->shouldNotReceive('consult');
+        $this->app->instance(ErpFiscalProvider::class, $provider);
+
+        app()->call([new ProcessErpFiscalAttempt((int) $attempt->id), 'handle']);
+
+        $attempt->refresh();
+        $this->assertSame('blocked_authority', $attempt->status);
+        $this->assertSame('authority_revoked', $attempt->last_error_code);
+        $this->assertSame(0, $attempt->dispatch_attempts);
     }
 
     public function test_action_catalog_covers_core_models_and_fixtures(): void

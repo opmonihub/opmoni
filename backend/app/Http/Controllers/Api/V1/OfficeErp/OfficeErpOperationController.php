@@ -43,6 +43,11 @@ final class OfficeErpOperationController extends Controller
 
                     return;
                 }
+                if ($action === 'trial.convert') {
+                    $enrollment->authorizeTrialConversion($ctx, $action, $payload, $validatedKey);
+
+                    return;
+                }
                 if ($action === 'policy.configure') {
                     $delinquency->authorizeOperation($ctx, $action, $payload);
 
