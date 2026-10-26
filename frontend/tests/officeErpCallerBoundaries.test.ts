@@ -159,6 +159,16 @@ function capabilities(capabilityKey: string) {
     can_maintain: true,
     can_configure: true,
     can_sell_new: true,
+    can_provision: true,
+    can_start_trial: true,
+    can_manage_trial_link: true,
+    capability_reasons: {
+      can_configure: [],
+      can_sell_new: [],
+      can_provision: [],
+      can_start_trial: [],
+      can_manage_trial_link: []
+    },
     capability_key: capabilityKey,
     reasons: {},
     allowance: { enabled: true, licence_limit: 8, module_keys: ['purchases'] },
