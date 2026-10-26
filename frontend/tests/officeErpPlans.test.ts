@@ -260,7 +260,7 @@ describe('Office ERP navigation and access', () => {
     assert.deepEqual(navs, ['/', '/acesso-indisponivel', '/acesso-indisponivel'])
   })
 
-  it('keeps the exact commercial root active and defers offers from primary tabs', () => {
+  it('keeps the overview and plans tabs active only on their matching routes', () => {
     const tabsAt = (path: string) => evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { computed: Vue.computed, route: { path } }).pageTabs as Array<Array<{ label: string, to: string, active: boolean }>>
     const overview = tabsAt('/gestao-erp').flat()
     assert.equal(overview.find(item => item.to === '/gestao-erp')?.active, true)
@@ -268,7 +268,7 @@ describe('Office ERP navigation and access', () => {
 
     const plans = tabsAt('/gestao-erp/planos').flat()
     assert.equal(plans.find(item => item.to === '/gestao-erp')?.active, false)
-    assert.deepEqual(plans.filter(item => item.active).map(item => item.label), [])
+    assert.deepEqual(plans.filter(item => item.active).map(item => item.label), ['Planos'])
   })
 
   it('keeps legacy plan bookmarks privileged and redirects only after office authorization', async () => {
@@ -364,6 +364,25 @@ describe('Office ERP offer editor SFC', () => {
 })
 
 describe('Office ERP offers list SFC', () => {
+  it('keeps the status filter available when an empty list replaces the table', async () => {
+    const harness = mountPlansPage(recoveryCommand())
+    try {
+      await flushVue()
+      assert.match(renderedText(harness.root), /Nenhum plano ativo foi cadastrado\./)
+
+      const statusFilter = findRendered(harness.root, node => node.props['aria-label'] === 'Situação dos planos')[0]
+      assert.ok(statusFilter)
+      ;(statusFilter.props['onUpdate:modelValue'] as (value: string) => void)('archived')
+      await flushVue()
+
+      assert.deepEqual(harness.apiCalls.at(-1)?.options?.params, { page: 1, per_page: 25, status: 'archived' })
+      assert.match(renderedText(harness.root), /Nenhum plano arquivado foi encontrado\./)
+      assert.ok(findRendered(harness.root, node => node.tag === 'button' && renderedText(node).includes('Novo plano'))[0])
+    } finally {
+      harness.app.unmount()
+    }
+  })
+
   it('loads server search, status and counted pagination parameters', async () => {
     const apiCalls: Array<{ path: string, options?: Record<string, unknown> }> = []
     const harness = plansSetup(async (path, options) => {
@@ -497,7 +516,7 @@ describe('Office ERP offers list SFC', () => {
     const harness = mountPlansPage(command)
     await flushVue()
 
-    const createButton = findRendered(harness.root, node => node.tag === 'button' && renderedText(node).includes('Nova oferta'))[0]
+    const createButton = findRendered(harness.root, node => node.tag === 'button' && renderedText(node).includes('Novo plano'))[0]
     assert.ok(createButton)
     ;(createButton.props.onClick as () => void)()
     await flushVue()

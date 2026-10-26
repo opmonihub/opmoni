@@ -491,7 +491,7 @@ describe('Office ERP recovery context boundaries', () => {
 
     pageHarness.shared.identity.value.current_account = { id: 9, status: 'active', role: 'admin' }
     await flushVue()
-    const createButton = findRendered(root, node => node.tag === 'button' && renderedText(node).includes('Nova oferta'))[0]
+    const createButton = findRendered(root, node => node.tag === 'button' && renderedText(node).includes('Novo plano'))[0]
     assert.ok(createButton)
     ;(createButton.props.onClick as () => void)()
     await flushVue()

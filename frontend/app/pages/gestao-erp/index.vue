@@ -250,7 +250,7 @@ onMounted(() => {
       </div>
       <UPageGrid class="gap-3 lg:grid-cols-3">
         <UPageCard
-          title="Ofertas"
+          title="Planos"
           description="Gerencie os planos ERP oferecidos pelo escritório."
           icon="i-lucide-tags"
           to="/gestao-erp/planos"

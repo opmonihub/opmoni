@@ -80,7 +80,7 @@ function submit() {
   const interval = Number.parseInt(form.intervalMonths, 10)
   const dueInDays = Number.parseInt(form.dueInDays, 10)
   const errors: Record<string, string[]> = {}
-  if (!name) errors.name = ['Informe o nome da oferta.']
+  if (!name) errors.name = ['Informe o nome do plano.']
   if (![1, 3, 6, 12].includes(interval)) errors.interval_months = ['Selecione um ciclo válido.']
   if (!/^\d{1,5}$/.test(form.dueInDays) || dueInDays > 65535) errors.due_in_days = ['Informe de 0 a 65.535 dias.']
   if (form.moduleKeys.some(key => !props.moduleKeys.includes(key))) errors.module_keys = ['Remova módulos que não estão liberados para o escritório.']
@@ -107,7 +107,7 @@ defineExpose({ form, submit })
 <template>
   <USlideover
     :open="open"
-    :title="offer ? 'Editar oferta' : 'Nova oferta'"
+    :title="offer ? 'Editar plano' : 'Novo plano'"
     description="Cada alteração cria uma revisão para novas vendas. Contratos existentes preservam os termos aceitos."
     side="right"
     @update:open="emit('update:open', $event)"
@@ -117,7 +117,7 @@ defineExpose({ form, submit })
         <UAlert
           v-if="failure"
           color="error"
-          title="Não foi possível salvar a oferta"
+          title="Não foi possível salvar o plano"
           :description="failure"
           class="mb-4"
         />
@@ -148,7 +148,7 @@ defineExpose({ form, submit })
           <div class="flex-1 space-y-4 overflow-y-auto pe-1">
             <UFormField
               name="name"
-              label="Nome da oferta"
+              label="Nome do plano"
               required
               :error="localErrors.name?.[0] ?? fieldErrors.name?.[0]"
             >
@@ -222,7 +222,7 @@ defineExpose({ form, submit })
                 />
               </div>
               <p v-if="!visibleModules.length" class="mt-2 text-sm text-muted">
-                Nenhum módulo está liberado para novas ofertas.
+                Nenhum módulo está liberado para novos planos.
               </p>
             </UFormField>
 
@@ -242,7 +242,7 @@ defineExpose({ form, submit })
               Cancelar
             </UButton>
             <UButton type="submit" :loading="saving" :disabled="!canSellNew || saving || !!recoveryKey">
-              Salvar oferta
+              Salvar plano
             </UButton>
           </div>
         </form>

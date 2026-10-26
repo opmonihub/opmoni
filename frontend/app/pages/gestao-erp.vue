@@ -11,6 +11,11 @@ const pageTabs: NavigationMenuItem[][] = [[{
   to: '/gestao-erp',
   active: route.path === '/gestao-erp'
 }, {
+  label: 'Planos',
+  icon: 'i-lucide-tags',
+  to: '/gestao-erp/planos',
+  active: route.path === '/gestao-erp/planos'
+}, {
   label: 'Clientes ERP',
   icon: 'i-lucide-users',
   to: '/gestao-erp/clientes',

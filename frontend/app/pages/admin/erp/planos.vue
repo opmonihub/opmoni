@@ -14,7 +14,7 @@ function identityStamp() {
 onMounted(async () => {
   const originalIdentity = identityStamp()
   if (currentAccount.value?.status !== 'active' || currentAccount.value.role !== 'admin') {
-    message.value = 'Para administrar ofertas, selecione manualmente um escritório ativo em que sua conta tenha perfil administrador.'
+    message.value = 'Para administrar planos, selecione manualmente um escritório ativo em que sua conta tenha perfil administrador.'
     checking.value = false
     return
   }
@@ -46,7 +46,7 @@ onMounted(async () => {
     <UAlert
       v-else
       color="warning"
-      title="Ofertas ERP são gerenciadas pelo escritório"
+      title="Planos ERP são gerenciados pelo escritório"
     >
       <template #description>
         <div class="flex flex-col gap-3">

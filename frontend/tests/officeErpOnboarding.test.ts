@@ -1134,6 +1134,7 @@ describe('Office ERP seller navigation', () => {
   it('links the overview and every shipped ERP page while marking the portfolio client active', () => {
     assert.deepEqual(officeErpSidebarItem('/gestao-erp/clientes').children, [
       { label: 'Visão geral', to: '/gestao-erp', exact: true, active: false },
+      { label: 'Planos', to: '/gestao-erp/planos', exact: true, active: false },
       { label: 'Clientes ERP', to: '/gestao-erp/clientes', exact: true, active: true },
       { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: false },
       { label: 'Faturas', to: '/gestao-erp/faturas', exact: false, active: false },

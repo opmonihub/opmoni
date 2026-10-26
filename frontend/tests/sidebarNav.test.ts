@@ -11,23 +11,24 @@ describe('office ERP sidebar entry', () => {
     assert.equal(isOfficeErpAdmin(null), false)
   })
 
-  it('keeps six primary destinations and leaves offers available as a direct legacy route', () => {
+  it('exposes plans in primary navigation and marks only the matching destination active', () => {
     assert.deepEqual(officeErpSidebarItem('/gestao-erp/planos').children, [
       { label: 'Visão geral', to: '/gestao-erp', exact: true, active: false },
+      { label: 'Planos', to: '/gestao-erp/planos', exact: true, active: true },
       { label: 'Clientes ERP', to: '/gestao-erp/clientes', exact: true, active: false },
       { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: false },
       { label: 'Faturas', to: '/gestao-erp/faturas', exact: false, active: false },
       { label: 'Recebimentos', to: '/gestao-erp/recebimentos', exact: true, active: false },
       { label: 'Configurações', to: '/gestao-erp/configuracoes', exact: true, active: false }
     ])
-    assert.equal(officeErpSidebarItem('/gestao-erp/planos').children.some(child => child.to === '/gestao-erp/planos'), false)
-    assert.equal(officeErpSidebarItem('/gestao-erp/clientes').children[1]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/assinaturas/123').children[2]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/faturas').children[3]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/faturas/123/imprimir').children[3]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/recebimentos').children[4]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/configuracoes').children[5]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/faturas-antigas').children[3]?.active, false)
+    assert.equal(officeErpSidebarItem('/gestao-erp/planos-antigos').children[1]?.active, false)
+    assert.equal(officeErpSidebarItem('/gestao-erp/clientes').children[2]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/assinaturas/123').children[3]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/faturas').children[4]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/faturas/123/imprimir').children[4]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/recebimentos').children[5]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/configuracoes').children[6]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/faturas-antigas').children[4]?.active, false)
     assert.equal(officeErpSidebarItem('/gestao-erp/faturas/123/imprimir').children[0]?.active, false)
     assert.equal(sidebarOpenGroupFromPath('/gestao-erp/planos'), 'gestao-erp')
   })
