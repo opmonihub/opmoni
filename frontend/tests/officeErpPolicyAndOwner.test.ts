@@ -166,14 +166,20 @@ function ownerContractFixture(api: (path: string) => Promise<unknown>) {
   const currentCompany = Vue.ref({ id: 12 })
   const currentAccount = Vue.ref<{ id: number } | null>(null)
   const sessionGeneration = Vue.ref(1)
+  const states = new Map<string, Vue.Ref>()
   const calls: string[] = []
   const component = compileVueComponent('pages/erp/contrato.vue', {
+    ref: Vue.ref, computed: Vue.computed, watch: Vue.watch,
     definePageMeta() {},
     onMounted: (callback: () => void) => { void callback() },
     onScopeDispose: () => {},
     useAuth: () => ({ user: testUser, currentCompany, currentAccount }),
     useHead() {},
-    useState: () => sessionGeneration,
+    useState: (key: string, init: () => unknown) => {
+      if (key === 'access-session-generation') return sessionGeneration
+      if (!states.has(key)) states.set(key, Vue.ref(init()))
+      return states.get(key)!
+    },
     useNuxtApp: () => ({ $api: async (path: string) => {
       calls.push(path)
       return api(path)
