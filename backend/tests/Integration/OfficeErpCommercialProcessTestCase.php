@@ -559,6 +559,24 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         } while (true);
     }
 
+    protected function assertWaitingOnAdvisoryLock(Process $process): void
+    {
+        $identity = $this->workers[spl_object_id($process)]['identity'];
+        $deadline = microtime(true) + 10;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $activity = DB::selectOne('select wait_event_type, query from pg_stat_activity where pid = ?', [$identity['database_pid']]);
+            if ($activity?->wait_event_type === 'Lock') {
+                self::assertStringContainsString('pg_advisory_xact_lock', strtolower($activity->query));
+
+                return;
+            }
+            self::assertTrue($process->isRunning(), 'Worker exited before waiting for the PostgreSQL advisory lock.');
+            self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL advisory lock wait observed.');
+            usleep(10000);
+        } while (true);
+    }
+
     /** @param array<string, mixed> $invitation @return array<string, mixed> */
     protected function ownerAcceptancePayload(array $invitation, bool $holdAccountLock = false, bool $holdOwnerLock = false): array
     {

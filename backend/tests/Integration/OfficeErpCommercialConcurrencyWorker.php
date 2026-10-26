@@ -75,11 +75,13 @@ final class OfficeErpCommercialConcurrencyWorker
             $context = OfficeErpExecutionContext::officeAdmin($account, $actor, 'commercial-race-worker:'.$input['contract_id']);
         }
 
-        if (($input['hold_account_lock'] ?? false) || ($input['hold_invoice_lock'] ?? false) || ($input['hold_proof_lock'] ?? false) || ($input['hold_after_proof_claim'] ?? false) || ($input['hold_owner_lock'] ?? false) || ($input['hold_plan_lock'] ?? false) || isset($input['hold_row_lock'])) {
+        if (($input['hold_account_lock'] ?? false) || ($input['hold_invoice_lock'] ?? false) || ($input['hold_proof_lock'] ?? false) || ($input['hold_after_proof_claim'] ?? false) || ($input['hold_owner_lock'] ?? false) || ($input['hold_plan_lock'] ?? false) || isset($input['hold_row_lock']) || ($input['hold_advisory_lock'] ?? false)) {
             $paused = false;
             DB::listen(function (QueryExecuted $query) use ($base, &$paused, $input): void {
                 $sql = strtolower($query->sql);
-                $target = isset($input['hold_row_lock'])
+                $target = ($input['hold_advisory_lock'] ?? false)
+                    ? str_contains($sql, 'pg_advisory_xact_lock')
+                    : (isset($input['hold_row_lock'])
                     ? str_contains($sql, 'from "'.$input['hold_row_lock'].'"')
                     : (($input['hold_plan_lock'] ?? false)
                     ? str_contains($sql, 'from "plans"')
@@ -91,8 +93,8 @@ final class OfficeErpCommercialConcurrencyWorker
                         ? str_contains($sql, 'insert into "office_erp_receipt_allocations"')
                         : (($input['hold_invoice_lock'] ?? false)
                             ? str_contains($sql, 'from "office_erp_invoices"')
-                            : str_contains($sql, 'from "accounts"'))))));
-                $requiresForUpdate = ! ($input['hold_after_proof_claim'] ?? false);
+                            : str_contains($sql, 'from "accounts"')))))));
+                $requiresForUpdate = ! ($input['hold_after_proof_claim'] ?? false) && ! ($input['hold_advisory_lock'] ?? false);
                 if ($paused || ! $target || ($requiresForUpdate && ! str_contains($sql, 'for update'))) {
                     return;
                 }
