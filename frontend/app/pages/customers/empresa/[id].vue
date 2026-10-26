@@ -68,8 +68,21 @@ const deleteOpen = ref(false)
 
 const { registry: navigationRegistry } = useListNavigationRegistry()
 const readAuthority = computed(() => navigationRegistry.value?.authority ?? '')
+let entryGeneration = 0
+let entryDisposed = false
+onBeforeUnmount(() => {
+  entryDisposed = true
+  entryGeneration++
+})
+function commandOwner() {
+  const generation = entryGeneration
+  const authority = readAuthority.value
+  return () => !entryDisposed && generation === entryGeneration && authority === readAuthority.value
+}
 const confirmedClient = shallowRef<Client | null>(null)
 watch(readAuthority, () => {
+  entryGeneration++
+  togglingStatus.value = false
   confirmedClient.value = null
 }, { flush: 'sync' })
 const clientReadKey = computed(() => `client-detail-${readAuthority.value}-${activeId.value}`)
@@ -93,11 +106,14 @@ watch(client, (value) => {
 }, { immediate: true, flush: 'sync' })
 
 function onSaved(saved: Client) {
+  if (entryDisposed || saved.id !== activeId.value || !canManageClients.value || !client.value) return
   client.value = saved
 }
 
 async function reload() {
+  const isCurrent = commandOwner()
   await refreshClient()
+  if (!isCurrent()) return
   if (clientError.value) toast.add({ title: 'Não foi possível carregar o cliente', color: 'error' })
 }
 
@@ -374,19 +390,23 @@ async function copyText(value: string, label: string) {
 
 async function toggleStatus() {
   if (!client.value || togglingStatus.value) return
+  const isCurrent = commandOwner()
   togglingStatus.value = true
   try {
     const saved = await update(client.value.id, { status: client.value.status === 'active' ? 'inactive' : 'active' })
+    if (!isCurrent()) return
     onSaved(saved)
     toast.add({ title: saved.status === 'active' ? 'Cliente ativado' : 'Cliente inativado', color: 'success' })
   } catch {
+    if (!isCurrent()) return
     toast.add({ title: 'Não foi possível alterar a situação', color: 'error' })
   } finally {
-    togglingStatus.value = false
+    if (isCurrent()) togglingStatus.value = false
   }
 }
 
 function onDeleted() {
+  if (entryDisposed || !client.value || !canManageClients.value) return
   navigateTo('/customers/certificados')
 }
 
@@ -558,18 +578,21 @@ const contactEmptyActions = computed(() => {
 
 async function removeDispatchContact(contact: ClientDispatchContact) {
   if (!client.value) return
+  const isCurrent = commandOwner()
   try {
     await dispatchContactsApi.remove(client.value.id, contact.id)
+    if (!isCurrent()) return
     dispatchContacts.value = dispatchContacts.value.filter(item => item.id !== contact.id)
     toast.add({ title: 'Contato de envio removido', color: 'success' })
   } catch (e) {
+    if (!isCurrent()) return
     toast.add({
       title: 'Não foi possível remover o Contato de envio',
       description: apiErrorMessage(e) ?? 'Tente novamente.',
       color: 'error'
     })
   } finally {
-    dispatchContactDeleting.value = null
+    if (isCurrent()) dispatchContactDeleting.value = null
   }
 }
 
@@ -1339,22 +1362,26 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
     </div>
 
     <CustomersClientCadastroModal
+      :key="`cadastro-${readAuthority}`"
       v-model:open="cadastroOpen"
       :client="client"
       @saved="onSaved"
     />
     <CustomersClientContactModal
+      :key="`contact-${readAuthority}`"
       v-model:open="contactOpen"
       :client="client"
       @saved="onSaved"
     />
     <CustomersCertificateModal
+      :key="`certificate-${readAuthority}`"
       v-model:open="certificateOpen"
       :client="client"
       @saved="onSaved"
     />
     <CustomersTagsModal
       v-if="canManageClients"
+      :key="`tags-${readAuthority}`"
       v-model:open="tagsOpen"
       :count="1"
       :assignment="tagAssignment"
@@ -1362,17 +1389,19 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
       @changed="reload"
     />
     <CustomersClientDeleteModal
+      :key="`delete-${readAuthority}`"
       v-model:open="deleteOpen"
       :client="client ? { id: client.id, name: client.name } : null"
       @deleted="onDeleted"
     />
     <DispatchContactFormModal
       v-if="client"
+      :key="`dispatch-${readAuthority}`"
       v-model:open="dispatchContactFormOpen"
       :client-id="client.id"
       :client-name="client.name"
       :contact="dispatchContactEditing"
-      @saved="loadDispatchContacts"
+      @saved="loadDispatchContacts()"
     />
 
     <UModal

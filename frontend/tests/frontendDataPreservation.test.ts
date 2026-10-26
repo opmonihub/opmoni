@@ -10,6 +10,7 @@ import type { MonitoringAssessmentPeriod, SerproConnectionMetadata } from '../ap
 import type { WorkTemplate, WorkTemplatePayload } from '../app/types/work.ts'
 import { whatsappGuideTarget } from '../app/utils/whatsappDispatch.ts'
 import { vueSource } from './helpers/compileVueComponent.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -84,15 +85,18 @@ interface TemplatePage {
   form: { name: string, steps: Array<{ title: string, description: string | null }> }
   buildPayload: () => WorkTemplatePayload
   onSave: () => Promise<void>
+  onGenerate: () => Promise<void>
   syncFromTemplate: (value: WorkTemplate) => void
   addStep: () => void
 }
 
-async function templatePage(isNew = false) {
+async function templatePage(isNew = false, options: { registry?: unknown, save?: () => Promise<WorkTemplate>, generate?: () => Promise<unknown[]>, toast?: (value: unknown) => void, push?: (path: string) => Promise<void> } = {}) {
   const writes: WorkTemplatePayload[] = []
   const page = await setupPage<TemplatePage>('pages/work/modelos/[id].vue', {
     useRoute: () => ({ params: { id: isNew ? 'novo' : '8' } }),
-    useRouter: () => ({ push: async () => {} }),
+    useRouter: () => ({ push: options.push ?? (async () => {}) }),
+    useToast: () => ({ add: options.toast ?? (() => {}) }),
+    ...(options.registry ? { useListNavigationRegistry: options.registry } : {}),
     useAuth: () => ({ canManageWork: Vue.ref(true) }),
     useNuxtApp: () => ({ $api: async () => [] }),
     useState: (_key: string, initial: () => unknown) => Vue.ref(initial()),
@@ -101,9 +105,10 @@ async function templatePage(isNew = false) {
     useWork: () => ({
       showTemplate: async () => template,
       previewTemplate: async () => [],
+      generateTemplate: options.generate ?? (async () => []),
       updateTemplate: async (_id: number, payload: WorkTemplatePayload) => {
         writes.push(payload)
-        return template
+        return options.save ? options.save() : template
       }
     })
   })
@@ -243,4 +248,40 @@ describe('declaration detail guide availability', () => {
     const page = await modal()
     for (const artifact of ['guia', 'recibo', 'declaracao'] as const) assert.equal(page.canDownload(artifact, null), false)
   })
+})
+
+describe('Work template late command feedback', () => {
+  for (const action of ['save', 'generate'] as const) {
+    it(`discards ${action} feedback after an effective Account role transition`, async () => {
+      const identity = Vue.ref({ id: 1, current_account: { id: 7, status: 'active', role: 'admin' }, accounts: [{ id: 7, status: 'active', role: 'admin' }] })
+      const states = new Map<string, Vue.Ref>([['access-user', identity]])
+      const foundation = loadAppComposable<Record<string, unknown>>('composables/useListNavigationState.ts', {
+        useState(key: string, initial: () => unknown) {
+          if (!states.has(key)) states.set(key, Vue.ref(initial()))
+          return states.get(key)
+        }
+      })
+      let resolveCommand!: (value: WorkTemplate) => void
+      const completion = new Promise<WorkTemplate>((resolve) => {
+        resolveCommand = resolve
+      })
+      const toasts: unknown[] = [], navigations: string[] = []
+      const { page } = await templatePage(false, {
+        registry: foundation.useListNavigationRegistry,
+        save: () => completion,
+        generate: async () => [await completion],
+        toast: value => toasts.push(value),
+        push: async (path) => { navigations.push(path) }
+      })
+      const pending = action === 'save' ? page.onSave() : page.onGenerate()
+      identity.value.accounts[0]!.role = 'user'
+      assert.equal(page.form.name, '')
+      resolveCommand(template)
+      await pending
+      assert.equal(page.form.name, '', 'Late command cannot restore cleared private fields')
+      assert.deepEqual(page.form.steps, [])
+      assert.deepEqual(toasts, [])
+      assert.deepEqual(navigations, [])
+    })
+  }
 })
