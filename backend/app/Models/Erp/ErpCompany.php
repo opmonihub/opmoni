@@ -13,7 +13,7 @@ class ErpCompany extends Model
     /** @use HasFactory<ErpCompanyFactory> */
     use HasFactory;
 
-    protected $fillable = ['name', 'razao_social', 'cnpj', 'ie', 'status', 'operating_settings'];
+    protected $fillable = ['name', 'razao_social', 'cnpj', 'ie', 'status', 'operating_settings', 'owner_setup_status'];
 
     /** @return array<string, string> */
     protected function casts(): array

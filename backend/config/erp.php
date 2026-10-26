@@ -3,6 +3,7 @@
 return [
     'operating_writes_enabled' => filter_var(env('ERP_OPERATING_WRITES_ENABLED', false), FILTER_VALIDATE_BOOL),
     'registration_enabled' => filter_var(env('ERP_REGISTRATION_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'office_trial_enabled' => filter_var(env('ERP_OFFICE_TRIAL_ENABLED', false), FILTER_VALIDATE_BOOL),
     'release_enabled' => filter_var(env('ERP_RELEASE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'release_mode' => env('ERP_RELEASE_MODE', 'disabled'),
     'preview_allowlist' => json_decode((string) env('ERP_PREVIEW_ALLOWLIST', '[]'), true) ?: [],
