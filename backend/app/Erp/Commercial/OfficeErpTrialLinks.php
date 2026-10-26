@@ -139,11 +139,13 @@ final class OfficeErpTrialLinks
         $resolved = $this->resolveForRegistration($code);
 
         $account = Account::query()->find($resolved['account_id']);
+        abort_unless($account, 404);
         $subscription = $account?->subscription;
         $officeActive = $account?->status === 'active' && $subscription?->status === 'active';
         $allowance = $subscription?->plan?->erp_commercial ?? Plan::DEFAULT_ERP_COMMERCIAL;
         $modulesAllowed = array_diff($resolved['plan_module_keys'], $allowance['module_keys'] ?? []) === [];
-        $counts = $this->publicUsage((int) $resolved['account_id']);
+        $usage = $this->admission->usageForPublicAccount($account);
+        $counts = $usage['reserved'] + $usage['occupied'];
         $limit = array_key_exists('licence_limit', $allowance) ? $allowance['licence_limit'] : 0;
         $hasCapacity = $limit === null || $counts < (int) $limit;
         $available = $officeActive && $modulesAllowed && $hasCapacity;
@@ -250,22 +252,11 @@ final class OfficeErpTrialLinks
 
     private function url(string $code): string
     {
-        $origin = request()->getSchemeAndHttpHost();
+        $origin = (string) config('access.origin');
+        abort_unless(filter_var($origin, FILTER_VALIDATE_URL)
+            && (parse_url($origin, PHP_URL_SCHEME) === 'https' || app()->environment('local', 'testing')), 500);
 
         return rtrim($origin, '/').'/erp/testar/'.$code;
-    }
-
-    private function publicUsage(int $accountId): int
-    {
-        return (int) DB::table('office_erp_licence_allocations')
-            ->where('account_id', $accountId)
-            ->where(function ($query): void {
-                $query->where('state', 'occupied')
-                    ->orWhere(function ($reserved): void {
-                        $reserved->where('state', 'reserved')->where('expires_at', '>', now());
-                    });
-            })
-            ->count();
     }
 
     private function unavailableReason(bool $officeActive, bool $modulesAllowed, bool $hasCapacity): string
