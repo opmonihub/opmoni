@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { ContextToken, OfficeErpCapabilities, OfficeErpCommandResult } from '#shared/types/officeErpCommercial'
+import type { ContextToken, OfficeErpCommandResult } from '#shared/types/officeErpCommercial'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage, apiFieldErrors } from '~/composables/useApiError'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
