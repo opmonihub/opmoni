@@ -13,6 +13,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Support\AccessSession;
 use App\Support\CurrentAccount;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -343,7 +344,25 @@ final class OfficeErpAdmission
     /** @return array{reserved: int, occupied: int} */
     public function usage(OfficeErpExecutionContext $ctx): array
     {
-        $allocations = OfficeErpRecords::query($ctx, OfficeErpLicenceAllocation::class)
+        $allocations = OfficeErpRecords::query($ctx, OfficeErpLicenceAllocation::class);
+
+        return $this->usageFromAllocations($allocations);
+    }
+
+    /** @return array{reserved: int, occupied: int} */
+    public function usageForPublicAccount(Account $account): array
+    {
+        abort_unless($account->exists && Account::query()->whereKey($account->getKey())->exists(), 404);
+
+        return $this->usageFromAllocations(
+            OfficeErpLicenceAllocation::query()->where('account_id', (int) $account->getKey()),
+        );
+    }
+
+    /** @return array{reserved: int, occupied: int} */
+    private function usageFromAllocations(Builder $allocations): array
+    {
+        $currentAllocations = (clone $allocations)
             ->where(function ($query): void {
                 $query->where('state', 'occupied')
                     ->orWhere(function ($reserved): void {
@@ -351,7 +370,7 @@ final class OfficeErpAdmission
                     });
             });
 
-        $occupied = (clone $allocations)
+        $occupied = (clone $currentAllocations)
             ->where('state', 'occupied')
             ->whereNotExists(function ($query): void {
                 $query->selectRaw('1')
@@ -367,7 +386,7 @@ final class OfficeErpAdmission
             });
 
         return [
-            'reserved' => (clone $allocations)->where('state', 'reserved')->count(),
+            'reserved' => (clone $currentAllocations)->where('state', 'reserved')->count(),
             'occupied' => $occupied->count(),
         ];
     }
