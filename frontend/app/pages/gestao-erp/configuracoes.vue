@@ -67,8 +67,7 @@ const recoveryKey = computed(() => command.recoveryKey.value)
 const canConfigure = computed(() => capabilities.value?.can_configure === true)
 const configureRestriction = computed(() => {
   if (canConfigure.value) return ''
-  const capabilityReasons = (capabilities.value as (typeof capabilities.value & { capability_reasons?: Record<string, string[]> }) | null)?.capability_reasons
-  const reasons = capabilityReasons?.can_configure ?? []
+  const reasons = capabilities.value?.capability_reasons.can_configure ?? []
   const messages = reasons.map((reason) => {
     switch (reason) {
       case 'account_suspended': return 'O escritório selecionado está suspenso.'

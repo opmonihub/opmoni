@@ -2,12 +2,37 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
 import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import type { OfficeErpCapabilities } from '../shared/types/officeErpCommercial.ts'
 
 type Node = { tag?: string, text?: string, props: Record<string, unknown>, children: Node[], parent?: Node | null }
 const testAccount = Vue.ref({ id: 8, status: 'active', role: 'admin' })
 const testUser = Vue.ref({ id: 5 })
 const sessionGeneration = Vue.ref(2)
-const capability = Vue.ref({ capability_key: 'office-capability-1', can_read: true, can_configure: true, can_manage_trial_link: true, reasons: {} as Record<string, string[]> })
+const defaultCapabilities: OfficeErpCapabilities = {
+  capability_key: 'office-capability-1',
+  can_read: true,
+  can_maintain: true,
+  can_configure: true,
+  can_sell_new: true,
+  can_provision: true,
+  can_start_trial: false,
+  can_manage_trial_link: true,
+  capability_reasons: {
+    can_configure: [],
+    can_sell_new: [],
+    can_provision: [],
+    can_start_trial: [],
+    can_manage_trial_link: []
+  },
+  reasons: {},
+  allowance: { enabled: true, licence_limit: null, module_keys: [] },
+  usage: { reserved: 0, occupied: 0 }
+}
+const capability = Vue.ref<OfficeErpCapabilities>(structuredClone(defaultCapabilities))
+
+function setCapability(overrides: Partial<OfficeErpCapabilities> = {}) {
+  capability.value = { ...structuredClone(defaultCapabilities), ...overrides }
+}
 
 function renderText(node: Node): string {
   return `${node.text ?? ''}${node.children.map(renderText).join('')}`
@@ -74,7 +99,7 @@ function fixture(options: { account?: { id: number, status: string, role: string
   testAccount.value = options.account ?? { id: 8, status: 'active', role: 'admin' }
   testUser.value = { id: 5 }
   sessionGeneration.value = 2
-  capability.value = { capability_key: 'office-capability-1', can_read: true, can_configure: true, can_manage_trial_link: true, reasons: {} }
+  setCapability()
   const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
   const executeCalls: unknown[][] = []
   const recoverCalls: string[] = []
@@ -355,16 +380,17 @@ describe('Company ERP contract page', () => {
 
 describe('Office ERP policy settings page', () => {
   it('loads existing settings when commercial resale is disabled', async () => {
-    capability.value = {
-      capability_key: 'office-capability-1',
-      can_read: true,
-      can_configure: true,
-      can_manage_trial_link: true,
-      can_provision: true,
+    setCapability({
       can_sell_new: false,
-      capability_reasons: { can_sell_new: ['commercial_resale_disabled'] },
+      capability_reasons: {
+        can_configure: [],
+        can_sell_new: ['commercial_resale_disabled'],
+        can_provision: [],
+        can_start_trial: [],
+        can_manage_trial_link: []
+      },
       reasons: { commercial_resale_disabled: ['commercial_resale_disabled'] }
-    }
+    })
     const view = fixture()
     await flush()
     assert.equal(view.calls.filter(call => call.path === '/erp-commercial/settings').length, 1)
@@ -375,7 +401,7 @@ describe('Office ERP policy settings page', () => {
   })
 
   it('shows a definitive role or status denial without offering a retry', async () => {
-    capability.value = { capability_key: 'office-capability-1', can_read: false, can_configure: false, can_manage_trial_link: false, reasons: { account_suspended: ['account_suspended'] } }
+    setCapability({ can_read: false, can_configure: false, can_manage_trial_link: false })
     const view = fixture({ account: { id: 8, status: 'suspended', role: 'admin' } })
     await flush()
     assert.equal(view.calls.filter(call => call.path === '/erp-commercial/settings').length, 0)
@@ -384,7 +410,7 @@ describe('Office ERP policy settings page', () => {
     assert.doesNotMatch(renderText(view.root), /Política de inadimplência/)
     view.app.unmount()
 
-    capability.value = { capability_key: 'office-capability-1', can_read: false, can_configure: false, can_manage_trial_link: false, reasons: { office_admin_required: ['office_admin_required'] } }
+    setCapability({ can_read: false, can_configure: false, can_manage_trial_link: false })
     const roleView = fixture({ account: { id: 8, status: 'active', role: 'operator' } })
     await flush()
     assert.equal(roleView.calls.filter(call => call.path === '/erp-commercial/settings').length, 0)
