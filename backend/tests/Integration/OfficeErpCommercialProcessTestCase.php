@@ -8,6 +8,7 @@ use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpMoney;
 use App\Erp\Commercial\OfficeErpOwnerInvitations;
+use App\Erp\Commercial\OfficeErpOwnerSetup;
 use App\Erp\Commercial\OfficeErpReceiptProofs;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Account;
@@ -20,6 +21,7 @@ use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\Commercial\OfficeErpOwnerInvitation;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
+use App\Models\Erp\Commercial\OfficeErpTrialLink;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpPlan;
@@ -34,6 +36,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
@@ -48,6 +51,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'office_erp_contract_revisions', 'office_erp_owner_invitations', 'office_erp_licence_allocations', 'office_erp_invoices',
         'office_erp_invoice_counters', 'office_erp_commercial_operations', 'office_erp_audit_events',
         'office_erp_receipts', 'office_erp_receipt_allocations', 'office_erp_receipt_reversals', 'office_erp_receipt_proofs',
+        'office_erp_trial_links', 'erp_subscription_trials',
     ];
 
     private const SOURCES = [
@@ -63,10 +67,15 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Erp/Commercial/OfficeErpReceiptProofs.php',
         'app/Erp/Commercial/OfficeErpOperations.php',
         'app/Erp/Commercial/OfficeErpOwnerAcceptance.php',
+        'app/Erp/Commercial/OfficeErpCustomerEnrollment.php',
+        'app/Erp/Commercial/OfficeErpTrialLinks.php',
+        'app/Erp/Commercial/OfficeErpTrialRegistration.php',
+        'app/Erp/Commercial/ErpTrialLifecycle.php',
         'app/Erp/Commercial/OfficeErpContracts.php',
         'app/Erp/Commercial/OfficeErpRecurringBilling.php',
         'app/Erp/Commercial/OfficeErpCalendar.php',
         'app/Erp/Commercial/OfficeErpOwnerInvitations.php',
+        'app/Erp/Commercial/OfficeErpOwnerSetup.php',
         'app/Erp/Commercial/OfficeErpInvitationContinuation.php',
         'app/Erp/Commercial/OfficeErpRecords.php',
         'app/Models/Erp/Commercial/OfficeErpContract.php',
@@ -89,13 +98,31 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Models/Erp/ErpCompanyMembership.php',
         'app/Models/Erp/ErpPlan.php',
         'app/Models/Erp/ErpSubscription.php',
+        'app/Models/Erp/ErpSubscriptionTrial.php',
+        'app/Models/Erp/Commercial/OfficeErpTrialLink.php',
+        'database/migrations/2026_10_25_090000_add_erp_customer_enrollment.php',
+        'database/migrations/2026_10_25_091000_create_erp_office_trials.php',
         'app/Models/Account.php',
         'app/Models/AccountMembership.php',
         'app/Models/Client.php',
+        'app/Actions/AccessAccounts.php',
+        'app/Actions/ErpCommercialRegistration.php',
+        'app/Services/ClientManager.php',
+        'app/Services/CnpjWsLookup.php',
         'app/Models/User.php',
         'app/Erp/ErpCompanyProvisioning.php',
         'app/Erp/ErpCompanyInitializer.php',
         'app/Erp/ErpCommercialCatalog.php',
+        'app/Erp/ErpCommercialGate.php',
+        'app/Http/Controllers/Api/V1/Erp/ErpTrialController.php',
+        'app/Http/Controllers/Api/V1/OfficeErp/OfficeErpEnrollmentController.php',
+        'app/Http/Controllers/Api/V1/OfficeErp/OfficeErpOwnerSetupController.php',
+        'app/Http/Controllers/Api/V1/OfficeErp/OfficeErpInvitationController.php',
+        'routes/office-erp-trials.php',
+        'routes/office-erp-commercial.php',
+        'routes/office-erp-invitations.php',
+        'routes/api.php',
+        'config/erp.php',
         'app/Services/BrazilianTaxId.php',
         'app/Support/AccessSession.php',
         'app/Support/ErpSession.php',
@@ -114,6 +141,9 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
 
     /** @var array<int, array{process: Process, base: string, identity: array<string, mixed>}> */
     private array $workers = [];
+
+    /** @var array<int, array{phase: string, query_category: string, contender_pid: int, holder_pid: int, expected_lock: string}> */
+    private array $observedWaits = [];
 
     /** @var array<string, array{ids: list<int|string>, hash: string}> */
     private array $retainedRows = [];
@@ -211,6 +241,173 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         ];
     }
 
+    /** @return array{link: OfficeErpTrialLink, code: string, plan_id: int} */
+    protected function trialLinkFixture(array $office, ?ErpPlan $selectedPlan = null): array
+    {
+        $plan = $selectedPlan ?? ErpPlan::factory()->create(['slug' => $this->uniqueErpPlanSlug()]);
+        if (! $plan->modules()->where('module_key', 'purchases')->exists()) {
+            $plan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
+        }
+        $code = (string) Str::uuid();
+        $link = OfficeErpTrialLink::query()->create([
+            'account_id' => $office['account_id'],
+            'public_code' => $code,
+            'erp_plan_id' => $plan->id,
+            'enabled' => true,
+            'revision' => 1,
+            'created_by_user_id' => $office['actor_id'],
+            'updated_by_user_id' => $office['actor_id'],
+        ]);
+
+        return ['link' => $link, 'code' => $code, 'plan_id' => (int) $plan->id];
+    }
+
+    /** @return array<string, mixed> */
+    protected function ownerSetupFixture(array $office): array
+    {
+        $context = $office['context'];
+        $contract = $office['contracts'][0];
+        $tag = bin2hex(random_bytes(6));
+        $company = $this->officeAdmin($office, fn (): ErpCompany => $context->run(function () use ($context, $contract, $tag): ErpCompany {
+            $contract = OfficeErpRecords::query($context, OfficeErpContract::class)
+                ->with('client')
+                ->whereKey($contract->id)
+                ->firstOrFail();
+            $company = ErpCompany::factory()->create([
+                'name' => 'Owner setup race company '.$tag,
+                'cnpj' => $contract->client->tax_id,
+                'owner_setup_status' => 'unclaimed',
+            ]);
+            $plan = ErpPlan::factory()->create(['slug' => $this->uniqueErpPlanSlug()]);
+            $plan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
+            $contract->forceFill([
+                'erp_company_id' => $company->id,
+                'agreement_status' => 'effective',
+                'provisioning_source' => 'administrative',
+            ])->save();
+            $subscription = ErpSubscription::factory()->active()->create([
+                'erp_company_id' => $company->id,
+                'erp_plan_id' => $plan->id,
+                'office_erp_contract_id' => $contract->id,
+            ]);
+            OfficeErpLicenceAllocation::factory()->create([
+                'account_id' => $context->accountId,
+                'contract_id' => $contract->id,
+                'erp_company_id' => $company->id,
+                'state' => 'occupied',
+                'expires_at' => null,
+            ]);
+
+            return $company->setRelation('subscription', $subscription);
+        }));
+        $owner = ['full_name' => 'Trial Race Owner '.$tag, 'email' => 'owner-setup-race-'.$tag.'@example.test'];
+        $issued = $this->officeAdmin($office, fn (): array => $context->run(
+            fn (): array => app(OfficeErpOwnerSetup::class)->issue($context, $contract, $owner, 'owner-setup-seed-'.$tag),
+        ));
+        $url = (string) ($issued['url'] ?? '');
+        $fragment = strpos($url, '#token=');
+        if ($fragment === false) {
+            throw new RuntimeException('Owner setup race fixture did not receive a one-time invitation URL.');
+        }
+
+        return [
+            'account_id' => $office['account_id'],
+            'actor_id' => $office['actor_id'],
+            'membership_id' => $office['membership_id'],
+            'contract_id' => (int) $contract->id,
+            'company_id' => (int) $company->id,
+            'subscription_id' => (int) $company->subscription->id,
+            'allocation_id' => (int) DB::table('office_erp_licence_allocations')->where('contract_id', $contract->id)->value('id'),
+            'owner' => $owner,
+            'invitation_id' => (int) $issued['invitation_id'],
+            'token' => substr($url, $fragment + strlen('#token=')),
+        ];
+    }
+
+    /** @param array{code: string, link: OfficeErpTrialLink} $trialLink
+     * @return array<string, mixed>
+     */
+    protected function trialRegistrationPayload(array $office, array $trialLink, string $cnpj, string $suffix, bool $holdAccountLock = false, ?string $holdAdvisoryLock = null, bool $holdProvider = false, ?string $frozenNow = null): array
+    {
+        return [
+            'account_id' => $office['account_id'],
+            'actor_id' => $office['actor_id'],
+            'membership_id' => $office['membership_id'],
+            'trial_link_id' => (int) $trialLink['link']->id,
+            'code' => $trialLink['code'],
+            'registration' => [
+                'name' => 'Trial race owner '.$suffix,
+                'email' => 'trial-race-'.$suffix.'@example.test',
+                'password' => 'Trial-Race-Secret-'.$suffix,
+                'company_name' => 'Trial race company '.$suffix,
+                'cnpj' => $cnpj,
+                'tax_regime' => 'simple_national',
+                'establishment_name' => 'Matriz',
+            ],
+            'idempotency_key' => 'trial-race-'.$suffix,
+            'hold_row_lock' => $holdAccountLock ? 'accounts' : null,
+            'hold_advisory_lock' => $holdAdvisoryLock,
+            'hold_provider' => $holdProvider,
+            'frozen_now' => $frozenNow,
+        ];
+    }
+
+    /** @param array{link: OfficeErpTrialLink} $trialLink
+     * @return array<string, mixed>
+     */
+    protected function trialRotationPayload(array $office, array $trialLink, string $suffix, bool $holdTrialLinkLock = false): array
+    {
+        return [
+            'account_id' => $office['account_id'],
+            'actor_id' => $office['actor_id'],
+            'membership_id' => $office['membership_id'],
+            'trial_link_id' => (int) $trialLink['link']->id,
+            'idempotency_key' => 'trial-rotate-'.$suffix,
+            'hold_row_lock' => $holdTrialLinkLock ? 'office_erp_trial_links' : null,
+        ];
+    }
+
+    /** @param array<string, mixed> $terms
+     * @return array<string, mixed>
+     */
+    protected function trialConversionPayload(array $office, int $contractId, array $terms, string $suffix, bool $holdAccountLock = false, ?string $frozenNow = null): array
+    {
+        return [
+            'account_id' => $office['account_id'],
+            'actor_id' => $office['actor_id'],
+            'membership_id' => $office['membership_id'],
+            'contract_id' => $contractId,
+            'terms' => $terms,
+            'idempotency_key' => 'trial-convert-'.$suffix,
+            'hold_row_lock' => $holdAccountLock ? 'accounts' : null,
+            'frozen_now' => $frozenNow,
+        ];
+    }
+
+    /** @param array<string, mixed> $setup */
+    protected function ownerSetupIssuePayload(array $setup, bool $holdCompanyLock = false): array
+    {
+        return [
+            'account_id' => $setup['account_id'],
+            'actor_id' => $setup['actor_id'],
+            'membership_id' => $setup['membership_id'],
+            'contract_id' => $setup['contract_id'],
+            'owner' => $setup['owner'],
+            'idempotency_key' => 'owner-setup-race-'.bin2hex(random_bytes(12)),
+            'hold_row_lock' => $holdCompanyLock ? 'erp_companies' : null,
+        ];
+    }
+
+    /** @param array<string, mixed> $setup */
+    protected function ownerSetupAcceptPayload(array $setup, bool $holdCompanyLock = false): array
+    {
+        return [
+            'token' => $setup['token'],
+            'password' => 'Race-Owner-Password-123',
+            'hold_row_lock' => $holdCompanyLock ? 'erp_companies' : null,
+        ];
+    }
+
     /** @return array<string, mixed> */
     protected function effectiveInvoiceFixture(): array
     {
@@ -241,7 +438,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
                     ])->save();
                     ErpSubscription::factory()->active()->create([
                         'erp_company_id' => $company->id,
-                        'erp_plan_id' => ErpPlan::factory()->create()->id,
+                        'erp_plan_id' => ErpPlan::factory()->create(['slug' => $this->uniqueErpPlanSlug()])->id,
                         'office_erp_contract_id' => $contract->id,
                     ]);
                     OfficeErpLicenceAllocation::factory()->create([
@@ -496,28 +693,12 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
 
     protected function assertWaitingOnAccountLock(Process $process): void
     {
-        $identity = $this->workers[spl_object_id($process)]['identity'];
-        $deadline = microtime(true) + 10;
-        do {
-            DB::select('select pg_stat_clear_snapshot()');
-            $activity = DB::selectOne(
-                'select wait_event_type, query from pg_stat_activity where pid = ?',
-                [$identity['database_pid']],
-            );
-            if ($activity?->wait_event_type === 'Lock') {
-                self::assertStringContainsString('"accounts"', strtolower($activity->query));
-                self::assertStringContainsString('for update', strtolower($activity->query));
-
-                return;
-            }
-            self::assertTrue($process->isRunning(), 'Contender exited before the Account row lock wait.');
-            self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL Account row lock wait observed.');
-            usleep(10000);
-        } while (true);
+        $this->assertWaitingOnRowLock($process, 'accounts');
     }
 
     protected function assertWaitingOnRowLock(Process $process, string $table): void
     {
+        self::assertMatchesRegularExpression('/\A[a-z_]+\z/', $table);
         $identity = $this->workers[spl_object_id($process)]['identity'];
         $deadline = microtime(true) + 10;
         do {
@@ -533,6 +714,72 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL '.$table.' row lock wait observed.');
             usleep(10000);
         } while (true);
+    }
+
+    protected function assertWaitingOnTableLock(Process $process, string $table): void
+    {
+        $this->assertWaitingOnRowLock($process, $table);
+    }
+
+    protected function assertWaitingOnAdvisoryLock(Process $process): void
+    {
+        $identity = $this->workers[spl_object_id($process)]['identity'];
+        $deadline = microtime(true) + 10;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $activity = DB::selectOne('select wait_event_type, query from pg_stat_activity where pid = ?', [$identity['database_pid']]);
+            if ($activity?->wait_event_type === 'Lock') {
+                self::assertStringContainsString('pg_advisory_xact_lock', strtolower($activity->query));
+
+                return;
+            }
+            self::assertTrue(
+                $process->isRunning(),
+                'Worker exited before waiting for the PostgreSQL advisory lock. '.self::workerFailureFingerprint($process),
+            );
+            self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL advisory lock wait observed.');
+            usleep(10000);
+        } while (true);
+    }
+
+    protected function assertWaitingOnAdvisoryLockHeldBy(Process $contender, Process $holder, string $expectedLock): void
+    {
+        self::assertMatchesRegularExpression('/\Aer[p-][a-z-]+\z/', $expectedLock);
+        $identity = $this->workers[spl_object_id($contender)]['identity'];
+        $holderPid = $this->signalData($holder, 'ready')['database_pid'];
+        $deadline = microtime(true) + 10;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $activity = DB::selectOne(
+                'select wait_event_type, query, case when ? = any(pg_blocking_pids(pid)) then 1 else 0 end as blocked_by_holder from pg_stat_activity where pid = ?',
+                [$holderPid, $identity['database_pid']],
+            );
+            if ($activity?->wait_event_type === 'Lock') {
+                self::assertStringContainsString('pg_advisory_xact_lock', strtolower($activity->query));
+                self::assertSame(1, (int) $activity->blocked_by_holder);
+                $this->observedWaits[spl_object_id($contender)] = [
+                    'phase' => 'trial-registration-before-catalog-release',
+                    'query_category' => 'pg_advisory_xact_lock',
+                    'contender_pid' => $identity['database_pid'],
+                    'holder_pid' => $holderPid,
+                    'expected_lock' => $expectedLock,
+                ];
+
+                return;
+            }
+            self::assertTrue($contender->isRunning(), 'Worker exited before waiting on the held PostgreSQL advisory lock.');
+            self::assertLessThan($deadline, microtime(true), 'No PostgreSQL advisory wait blocked by the expected worker was observed.');
+            usleep(10000);
+        } while (true);
+    }
+
+    protected function assertWorkerHeldAdvisoryLock(Process $process): void
+    {
+        $ready = $this->signalData($process, 'ready');
+        $held = $this->signalData($process, 'held');
+        self::assertSame($ready['database_pid'], $held['database_pid']);
+        self::assertGreaterThan(0, $held['transaction_level']);
+        self::assertStringContainsString('pg_advisory_xact_lock', strtolower($held['lock_query']));
     }
 
     /** @param array<string, mixed> $invitation @return array<string, mixed> */
@@ -599,10 +846,89 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     {
         $process->wait();
         self::assertTrue($process->isSuccessful(), 'Worker exit='.$process->getExitCode().'; stderr bytes='.strlen($process->getErrorOutput()));
-        $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+        $output = $process->getOutput();
+        try {
+            $result = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            $firstLine = strtok($output, "\n") ?: '[empty stdout]';
+            $firstLine = preg_replace('/\b\d{14}\b/', '[cnpj]', $firstLine) ?? $firstLine;
+            $firstLine = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', '[email]', $firstLine) ?? $firstLine;
+            $firstLine = preg_replace('/Trial-Race-Secret-[^"\s]*/', '[secret]', $firstLine) ?? $firstLine;
+            $firstLine = substr($firstLine, 0, 240);
+            $sqlState = self::workerSqlState($output);
+            self::fail('Worker emitted invalid JSON (stdout bytes='.strlen($output).', json error='.$exception->getMessage()
+                .', sqlstate='.$sqlState.', query_category='.self::workerQueryCategory($output).', first line='.$firstLine
+                .'; observed_wait='.json_encode($this->observedWaits[spl_object_id($process)] ?? [], JSON_THROW_ON_ERROR)
+                .'; '.self::workerFailureFingerprint($process).').');
+        }
         self::assertSame(0, $result['transaction_level']);
 
         return $result;
+    }
+
+    private static function workerFailureFingerprint(Process $process): string
+    {
+        $stdout = $process->getOutput();
+        $stderr = $process->getErrorOutput();
+        $diagnostic = $stderr."\n".$stdout;
+        $type = preg_match('/^([A-Za-z_\\\\][A-Za-z0-9_\\\\]*(?:Exception|Error)):/m', $diagnostic, $matches) === 1
+            ? $matches[1]
+            : 'unknown';
+        preg_match_all('/^#\\d+\\s+(.+?)(?:\\([^\\n]*\\))?:\\s+(?:.+)$/m', $diagnostic, $frames);
+        $locations = array_slice($frames[1] ?? [], 0, 4);
+        $locations = array_map(static function (string $location): string {
+            $location = preg_replace('/\\b\\d{14}\\b/', '[cnpj]', $location) ?? $location;
+            $location = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i', '[email]', $location) ?? $location;
+
+            return substr($location, 0, 200);
+        }, $locations);
+        $output = json_decode($stdout, true);
+        $result = [];
+        if (is_array($output)) {
+            if (is_int($output['status'] ?? null)) {
+                $result['status'] = $output['status'];
+            }
+            if (is_string($output['code'] ?? null) && preg_match('/\\A[a-z][a-z0-9_]{2,80}\\z/', $output['code']) === 1) {
+                $result['code'] = $output['code'];
+            }
+        }
+
+        return 'Worker diagnostic: exit='.$process->getExitCode().'; '.$type.'; stdout bytes='.strlen($stdout).'; stderr bytes='.strlen($stderr)
+            .'; result='.json_encode($result, JSON_THROW_ON_ERROR).'; frames='.json_encode($locations, JSON_THROW_ON_ERROR);
+    }
+
+    private static function workerSqlState(string $output): string
+    {
+        if (preg_match('/SQLSTATE\\[([A-Z0-9]{5})\\]:\\s*([^\\r\\n]+)/', $output, $matches) !== 1) {
+            return 'unavailable';
+        }
+
+        $message = preg_split('/\\s+\\((?:Connection:|SQL:)|\\s+DETAIL:/', trim($matches[2]), 2)[0] ?? 'unavailable';
+        $message = preg_replace('/\\b\\d{14}\\b/', '[cnpj]', $message) ?? $message;
+        $message = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i', '[email]', $message) ?? $message;
+
+        return $matches[1].' '.substr($message, 0, 240);
+    }
+
+    private static function workerQueryCategory(string $output): string
+    {
+        $output = strtolower($output);
+        if (str_contains($output, 'pg_advisory_xact_lock')) {
+            return 'advisory-xact-lock';
+        }
+        foreach (['accounts', 'subscriptions', 'plans', 'erp_companies', 'erp_plans', 'erp_subscriptions', 'office_erp_contracts', 'office_erp_licence_allocations'] as $table) {
+            if (str_contains($output, 'from "'.$table.'"') && str_contains($output, 'for update')) {
+                return $table.'-row-lock';
+            }
+            if (str_contains($output, 'insert into "'.$table.'"')) {
+                return $table.'-insert';
+            }
+            if (str_contains($output, 'update "'.$table.'"')) {
+                return $table.'-update';
+            }
+        }
+
+        return 'unclassified-query';
     }
 
     /** @return array{pid: int, database_pid: int, checkout: string, source_hashes: array<string, string>} */
@@ -739,6 +1065,11 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         }
 
         throw new RuntimeException('Unable to generate an unused CNPJ for the retained commercial race fixture.');
+    }
+
+    protected function uniqueErpPlanSlug(): string
+    {
+        return 'race-'.bin2hex(random_bytes(12));
     }
 
     private function signal(Process $process, string $name): string

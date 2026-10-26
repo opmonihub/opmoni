@@ -8,6 +8,7 @@ definePageMeta({ middleware: 'auth' })
 
 const { api } = useAccessApi()
 const { user, currentAccount } = useAuth()
+const toast = useToast()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const context = useOfficeErpContext()
 const query = ref('')
@@ -20,6 +21,7 @@ const lastPage = ref(1)
 const loading = ref(false)
 const loadError = ref('')
 const confirmedEmpty = ref(false)
+const copyingTrialLink = ref(false)
 let requestGeneration = 0
 
 const identityStamp = computed(() => JSON.stringify([
@@ -30,8 +32,26 @@ const identityStamp = computed(() => JSON.stringify([
 const columns: TableColumn<OfficeErpPortfolioClient>[] = [
   { accessorKey: 'name', header: 'Cliente' },
   { accessorKey: 'tax_id', header: 'CNPJ' },
+  { id: 'subscription', header: 'Plano e situação' },
+  { id: 'billing', header: 'Próxima data' },
   { id: 'actions', header: '' }
 ]
+
+const licenceLabels: Record<string, string> = {
+  active: 'Assinatura ativa',
+  pending: 'Assinatura pendente',
+  suspended: 'Assinatura suspensa',
+  past_due: 'Assinatura em atraso',
+  canceled: 'Assinatura cancelada'
+}
+const trialLabels = { trialing: 'Em teste', expired: 'Teste encerrado', converted: 'Período de teste convertido' }
+
+function formatOfficeDate(value: string | null | undefined) {
+  if (!value) return null
+  const date = new Date(`${value.slice(0, 10)}T00:00:00Z`)
+  if (!Number.isFinite(date.getTime())) return null
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(date)
+}
 
 async function loadClients() {
   const request = ++requestGeneration
@@ -70,6 +90,37 @@ async function loadClients() {
   }
 }
 
+async function copyTrialLink() {
+  if (copyingTrialLink.value) return
+  copyingTrialLink.value = true
+  const identity = identityStamp.value
+  try {
+    await context.refresh()
+    if (identity !== identityStamp.value) return
+    if (!context.capabilities.value?.can_manage_trial_link) {
+      toast.add({ title: 'Ação indisponível', description: 'Sua conta não pode gerenciar o link de teste deste escritório.', color: 'warning' })
+      return
+    }
+    const token = context.capture()
+    const response = await api<{ data: { configured: boolean, enabled: boolean, url: string | null } }>('/erp-commercial/trial-link')
+    if (identity !== identityStamp.value || !context.isCurrent(token)) return
+    if (!response?.data?.configured || !response.data.enabled || !response.data.url) {
+      toast.add({ title: 'Link de teste indisponível', description: 'Configure e ative o link de teste nas configurações do ERP.', color: 'warning' })
+      return
+    }
+    const target = new URL(response.data.url, window.location.origin)
+    if (target.origin !== window.location.origin || target.search || target.hash || !/^\/erp\/testar\/[a-f\d-]{36}$/i.test(target.pathname))
+      throw new Error('O endereço retornado não é um link de teste válido deste escritório.')
+    await navigator.clipboard.writeText(target.href)
+    toast.add({ title: 'Link de teste copiado', description: 'Compartilhe o link para iniciar um teste de sete dias.', color: 'success' })
+  } catch (error) {
+    if (identity === identityStamp.value)
+      toast.add({ title: 'Não foi possível copiar o link', description: apiErrorMessage(error) ?? 'Verifique a conexão e tente novamente.', color: 'error' })
+  } finally {
+    if (identity === identityStamp.value) copyingTrialLink.value = false
+  }
+}
+
 watch([debouncedQuery, page, perPage], () => {
   void loadClients()
 }, { immediate: true })
@@ -78,6 +129,7 @@ watch([debouncedQuery, perPage], () => {
 })
 watch(identityStamp, () => {
   requestGeneration++
+  copyingTrialLink.value = false
   clients.value = []
   total.value = 0
   confirmedEmpty.value = false
@@ -88,11 +140,23 @@ watch(identityStamp, () => {
 
 <template>
   <div class="flex min-h-0 flex-col gap-4">
-    <DataTablePanelList title="Clientes da carteira" description="Convide responsáveis para acessar o ERP dos clientes do escritório.">
+    <DataTablePanelList title="Clientes ERP" description="Cadastre clientes, selecione alguém da carteira e acompanhe as matrículas do escritório.">
       <template #action>
-        <UButton to="/gestao-erp/clientes/novo" icon="i-lucide-send">
-          Novo convite
-        </UButton>
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            v-if="context.capabilities.value?.can_manage_trial_link"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-copy"
+            :loading="copyingTrialLink"
+            @click="copyTrialLink"
+          >
+            Copiar link de teste
+          </UButton>
+          <UButton to="/gestao-erp/clientes/novo" icon="i-lucide-plus">
+            Cadastrar cliente ERP
+          </UButton>
+        </div>
       </template>
       <template #toolbar>
         <UFormField name="client-search" label="Buscar cliente" class="w-full max-w-sm">
@@ -150,22 +214,60 @@ watch(identityStamp, () => {
           <template #tax_id-cell="{ row }">
             <span class="text-sm text-muted">{{ row.original.tax_id || '—' }}</span>
           </template>
+          <template #subscription-cell="{ row }">
+            <div v-if="row.original.subscription" class="min-w-0">
+              <p class="truncate font-medium text-highlighted">
+                {{ row.original.subscription.erp_plan?.name || 'Plano ERP' }}
+              </p>
+              <p class="text-sm text-muted">
+                {{ row.original.subscription.trial?.situation === 'trialing' ? trialLabels.trialing : row.original.subscription.trial?.situation === 'expired' ? trialLabels.expired : licenceLabels[row.original.subscription.licence_status || ''] || 'Situação indisponível' }}
+              </p>
+              <p v-if="row.original.subscription.trial?.situation === 'converted'" class="text-xs text-muted">
+                {{ trialLabels.converted }}
+              </p>
+            </div>
+            <span v-else-if="row.original.subscription === null" class="text-sm text-muted">Sem contrato ERP vinculado</span>
+            <span v-else class="text-sm text-muted">Resumo do contrato indisponível</span>
+          </template>
+          <template #billing-cell="{ row }">
+            <template v-if="row.original.subscription?.trial?.situation === 'trialing' || row.original.subscription?.trial?.situation === 'expired'">
+              <span class="text-sm text-muted">Termina em {{ formatOfficeDate(row.original.subscription.trial.ends_at) || 'data indisponível' }}</span>
+            </template>
+            <template v-else-if="row.original.subscription">
+              <span class="text-sm text-muted">
+                {{ formatOfficeDate(row.original.subscription.next_billing_on) ? `Próxima cobrança ${formatOfficeDate(row.original.subscription.next_billing_on)}` : 'Próxima cobrança indisponível' }}
+              </span>
+            </template>
+            <span v-else-if="row.original.subscription === null" class="text-sm text-muted">—</span>
+            <span v-else class="text-sm text-muted">Data indisponível</span>
+          </template>
           <template #actions-cell="{ row }">
-            <UButton
-              :to="{
-                path: '/gestao-erp/clientes/novo',
-                query: {
-                  cliente: row.original.id,
-                  pagina: page,
-                  ...(debouncedQuery.trim() ? { q: debouncedQuery.trim() } : {})
-                }
-              }"
-              color="neutral"
-              variant="ghost"
-              size="sm"
-            >
-              Convidar responsável
-            </UButton>
+            <div class="flex flex-wrap gap-1">
+              <UButton
+                v-if="row.original.subscription"
+                :to="`/gestao-erp/assinaturas/${row.original.subscription.contract_id}`"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+              >
+                Ver contrato
+              </UButton>
+              <UButton
+                :to="{
+                  path: '/gestao-erp/clientes/novo',
+                  query: {
+                    cliente: row.original.id,
+                    pagina: page,
+                    ...(debouncedQuery.trim() ? { q: debouncedQuery.trim() } : {})
+                  }
+                }"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+              >
+                Selecionar da carteira
+              </UButton>
+            </div>
           </template>
           <template #empty>
             <div class="py-8 text-center text-sm text-muted">

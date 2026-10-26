@@ -10,4 +10,5 @@ export function erpCompanySelection(identity: Identity | null) {
 export function erpOperatingApiPath(path: string) {
   return /^\/erp\//.test(path)
     && !/^\/erp\/(?:company\/switch|companies|delegations)(?:\/|\?|$)/.test(path)
+    && !/^\/erp\/trials\/(?:current|[^/?]+(?:\/register)?)(?:\?|$)/.test(path)
 }

@@ -4,7 +4,6 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const { currentAccount } = useAuth()
 const isInvoicePrintRoute = computed(() => /^\/gestao-erp\/faturas\/[1-9]\d*\/imprimir$/.test(route.path))
 const pageTabs: NavigationMenuItem[][] = [[{
   label: 'Visão geral',
@@ -12,12 +11,7 @@ const pageTabs: NavigationMenuItem[][] = [[{
   to: '/gestao-erp',
   active: route.path === '/gestao-erp'
 }, {
-  label: 'Ofertas',
-  icon: 'i-lucide-tags',
-  to: '/gestao-erp/planos',
-  active: route.path === '/gestao-erp/planos'
-}, {
-  label: 'Clientes da carteira',
+  label: 'Clientes ERP',
   icon: 'i-lucide-users',
   to: '/gestao-erp/clientes',
   active: route.path === '/gestao-erp/clientes'
@@ -52,9 +46,6 @@ const pageTabs: NavigationMenuItem[][] = [[{
         <UDashboardNavbar title="Gestão ERP">
           <template #leading>
             <UDashboardSidebarCollapse />
-          </template>
-          <template #right>
-            <span v-if="currentAccount" class="hidden text-sm text-muted sm:inline">{{ currentAccount.name }}</span>
           </template>
         </UDashboardNavbar>
         <UDashboardToolbar>

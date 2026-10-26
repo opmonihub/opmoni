@@ -5,6 +5,7 @@ namespace Tests\Integration;
 use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpReceipts;
 use App\Erp\Commercial\OfficeErpRecords;
+use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpAuditEvent;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
@@ -19,7 +20,10 @@ use App\Models\Erp\Commercial\OfficeErpReceiptProof;
 use App\Models\Erp\Commercial\OfficeErpReceiptReversal;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpPlan;
 use App\Models\Erp\ErpSubscription;
+use App\Models\Plan;
+use App\Models\Subscription;
 use App\Models\User;
 use App\Services\BrazilianTaxId;
 use Carbon\CarbonImmutable;
@@ -185,6 +189,80 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame(0, DB::table('office_erp_commercial_operations')->where('action', 'owner.accept')->where('account_id', $secondInvitation['account_id'])->count());
     }
 
+    public function test_owner_setup_accept_winning_company_lock_rejects_reissue_without_financial_changes(): void
+    {
+        $office = $this->commercialFixture(2);
+        $setup = $this->ownerSetupFixture($office);
+        $subscriptionBefore = ErpSubscription::query()->findOrFail($setup['subscription_id'])->getAttributes();
+        $allocationBefore = DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first();
+        $invoiceRowsBefore = DB::table('office_erp_invoices')->orderBy('id')->get()->toJson();
+        $allocationCount = DB::table('office_erp_licence_allocations')->count();
+        $invoiceCount = DB::table('office_erp_invoices')->count();
+
+        $acceptance = $this->worker('owner_setup_accept', $this->ownerSetupAcceptPayload($setup, holdCompanyLock: true));
+        $this->waitFor($acceptance, 'held');
+        $this->assertWorkerHeldLock($acceptance, 'erp_companies');
+        $reissue = $this->worker('owner_setup_issue', $this->ownerSetupIssuePayload($setup));
+        $this->assertWaitingOnTableLock($reissue, 'accounts');
+
+        $this->release($acceptance);
+        $acceptanceResult = $this->workerResult($acceptance);
+        $reissueResult = $this->workerResult($reissue);
+
+        self::assertSame(201, $acceptanceResult['status']);
+        self::assertSame(409, $reissueResult['status']);
+        self::assertSame('company_owner_already_claimed', $reissueResult['code']);
+        self::assertSame($setup['company_id'], $acceptanceResult['company_id']);
+        self::assertSame('claimed', ErpCompany::query()->findOrFail($setup['company_id'])->owner_setup_status);
+        self::assertSame(1, User::query()->where('email', $setup['owner']['email'])->count());
+        $ownerMembership = ErpCompanyMembership::query()->with('user')->where('erp_company_id', $setup['company_id'])->where('role', 'owner')->firstOrFail();
+        self::assertSame($setup['owner']['email'], $ownerMembership->user->email);
+        self::assertSame(1, ErpCompanyMembership::query()->where('erp_company_id', $setup['company_id'])->where('role', 'owner')->count());
+        self::assertSame('consumed', OfficeErpOwnerInvitation::query()->findOrFail($setup['invitation_id'])->status);
+        self::assertSame($subscriptionBefore, ErpSubscription::query()->findOrFail($setup['subscription_id'])->getAttributes());
+        self::assertSame($setup['subscription_id'], (int) ErpCompany::query()->findOrFail($setup['company_id'])->subscription->id);
+        self::assertEquals($allocationBefore, DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first());
+        self::assertSame($allocationCount, DB::table('office_erp_licence_allocations')->count());
+        self::assertSame($invoiceCount, DB::table('office_erp_invoices')->count());
+        self::assertSame($invoiceRowsBefore, DB::table('office_erp_invoices')->orderBy('id')->get()->toJson());
+    }
+
+    public function test_owner_setup_reissue_winning_company_lock_rejects_old_accept_without_financial_changes(): void
+    {
+        $office = $this->commercialFixture(2);
+        $setup = $this->ownerSetupFixture($office);
+        $subscriptionBefore = ErpSubscription::query()->findOrFail($setup['subscription_id'])->getAttributes();
+        $allocationBefore = DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first();
+        $invoiceRowsBefore = DB::table('office_erp_invoices')->orderBy('id')->get()->toJson();
+        $allocationCount = DB::table('office_erp_licence_allocations')->count();
+        $invoiceCount = DB::table('office_erp_invoices')->count();
+
+        $reissue = $this->worker('owner_setup_issue', $this->ownerSetupIssuePayload($setup, holdCompanyLock: true));
+        $this->waitFor($reissue, 'held');
+        $this->assertWorkerHeldLock($reissue, 'erp_companies');
+        $acceptance = $this->worker('owner_setup_accept', $this->ownerSetupAcceptPayload($setup));
+        $this->assertWaitingOnTableLock($acceptance, 'accounts');
+
+        $this->release($reissue);
+        $reissueResult = $this->workerResult($reissue);
+        $acceptanceResult = $this->workerResult($acceptance);
+
+        self::assertSame(201, $reissueResult['status']);
+        self::assertSame(409, $acceptanceResult['status']);
+        self::assertSame('owner_setup_not_pending', $acceptanceResult['code']);
+        self::assertSame('unclaimed', ErpCompany::query()->findOrFail($setup['company_id'])->owner_setup_status);
+        self::assertSame(0, User::query()->where('email', $setup['owner']['email'])->count());
+        self::assertSame(0, ErpCompanyMembership::query()->where('erp_company_id', $setup['company_id'])->where('role', 'owner')->count());
+        self::assertSame('revoked', OfficeErpOwnerInvitation::query()->findOrFail($setup['invitation_id'])->status);
+        self::assertSame('pending', OfficeErpOwnerInvitation::query()->findOrFail($reissueResult['invitation_id'])->status);
+        self::assertSame($subscriptionBefore, ErpSubscription::query()->findOrFail($setup['subscription_id'])->getAttributes());
+        self::assertSame($setup['subscription_id'], (int) ErpCompany::query()->findOrFail($setup['company_id'])->subscription->id);
+        self::assertEquals($allocationBefore, DB::table('office_erp_licence_allocations')->where('id', $setup['allocation_id'])->first());
+        self::assertSame($allocationCount, DB::table('office_erp_licence_allocations')->count());
+        self::assertSame($invoiceCount, DB::table('office_erp_invoices')->count());
+        self::assertSame($invoiceRowsBefore, DB::table('office_erp_invoices')->orderBy('id')->get()->toJson());
+    }
+
     public function test_allowance_removal_wins_plan_lock_before_owner_acceptance(): void
     {
         $office = $this->commercialFixture(2);
@@ -266,6 +344,472 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
                 ->getAttributes(),
         ));
         self::assertSame($fixture['second_contract_snapshot'], $secondContract);
+    }
+
+    public function test_trial_last_licence_has_one_winner(): void
+    {
+        $fixture = $this->commercialFixture(1);
+        $trialLink = $this->trialLinkFixture($fixture);
+        $tag = bin2hex(random_bytes(6));
+        $firstCnpj = $this->uniqueCnpj();
+        $secondCnpj = $this->uniqueCnpj();
+        $clientCount = DB::table('clients')->where('account_id', $fixture['account_id'])->count();
+        $contractCount = DB::table('office_erp_contracts')->where('account_id', $fixture['account_id'])->count();
+        $occupiedCount = DB::table('office_erp_licence_allocations')->where('account_id', $fixture['account_id'])->where('state', 'occupied')->count();
+        $invoiceCount = DB::table('office_erp_invoices')->where('account_id', $fixture['account_id'])->count();
+        self::assertNotSame($firstCnpj, $secondCnpj);
+
+        $firstPayload = $this->trialRegistrationPayload($fixture, $trialLink, $firstCnpj, $tag.'-last-slot-a', true);
+        $secondPayload = $this->trialRegistrationPayload($fixture, $trialLink, $secondCnpj, $tag.'-last-slot-b');
+        $first = $this->worker('trial_register', $firstPayload);
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldLock($first, 'accounts');
+        $second = $this->worker('trial_register', $secondPayload);
+        $this->assertWaitingOnTableLock($second, 'accounts');
+
+        $this->release($first);
+        $results = [$this->workerResult($first), $this->workerResult($second)];
+        $statuses = array_column($results, 'status');
+        sort($statuses);
+        $loserCnpj = $results[0]['status'] === 201 ? $secondCnpj : $firstCnpj;
+
+        self::assertSame([201, 409], $statuses);
+        self::assertSame(1, DB::table('erp_subscription_trials')->whereIn('cnpj', [$firstCnpj, $secondCnpj])->count());
+        self::assertSame($occupiedCount + 1, DB::table('office_erp_licence_allocations')->where('account_id', $fixture['account_id'])->where('state', 'occupied')->count());
+        self::assertSame($clientCount + 1, DB::table('clients')->where('account_id', $fixture['account_id'])->count());
+        self::assertSame($contractCount + 1, DB::table('office_erp_contracts')->where('account_id', $fixture['account_id'])->count());
+        self::assertSame(1, DB::table('erp_companies')->whereIn('cnpj', [$firstCnpj, $secondCnpj])->count());
+        self::assertSame(1, DB::table('erp_subscriptions')->whereIn('erp_company_id', DB::table('erp_companies')->select('id')->whereIn('cnpj', [$firstCnpj, $secondCnpj]))->count());
+        self::assertSame(0, DB::table('erp_companies')->where('cnpj', $loserCnpj)->count());
+        self::assertSame(0, DB::table('erp_subscription_trials')->where('cnpj', $loserCnpj)->count());
+        $loserPayload = $results[0]['status'] === 201 ? $secondPayload : $firstPayload;
+        self::assertSame(0, User::query()->where('email', $loserPayload['registration']['email'])->count());
+        self::assertSame(0, DB::table('office_erp_commercial_operations')
+            ->where('idempotency_key', $loserPayload['idempotency_key'])
+            ->where('action', 'trial.register')
+            ->count());
+        self::assertSame($invoiceCount, DB::table('office_erp_invoices')->where('account_id', $fixture['account_id'])->count());
+    }
+
+    public function test_trial_catalog_lock_serializes_legacy_basic_registration_without_deadlock(): void
+    {
+        $office = $this->commercialFixture(1);
+        $basicPlan = ErpPlan::query()->firstOrCreate(
+            ['slug' => 'basic'],
+            ['name' => 'Basic race plan', 'quotas' => null],
+        );
+        if (! $basicPlan->modules()->where('module_key', 'purchases')->exists()) {
+            $basicPlan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
+        }
+        $basicModules = $basicPlan->modules()->orderBy('module_key')->pluck('module_key')->all();
+        self::assertContains('purchases', $basicModules);
+        $officeSubscription = Subscription::query()->where('account_id', $office['account_id'])->firstOrFail();
+        $officePlan = Plan::query()->findOrFail($officeSubscription->plan_id);
+        $allowance = $officePlan->erp_commercial;
+        $allowance['module_keys'] = $basicModules;
+        $officePlan->forceFill(['erp_commercial' => $allowance])->save();
+        $trialLink = $this->trialLinkFixture($office, $basicPlan);
+        $trialCnpj = $this->uniqueCnpj();
+        $legacyCnpj = $this->uniqueCnpj();
+
+        $legacy = $this->worker('erp_register', [
+            'registration' => [
+                'name' => 'Legacy race owner',
+                'email' => 'legacy-race-'.bin2hex(random_bytes(5)).'@example.test',
+                'password' => 'Legacy-Race-Password-123',
+                'company_name' => 'Legacy race company',
+                'cnpj' => $legacyCnpj,
+            ],
+            'hold_advisory_lock' => 'erp-commercial-catalog',
+        ]);
+        $this->waitFor($legacy, 'held');
+        $this->assertWorkerHeldAdvisoryLock($legacy);
+        $trial = $this->worker('trial_register', $this->trialRegistrationPayload(
+            $office,
+            $trialLink,
+            $trialCnpj,
+            'catalog-trial-'.bin2hex(random_bytes(4)),
+        ));
+        $this->assertWaitingOnAdvisoryLockHeldBy($trial, $legacy, 'erp-commercial-catalog');
+
+        $this->release($legacy);
+        $trialResult = $this->workerResult($trial);
+        $legacyResult = $this->workerResult($legacy);
+
+        self::assertSame(201, $trialResult['status']);
+        self::assertSame(201, $legacyResult['status']);
+        self::assertIsInt($trialResult['test_lock_order']['catalog_advisory_sequence']);
+        self::assertIsInt($trialResult['test_lock_order']['technical_plan_for_update_sequence']);
+        self::assertLessThan(
+            $trialResult['test_lock_order']['technical_plan_for_update_sequence'],
+            $trialResult['test_lock_order']['catalog_advisory_sequence'],
+        );
+        self::assertSame((int) $basicPlan->id, $legacyResult['plan_id']);
+        self::assertSame(1, DB::table('erp_subscription_trials')->where('cnpj', $trialCnpj)->count());
+        self::assertSame(1, DB::table('erp_companies')->where('cnpj', $trialCnpj)->count());
+        self::assertSame(1, DB::table('erp_companies')->where('cnpj', $legacyCnpj)->count());
+        self::assertSame((int) $basicPlan->id, (int) DB::table('erp_subscriptions')
+            ->where('erp_company_id', DB::table('erp_companies')->where('cnpj', $trialCnpj)->value('id'))
+            ->value('erp_plan_id'));
+        self::assertSame((int) $basicPlan->id, (int) DB::table('erp_subscriptions')
+            ->where('erp_company_id', DB::table('erp_companies')->where('cnpj', $legacyCnpj)->value('id'))
+            ->value('erp_plan_id'));
+    }
+
+    public function test_trial_catalog_lock_serializes_direct_enrollment_on_shared_plan_across_offices(): void
+    {
+        $trialOffice = $this->commercialFixture(2);
+        $enrollmentOffice = $this->commercialFixture(2);
+        $technicalPlan = ErpPlan::factory()->create(['slug' => $this->uniqueErpPlanSlug()]);
+        $technicalPlan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
+        $trialLink = $this->trialLinkFixture($trialOffice, $technicalPlan);
+        $trialCnpj = $this->uniqueCnpj();
+        $client = Client::withoutGlobalScopes()
+            ->where('account_id', $enrollmentOffice['account_id'])
+            ->findOrFail($enrollmentOffice['contracts'][0]->client_id);
+        $trialCountsBefore = [
+            'contracts' => DB::table('office_erp_contracts')->count(),
+            'allocations' => DB::table('office_erp_licence_allocations')->count(),
+            'invoices' => DB::table('office_erp_invoices')->count(),
+            'companies' => DB::table('erp_companies')->count(),
+            'subscriptions' => DB::table('erp_subscriptions')->count(),
+        ];
+
+        $enrollment = $this->worker('customer_enroll', [
+            'account_id' => $enrollmentOffice['account_id'],
+            'actor_id' => $enrollmentOffice['actor_id'],
+            'membership_id' => $enrollmentOffice['membership_id'],
+            'idempotency_key' => 'shared-plan-enroll-'.bin2hex(random_bytes(8)),
+            'enrollment' => [
+                'client_id' => (int) $client->id,
+                'erp_plan_id' => (int) $technicalPlan->id,
+                'price' => '100.00',
+                'currency' => 'BRL',
+                'interval_months' => 1,
+                'due_in_days' => 10,
+                'start_on' => CarbonImmutable::now('America/Sao_Paulo')->toDateString(),
+                'billing_timezone' => 'America/Sao_Paulo',
+            ],
+            'hold_advisory_lock' => 'erp-commercial-catalog',
+        ]);
+        $this->waitFor($enrollment, 'held');
+        $this->assertWorkerHeldAdvisoryLock($enrollment);
+        $trial = $this->worker('trial_register', $this->trialRegistrationPayload(
+            $trialOffice,
+            $trialLink,
+            $trialCnpj,
+            'shared-plan-trial-'.bin2hex(random_bytes(4)),
+        ));
+        $this->assertWaitingOnAdvisoryLockHeldBy($trial, $enrollment, 'erp-commercial-catalog');
+
+        $this->release($enrollment);
+        $trialResult = $this->workerResult($trial);
+        $enrollmentResult = $this->workerResult($enrollment);
+
+        self::assertSame(201, $trialResult['status']);
+        self::assertSame(201, $enrollmentResult['status']);
+        self::assertIsInt($trialResult['test_lock_order']['catalog_advisory_sequence']);
+        self::assertIsInt($trialResult['test_lock_order']['technical_plan_for_update_sequence']);
+        self::assertLessThan(
+            $trialResult['test_lock_order']['technical_plan_for_update_sequence'],
+            $trialResult['test_lock_order']['catalog_advisory_sequence'],
+        );
+        self::assertSame((int) $technicalPlan->id, (int) DB::table('erp_subscriptions')
+            ->where('erp_company_id', DB::table('erp_companies')->where('cnpj', $trialCnpj)->value('id'))
+            ->value('erp_plan_id'));
+        self::assertSame((int) $technicalPlan->id, (int) DB::table('erp_subscriptions')
+            ->where('id', $enrollmentResult['subscription_id'])
+            ->value('erp_plan_id'));
+        self::assertSame(1, DB::table('erp_subscription_trials')->where('cnpj', $trialCnpj)->count());
+        self::assertSame(1, DB::table('erp_companies')->where('cnpj', $trialCnpj)->count());
+        self::assertSame($trialCountsBefore['contracts'] + 2, DB::table('office_erp_contracts')->count());
+        self::assertSame($trialCountsBefore['allocations'] + 2, DB::table('office_erp_licence_allocations')->count());
+        self::assertSame($trialCountsBefore['invoices'] + 1, DB::table('office_erp_invoices')->count());
+        self::assertSame($trialCountsBefore['companies'] + 2, DB::table('erp_companies')->count());
+        self::assertSame($trialCountsBefore['subscriptions'] + 2, DB::table('erp_subscriptions')->count());
+    }
+
+    public function test_same_cnpj_across_offices_has_one_trial(): void
+    {
+        $firstOffice = $this->commercialFixture(1);
+        $secondOffice = $this->commercialFixture(1);
+        $firstLink = $this->trialLinkFixture($firstOffice);
+        $secondLink = $this->trialLinkFixture($secondOffice);
+        $cnpj = $this->uniqueCnpj();
+        $firstOfficeClientCount = DB::table('clients')->where('account_id', $firstOffice['account_id'])->count();
+        $secondOfficeClientCount = DB::table('clients')->where('account_id', $secondOffice['account_id'])->count();
+        $firstOfficeOccupiedCount = DB::table('office_erp_licence_allocations')->where('account_id', $firstOffice['account_id'])->where('state', 'occupied')->count();
+
+        $firstPayload = $this->trialRegistrationPayload(
+            $firstOffice,
+            $firstLink,
+            $cnpj,
+            'same-cnpj-a-'.bin2hex(random_bytes(4)),
+            holdAdvisoryLock: 'erp-company:'.$cnpj,
+        );
+        $first = $this->worker('trial_register', $firstPayload);
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldAdvisoryLock($first);
+        $secondPayload = $this->trialRegistrationPayload(
+            $secondOffice,
+            $secondLink,
+            $cnpj,
+            'same-cnpj-b-'.bin2hex(random_bytes(4)),
+        );
+        $second = $this->worker('trial_register', $secondPayload);
+        $this->assertWaitingOnAdvisoryLock($second);
+
+        $this->release($first);
+        $results = [$this->workerResult($first), $this->workerResult($second)];
+        self::assertSame([201, 409], array_column($results, 'status'));
+        self::assertSame('trial_already_used', $results[1]['code']);
+        self::assertSame(1, DB::table('erp_subscription_trials')->where('cnpj', $cnpj)->count());
+        self::assertSame(1, DB::table('erp_companies')->where('cnpj', $cnpj)->count());
+        self::assertSame(1, DB::table('erp_subscriptions')->whereIn('erp_company_id', DB::table('erp_companies')->select('id')->where('cnpj', $cnpj))->count());
+        self::assertSame($firstOfficeClientCount + 1, DB::table('clients')->where('account_id', $firstOffice['account_id'])->count());
+        self::assertSame($secondOfficeClientCount, DB::table('clients')->where('account_id', $secondOffice['account_id'])->count());
+        self::assertSame($firstOfficeOccupiedCount + 1, DB::table('office_erp_licence_allocations')->where('account_id', $firstOffice['account_id'])->where('state', 'occupied')->count());
+        self::assertSame(0, DB::table('office_erp_licence_allocations')->where('account_id', $secondOffice['account_id'])->count());
+        self::assertSame(0, User::query()->where('email', $secondPayload['registration']['email'])->count());
+        self::assertSame(0, DB::table('office_erp_commercial_operations')
+            ->where('idempotency_key', $secondPayload['idempotency_key'])
+            ->where('action', 'trial.register')
+            ->count());
+        self::assertSame(0, DB::table('office_erp_invoices')->where('account_id', $firstOffice['account_id'])->count());
+        self::assertSame(0, DB::table('office_erp_invoices')->where('account_id', $secondOffice['account_id'])->count());
+    }
+
+    public function test_rotation_wins_before_registration_commit(): void
+    {
+        $office = $this->commercialFixture(1);
+        $trialLink = $this->trialLinkFixture($office);
+        $originalCode = $trialLink['code'];
+        $cnpj = $this->uniqueCnpj();
+        $clientCount = DB::table('clients')->where('account_id', $office['account_id'])->count();
+        $contractCount = DB::table('office_erp_contracts')->where('account_id', $office['account_id'])->count();
+        $allocationCount = DB::table('office_erp_licence_allocations')->where('account_id', $office['account_id'])->count();
+        $invoiceCount = DB::table('office_erp_invoices')->where('account_id', $office['account_id'])->count();
+        $registrationPayload = $this->trialRegistrationPayload(
+            $office,
+            $trialLink,
+            $cnpj,
+            'rotation-'.bin2hex(random_bytes(4)),
+            holdProvider: true,
+        );
+        $registration = $this->worker('trial_register', $registrationPayload);
+        $this->waitFor($registration, 'provider-held');
+
+        $rotation = $this->worker('trial_rotate', $this->trialRotationPayload(
+            $office,
+            $trialLink,
+            bin2hex(random_bytes(4)),
+            holdTrialLinkLock: true,
+        ));
+        $this->waitFor($rotation, 'held');
+        $this->assertWorkerHeldLock($rotation, 'office_erp_trial_links');
+        $this->release($rotation);
+        $rotationResult = $this->workerResult($rotation);
+        $this->release($registration, 'provider-release');
+        $registrationResult = $this->workerResult($registration);
+
+        self::assertSame(201, $rotationResult['status']);
+        self::assertSame(409, $registrationResult['status']);
+        self::assertSame('trial_link_changed', $registrationResult['code']);
+        self::assertNotSame($originalCode, $trialLink['link']->fresh()->public_code);
+        self::assertSame(2, (int) $trialLink['link']->fresh()->revision);
+        self::assertSame($clientCount, DB::table('clients')->where('account_id', $office['account_id'])->count());
+        self::assertSame($contractCount, DB::table('office_erp_contracts')->where('account_id', $office['account_id'])->count());
+        self::assertSame($allocationCount, DB::table('office_erp_licence_allocations')->where('account_id', $office['account_id'])->count());
+        self::assertSame(0, DB::table('erp_companies')->where('cnpj', $cnpj)->count());
+        self::assertSame(0, DB::table('erp_subscription_trials')->where('cnpj', $cnpj)->count());
+        self::assertSame($invoiceCount, DB::table('office_erp_invoices')->where('account_id', $office['account_id'])->count());
+        self::assertSame(0, User::query()->where('email', $registrationPayload['registration']['email'])->count());
+        self::assertSame(0, DB::table('office_erp_commercial_operations')
+            ->where('idempotency_key', $registrationPayload['idempotency_key'])
+            ->where('action', 'trial.register')
+            ->count());
+    }
+
+    public function test_expiry_and_paid_conversion_serialize(): void
+    {
+        $office = $this->commercialFixture(1);
+        $trialLink = $this->trialLinkFixture($office);
+        $cnpj = $this->uniqueCnpj();
+        $startedAt = CarbonImmutable::now('UTC')->startOfMinute();
+        $registration = $this->worker('trial_register', $this->trialRegistrationPayload(
+            $office,
+            $trialLink,
+            $cnpj,
+            'expiry-conversion-'.bin2hex(random_bytes(4)),
+            frozenNow: $startedAt->toISOString(),
+        ));
+        self::assertSame(201, $this->workerResult($registration)['status']);
+        $trial = DB::table('erp_subscription_trials')->where('cnpj', $cnpj)->first();
+        self::assertNotNull($trial);
+        $contractId = (int) DB::table('erp_subscriptions')->where('erp_company_id', $trial->erp_company_id)->value('office_erp_contract_id');
+        self::assertSame(0, DB::table('office_erp_invoices')->where('contract_id', $contractId)->count());
+        $expiryNow = CarbonImmutable::parse($trial->ends_at)->addSecond();
+        $terms = [
+            'erp_plan_id' => $trialLink['plan_id'],
+            'price' => '100.00',
+            'currency' => 'BRL',
+            'interval_months' => 1,
+            'due_in_days' => 10,
+            'start_on' => $expiryNow->setTimezone('America/Sao_Paulo')->toDateString(),
+            'billing_timezone' => 'America/Sao_Paulo',
+        ];
+
+        $expiry = $this->worker('trial_expire', [
+            'trial_id' => (int) $trial->id,
+            'now' => $expiryNow->toISOString(),
+            'hold_row_lock' => 'accounts',
+        ]);
+        $this->waitFor($expiry, 'held');
+        $this->assertWorkerHeldLock($expiry, 'accounts');
+        $conversion = $this->worker('trial_convert', $this->trialConversionPayload(
+            $office,
+            $contractId,
+            $terms,
+            'after-expiry-'.bin2hex(random_bytes(4)),
+            frozenNow: $expiryNow->toISOString(),
+        ));
+        $this->assertWaitingOnTableLock($conversion, 'accounts');
+
+        $this->release($expiry);
+        self::assertSame(200, $this->workerResult($expiry)['status']);
+        $conversionResult = $this->workerResult($conversion);
+
+        self::assertSame(201, $conversionResult['status']);
+        self::assertSame((int) $trial->erp_subscription_id, $conversionResult['subscription_id']);
+        $trial = DB::table('erp_subscription_trials')->where('id', $trial->id)->firstOrFail();
+        self::assertNotNull($trial->expired_at);
+        self::assertNotNull($trial->converted_at);
+        self::assertSame('active', DB::table('erp_subscriptions')->where('id', $trial->erp_subscription_id)->value('status'));
+        self::assertSame('effective', DB::table('office_erp_contracts')->where('id', $contractId)->value('agreement_status'));
+        self::assertSame('occupied', DB::table('office_erp_licence_allocations')->where('contract_id', $contractId)->value('state'));
+        self::assertSame(1, DB::table('office_erp_invoices')->where('contract_id', $contractId)->count());
+    }
+
+    public function test_paid_conversion_winning_account_lock_cannot_be_expired_after_commit(): void
+    {
+        $office = $this->commercialFixture(1);
+        $trialLink = $this->trialLinkFixture($office);
+        $cnpj = $this->uniqueCnpj();
+        $startedAt = CarbonImmutable::now('UTC')->startOfMinute();
+        $registration = $this->worker('trial_register', $this->trialRegistrationPayload(
+            $office,
+            $trialLink,
+            $cnpj,
+            'conversion-wins-expiry-'.bin2hex(random_bytes(4)),
+            frozenNow: $startedAt->toISOString(),
+        ));
+        self::assertSame(201, $this->workerResult($registration)['status']);
+
+        $trial = DB::table('erp_subscription_trials')->where('cnpj', $cnpj)->firstOrFail();
+        $subscription = DB::table('erp_subscriptions')->where('erp_company_id', $trial->erp_company_id)->firstOrFail();
+        $contractId = (int) $subscription->office_erp_contract_id;
+        $allocation = DB::table('office_erp_licence_allocations')->where('contract_id', $contractId)->firstOrFail();
+        $endsAt = CarbonImmutable::parse($trial->ends_at);
+        $conversionAt = $endsAt->subMicroseconds(1);
+        $expiryNow = $endsAt->addSecond();
+        $terms = [
+            'erp_plan_id' => $trialLink['plan_id'],
+            'price' => '100.00',
+            'currency' => 'BRL',
+            'interval_months' => 1,
+            'due_in_days' => 10,
+            'start_on' => $conversionAt->setTimezone('America/Sao_Paulo')->toDateString(),
+            'billing_timezone' => 'America/Sao_Paulo',
+        ];
+
+        $conversion = $this->worker('trial_convert', $this->trialConversionPayload(
+            $office,
+            $contractId,
+            $terms,
+            'conversion-wins-'.bin2hex(random_bytes(4)),
+            holdAccountLock: true,
+            frozenNow: $conversionAt->toISOString(),
+        ));
+        $this->waitFor($conversion, 'held');
+        $this->assertWorkerHeldLock($conversion, 'accounts');
+        $expiry = $this->worker('trial_expire', [
+            'trial_id' => (int) $trial->id,
+            'now' => $expiryNow->toISOString(),
+        ]);
+        $this->assertWaitingOnRowLock($expiry, 'accounts');
+
+        $this->release($conversion);
+        $conversionResult = $this->workerResult($conversion);
+        $expiryResult = $this->workerResult($expiry);
+
+        self::assertSame(201, $conversionResult['status']);
+        self::assertSame(200, $expiryResult['status']);
+        self::assertSame((int) $subscription->id, $conversionResult['subscription_id']);
+        $trial = DB::table('erp_subscription_trials')->where('id', $trial->id)->firstOrFail();
+        self::assertNotNull($trial->converted_at);
+        self::assertNull($trial->expired_at);
+        self::assertSame('active', DB::table('erp_subscriptions')->where('id', $subscription->id)->value('status'));
+        self::assertSame((int) $subscription->id, (int) DB::table('erp_subscriptions')->where('office_erp_contract_id', $contractId)->value('id'));
+        self::assertSame((int) $allocation->id, (int) DB::table('office_erp_licence_allocations')->where('contract_id', $contractId)->value('id'));
+        self::assertSame('occupied', DB::table('office_erp_licence_allocations')->where('id', $allocation->id)->value('state'));
+        self::assertSame('effective', DB::table('office_erp_contracts')->where('id', $contractId)->value('agreement_status'));
+        self::assertSame(1, DB::table('office_erp_invoices')->where('contract_id', $contractId)->count());
+    }
+
+    public function test_duplicate_conversion_has_one_first_invoice(): void
+    {
+        $office = $this->commercialFixture(1);
+        $trialLink = $this->trialLinkFixture($office);
+        $tag = bin2hex(random_bytes(4));
+        $cnpj = $this->uniqueCnpj();
+        $registration = $this->worker('trial_register', $this->trialRegistrationPayload(
+            $office,
+            $trialLink,
+            $cnpj,
+            'duplicate-conversion-'.$tag,
+        ));
+        self::assertSame(201, $this->workerResult($registration)['status']);
+        $trial = DB::table('erp_subscription_trials')->where('cnpj', $cnpj)->firstOrFail();
+        $contractId = (int) DB::table('erp_subscriptions')->where('erp_company_id', $trial->erp_company_id)->value('office_erp_contract_id');
+        $conversionNow = CarbonImmutable::now('UTC')->startOfSecond();
+        $terms = [
+            'erp_plan_id' => $trialLink['plan_id'],
+            'price' => '100.00',
+            'currency' => 'BRL',
+            'interval_months' => 1,
+            'due_in_days' => 10,
+            'start_on' => $conversionNow->setTimezone('America/Sao_Paulo')->toDateString(),
+            'billing_timezone' => 'America/Sao_Paulo',
+        ];
+
+        $first = $this->worker('trial_convert', $this->trialConversionPayload(
+            $office,
+            $contractId,
+            $terms,
+            'duplicate-'.$tag,
+            holdAccountLock: true,
+            frozenNow: $conversionNow->toISOString(),
+        ));
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldLock($first, 'accounts');
+        $second = $this->worker('trial_convert', $this->trialConversionPayload(
+            $office,
+            $contractId,
+            $terms,
+            'duplicate-'.$tag,
+            frozenNow: $conversionNow->toISOString(),
+        ));
+        $this->assertWaitingOnAdvisoryLock($second);
+
+        $this->release($first);
+        $results = [$this->workerResult($first), $this->workerResult($second)];
+
+        self::assertSame([201, 201], array_column($results, 'status'));
+        self::assertSame($results[0]['invoice_id'], $results[1]['invoice_id']);
+        self::assertSame($trial->erp_subscription_id, $results[0]['subscription_id']);
+        self::assertSame(1, DB::table('office_erp_invoices')->where('contract_id', $contractId)->count());
+        self::assertNotNull(DB::table('erp_subscription_trials')->where('id', $trial->id)->value('converted_at'));
+        self::assertSame('active', DB::table('erp_subscriptions')->where('id', $trial->erp_subscription_id)->value('status'));
     }
 
     public function test_same_period_workers_return_the_same_invoice_and_reserve_one_number(): void
