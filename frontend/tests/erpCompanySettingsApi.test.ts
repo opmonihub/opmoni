@@ -66,6 +66,7 @@ function settingsHarness(api: (path: string, options?: Record<string, unknown>) 
   app.component('UFormField', { props: ['name', 'label', 'description', 'hint', 'error'], setup: (props, ctx) => () => Vue.h('fieldset', { name: props.name }, [Vue.h('label', String(props.label ?? '')), props.description ? Vue.h('p', String(props.description)) : null, props.hint ? Vue.h('span', String(props.hint)) : null, ctx.slots.default?.(), props.error ? Vue.h('p', { role: 'alert' }, String(props.error)) : null]) })
   app.component('UForm', { setup: (_props, ctx) => () => Vue.h('form', { ...ctx.attrs }, ctx.slots.default?.()) })
   app.component('UButton', { props: ['label'], setup: (props, ctx) => () => Vue.h('button', ctx.attrs, String(props.label ?? '')) })
+  app.component('UAlert', { props: ['title', 'description', 'actions'], setup: props => () => Vue.h('aside', { role: 'alert' }, [String(props.title), String(props.description), ...((props.actions ?? []) as { label: string, onClick: () => void }[]).map(action => Vue.h('button', { onClick: action.onClick }, action.label))]) })
   for (const name of ['UInput', 'USelect', 'UCheckbox']) app.component(name, { props: ['modelValue'], emits: ['update:modelValue'], setup: (props, ctx) => () => Vue.h(name === 'USelect' ? 'select' : 'input', { ...ctx.attrs, value: props.modelValue, onInput: (value: string) => ctx.emit('update:modelValue', value) }) })
   const errors: unknown[] = []
   const warnings: unknown[] = []
@@ -402,6 +403,89 @@ describe('native acceptance email consumer review correction', () => {
 const settingsText = (mounted: ReturnType<typeof settingsHarness>) => mounted.walk(mounted.root).map(node => node.text ?? '').join(' ')
 const settingsField = (mounted: ReturnType<typeof settingsHarness>, name: string) => mounted.walk(mounted.root).find(node => node.tag === 'fieldset' && node.props.name === name)!
 const validationFailure = (errors: Record<string, string[]>) => ({ statusCode: 422, data: { message: 'Confira os dados informados.', errors } })
+
+describe('private settings field baselines', () => {
+  for (const target of ['section', 'email'] as const) {
+    const key = target === 'email' ? 'mail_host' : 'name'
+    const otherKey = target === 'email' ? 'mail_port' : 'regime'
+    const confirmed = (name: string, other = 'original') => ({ ...settingsResponse, data: { ...settingsResponse.data, name, regime: other, email_settings: { mail_host: name, mail_port: other } } })
+    const values = (response: ReturnType<typeof confirmed>) => target === 'email' ? response.data.email_settings : response.data
+
+    it(`${target} merges untouched values and retains named feedback until explicit conflict discard`, async () => {
+      let response = confirmed('Original')
+      const mounted = settingsHarness(async (_path, options) => {
+        if (options?.method === 'PATCH') throw validationFailure({ [target === 'email' ? `email_settings.${key}` : key]: ['Confira este campo.'] })
+        return response
+      }, 'owner', ['*'], target)
+      try {
+        await flushSettings()
+        mounted.privateForm()![key] = 'Rascunho'
+        await mounted.submit()
+        response = confirmed('Original', 'untouched update')
+        await mounted.state.refresh()
+        await flushSettings()
+        assert.equal(mounted.privateForm()![key], 'Rascunho')
+        assert.equal(mounted.privateForm()![otherKey], values(response)[otherKey as keyof ReturnType<typeof values>])
+        assert.match(settingsText(mounted), /Confira este campo/)
+        response = confirmed('Remote', 'another update')
+        await mounted.state.refresh()
+        await flushSettings()
+        assert.equal(mounted.privateForm()![key], 'Rascunho')
+        assert.match(settingsText(mounted), /Configurações alteradas em outra atualização/)
+        assert.match(settingsText(mounted), /Confira este campo/)
+        const discard = mounted.walk(mounted.root).find(node => node.tag === 'button' && node.text === 'Descartar rascunho e usar valores atuais')
+        assert.ok(discard)
+        ;(discard.props.onClick as () => void)()
+        await flushSettings()
+        assert.equal(mounted.privateForm()![key], 'Remote')
+        assert.doesNotMatch(settingsText(mounted), /Confira este campo|Configurações alteradas em outra atualização/)
+        assert.deepEqual(mounted.errors, [])
+      } finally { mounted.dispose() }
+    })
+
+    it(`${target} accepts its canonical save while preserving newer edits and subsequent adjacent updates`, async () => {
+      let finish!: (value: unknown) => void
+      let response = confirmed('Original')
+      const mounted = settingsHarness(async (_path, options) => {
+        if (options?.method === 'PATCH') return new Promise((resolve) => { finish = resolve })
+        return response
+      }, 'owner', ['*'], target)
+      try {
+        await flushSettings()
+        mounted.privateForm()![key] = 'Submitted'
+        const request = mounted.submit()
+        mounted.privateForm()![otherKey] = 'Newer draft'
+        response = confirmed('Canonical', 'original')
+        finish(response)
+        await request
+        await flushSettings()
+        assert.equal(mounted.privateForm()![key], 'Canonical')
+        assert.equal(mounted.privateForm()![otherKey], 'Newer draft')
+        assert.doesNotMatch(settingsText(mounted), /Configurações alteradas em outra atualização/)
+        await mounted.state.refresh()
+        assert.equal(mounted.privateForm()![otherKey], 'Newer draft')
+        assert.equal(mounted.notices.length, 1)
+        assert.deepEqual(mounted.errors, [])
+      } finally { mounted.dispose() }
+    })
+
+    for (const boundary of ['company', 'account', 'session', 'grant']) {
+      it(`${target} clears dirty private fields synchronously on ${boundary} invalidation`, async () => {
+        const mounted = settingsHarness(async () => confirmed('Original'), 'owner', ['*'], target)
+        try {
+          await flushSettings()
+          mounted.privateForm()![key] = 'Private draft'
+          if (boundary === 'company') mounted.company.value.id++
+          else if (boundary === 'account') mounted.account.value.id++
+          else if (boundary === 'session') mounted.session.value++
+          else mounted.company.value.permissions = ['erp.company.settings.show']
+          assert.equal(Object.values(mounted.privateForm()!).includes('Private draft'), false)
+          assert.equal(mounted.state.state.value, null)
+        } finally { mounted.dispose() }
+      })
+    }
+  }
+})
 
 describe('settings rejected save feedback', () => {
   for (const target of ['section', 'email'] as const) {
