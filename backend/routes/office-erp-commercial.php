@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpClientController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContextController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContractController;
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpEnrollmentController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvitationController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvoiceController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvoicePrintController;
@@ -19,6 +20,8 @@ Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->
     Route::get('/context', OfficeErpContextController::class)->name('office-erp-commercial.context');
     Route::get('/summary', OfficeErpSummaryController::class)->name('office-erp-commercial.summary');
     Route::get('/operations/{key}', OfficeErpOperationController::class)->name('office-erp-commercial.operations.lookup');
+    Route::get('/enrollment-plans', [OfficeErpEnrollmentController::class, 'plans'])->name('office-erp-commercial.enrollment-plans.index');
+    Route::post('/enrollments', [OfficeErpEnrollmentController::class, 'store'])->name('office-erp-commercial.enrollments.store');
     Route::get('/receipts', [OfficeErpReceiptController::class, 'index'])->name('office-erp-commercial.receipts.index');
     Route::post('/receipts', [OfficeErpReceiptController::class, 'store'])->name('office-erp-commercial.receipts.store');
     Route::get('/receipts/{receipt}', [OfficeErpReceiptController::class, 'show'])->whereNumber('receipt')->name('office-erp-commercial.receipts.show');
