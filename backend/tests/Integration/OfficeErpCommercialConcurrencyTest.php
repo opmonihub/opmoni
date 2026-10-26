@@ -276,6 +276,8 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $firstCnpj = $this->uniqueCnpj();
         $secondCnpj = $this->uniqueCnpj();
         $clientCount = DB::table('clients')->where('account_id', $fixture['account_id'])->count();
+        $contractCount = DB::table('office_erp_contracts')->where('account_id', $fixture['account_id'])->count();
+        $occupiedCount = DB::table('office_erp_licence_allocations')->where('account_id', $fixture['account_id'])->where('state', 'occupied')->count();
         self::assertNotSame($firstCnpj, $secondCnpj);
 
         $first = $this->worker('trial_register', $this->trialRegistrationPayload($fixture, $trialLink, $firstCnpj, $tag.'-last-slot-a', true));
@@ -288,13 +290,17 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $results = [$this->workerResult($first), $this->workerResult($second)];
         $statuses = array_column($results, 'status');
         sort($statuses);
+        $loserCnpj = $results[0]['status'] === 201 ? $secondCnpj : $firstCnpj;
 
         self::assertSame([201, 409], $statuses);
         self::assertSame(1, DB::table('erp_subscription_trials')->whereIn('cnpj', [$firstCnpj, $secondCnpj])->count());
-        self::assertSame(1, DB::table('office_erp_licence_allocations')->where('account_id', $fixture['account_id'])->where('state', 'occupied')->count());
+        self::assertSame($occupiedCount + 1, DB::table('office_erp_licence_allocations')->where('account_id', $fixture['account_id'])->where('state', 'occupied')->count());
         self::assertSame($clientCount + 1, DB::table('clients')->where('account_id', $fixture['account_id'])->count());
+        self::assertSame($contractCount + 1, DB::table('office_erp_contracts')->where('account_id', $fixture['account_id'])->count());
         self::assertSame(1, DB::table('erp_companies')->whereIn('cnpj', [$firstCnpj, $secondCnpj])->count());
         self::assertSame(1, DB::table('erp_subscriptions')->whereIn('erp_company_id', DB::table('erp_companies')->select('id')->whereIn('cnpj', [$firstCnpj, $secondCnpj]))->count());
+        self::assertSame(0, DB::table('erp_companies')->where('cnpj', $loserCnpj)->count());
+        self::assertSame(0, DB::table('erp_subscription_trials')->where('cnpj', $loserCnpj)->count());
     }
 
     public function test_same_cnpj_across_offices_has_one_trial(): void
@@ -304,7 +310,9 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $firstLink = $this->trialLinkFixture($firstOffice);
         $secondLink = $this->trialLinkFixture($secondOffice);
         $cnpj = $this->uniqueCnpj();
+        $firstOfficeClientCount = DB::table('clients')->where('account_id', $firstOffice['account_id'])->count();
         $secondOfficeClientCount = DB::table('clients')->where('account_id', $secondOffice['account_id'])->count();
+        $firstOfficeOccupiedCount = DB::table('office_erp_licence_allocations')->where('account_id', $firstOffice['account_id'])->where('state', 'occupied')->count();
 
         $first = $this->worker('trial_register', $this->trialRegistrationPayload(
             $firstOffice,
@@ -325,14 +333,14 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
 
         $this->release($first);
         $results = [$this->workerResult($first), $this->workerResult($second)];
-        $statuses = array_column($results, 'status');
-        sort($statuses);
-
-        self::assertSame([201, 409], $statuses);
+        self::assertSame([201, 409], array_column($results, 'status'));
+        self::assertSame('trial_already_used', $results[1]['code']);
         self::assertSame(1, DB::table('erp_subscription_trials')->where('cnpj', $cnpj)->count());
         self::assertSame(1, DB::table('erp_companies')->where('cnpj', $cnpj)->count());
         self::assertSame(1, DB::table('erp_subscriptions')->whereIn('erp_company_id', DB::table('erp_companies')->select('id')->where('cnpj', $cnpj))->count());
+        self::assertSame($firstOfficeClientCount + 1, DB::table('clients')->where('account_id', $firstOffice['account_id'])->count());
         self::assertSame($secondOfficeClientCount, DB::table('clients')->where('account_id', $secondOffice['account_id'])->count());
+        self::assertSame($firstOfficeOccupiedCount + 1, DB::table('office_erp_licence_allocations')->where('account_id', $firstOffice['account_id'])->where('state', 'occupied')->count());
         self::assertSame(0, DB::table('office_erp_licence_allocations')->where('account_id', $secondOffice['account_id'])->count());
     }
 
@@ -343,6 +351,8 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $originalCode = $trialLink['code'];
         $cnpj = $this->uniqueCnpj();
         $clientCount = DB::table('clients')->where('account_id', $office['account_id'])->count();
+        $contractCount = DB::table('office_erp_contracts')->where('account_id', $office['account_id'])->count();
+        $allocationCount = DB::table('office_erp_licence_allocations')->where('account_id', $office['account_id'])->count();
         $registration = $this->worker('trial_register', $this->trialRegistrationPayload(
             $office,
             $trialLink,
@@ -371,6 +381,8 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertNotSame($originalCode, $trialLink['link']->fresh()->public_code);
         self::assertSame(2, (int) $trialLink['link']->fresh()->revision);
         self::assertSame($clientCount, DB::table('clients')->where('account_id', $office['account_id'])->count());
+        self::assertSame($contractCount, DB::table('office_erp_contracts')->where('account_id', $office['account_id'])->count());
+        self::assertSame($allocationCount, DB::table('office_erp_licence_allocations')->where('account_id', $office['account_id'])->count());
         self::assertSame(0, DB::table('erp_companies')->where('cnpj', $cnpj)->count());
         self::assertSame(0, DB::table('erp_subscription_trials')->where('cnpj', $cnpj)->count());
         self::assertSame(0, DB::table('office_erp_invoices')->whereIn('erp_company_id', DB::table('erp_companies')->select('id')->where('cnpj', $cnpj))->count());
@@ -393,6 +405,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $trial = DB::table('erp_subscription_trials')->where('cnpj', $cnpj)->first();
         self::assertNotNull($trial);
         $contractId = (int) DB::table('erp_subscriptions')->where('erp_company_id', $trial->erp_company_id)->value('office_erp_contract_id');
+        self::assertSame(0, DB::table('office_erp_invoices')->where('contract_id', $contractId)->count());
         $expiryNow = CarbonImmutable::parse($trial->ends_at)->addSecond();
         $terms = [
             'erp_plan_id' => $trialLink['plan_id'],
@@ -416,6 +429,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
             $contractId,
             $terms,
             'after-expiry-'.bin2hex(random_bytes(4)),
+            frozenNow: $expiryNow->toISOString(),
         ));
         $this->assertWaitingOnTableLock($conversion, 'accounts');
 
@@ -424,6 +438,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $conversionResult = $this->workerResult($conversion);
 
         self::assertSame(201, $conversionResult['status']);
+        self::assertSame((int) $trial->erp_subscription_id, $conversionResult['subscription_id']);
         $trial = DB::table('erp_subscription_trials')->where('id', $trial->id)->firstOrFail();
         self::assertNotNull($trial->expired_at);
         self::assertNotNull($trial->converted_at);
@@ -448,13 +463,14 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame(201, $this->workerResult($registration)['status']);
         $trial = DB::table('erp_subscription_trials')->where('cnpj', $cnpj)->firstOrFail();
         $contractId = (int) DB::table('erp_subscriptions')->where('erp_company_id', $trial->erp_company_id)->value('office_erp_contract_id');
+        $conversionNow = CarbonImmutable::now('UTC')->startOfSecond();
         $terms = [
             'erp_plan_id' => $trialLink['plan_id'],
             'price' => '100.00',
             'currency' => 'BRL',
             'interval_months' => 1,
             'due_in_days' => 10,
-            'start_on' => CarbonImmutable::now('America/Sao_Paulo')->toDateString(),
+            'start_on' => $conversionNow->setTimezone('America/Sao_Paulo')->toDateString(),
             'billing_timezone' => 'America/Sao_Paulo',
         ];
 
@@ -464,10 +480,17 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
             $terms,
             'duplicate-'.$tag,
             holdAccountLock: true,
+            frozenNow: $conversionNow->toISOString(),
         ));
         $this->waitFor($first, 'held');
         $this->assertWorkerHeldLock($first, 'accounts');
-        $second = $this->worker('trial_convert', $this->trialConversionPayload($office, $contractId, $terms, 'duplicate-'.$tag));
+        $second = $this->worker('trial_convert', $this->trialConversionPayload(
+            $office,
+            $contractId,
+            $terms,
+            'duplicate-'.$tag,
+            frozenNow: $conversionNow->toISOString(),
+        ));
         $this->assertWaitingOnTableLock($second, 'accounts');
 
         $this->release($first);

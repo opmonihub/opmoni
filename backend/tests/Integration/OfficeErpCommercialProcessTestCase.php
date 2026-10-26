@@ -296,7 +296,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     /** @param array<string, mixed> $terms
      *  @return array<string, mixed>
      */
-    protected function trialConversionPayload(array $office, int $contractId, array $terms, string $suffix, bool $holdAccountLock = false): array
+    protected function trialConversionPayload(array $office, int $contractId, array $terms, string $suffix, bool $holdAccountLock = false, ?string $frozenNow = null): array
     {
         return [
             'account_id' => $office['account_id'],
@@ -306,6 +306,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             'terms' => $terms,
             'idempotency_key' => 'trial-convert-'.$suffix,
             'hold_row_lock' => $holdAccountLock ? 'accounts' : null,
+            'frozen_now' => $frozenNow,
         ];
     }
 
