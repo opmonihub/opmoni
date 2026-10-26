@@ -852,7 +852,9 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             $firstLine = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', '[email]', $firstLine) ?? $firstLine;
             $firstLine = preg_replace('/Trial-Race-Secret-[^"\s]*/', '[secret]', $firstLine) ?? $firstLine;
             $firstLine = substr($firstLine, 0, 240);
-            self::fail('Worker emitted invalid JSON (stdout bytes='.strlen($output).', json error='.$exception->getMessage().', first line='.$firstLine.').');
+            $sqlState = self::workerSqlState($output);
+            self::fail('Worker emitted invalid JSON (stdout bytes='.strlen($output).', json error='.$exception->getMessage()
+                .', sqlstate='.$sqlState.', first line='.$firstLine.').');
         }
         self::assertSame(0, $result['transaction_level']);
 
@@ -887,6 +889,19 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
 
         return 'Worker diagnostic: exit='.$process->getExitCode().'; '.$type.'; stdout bytes='.strlen($stdout).'; stderr bytes='.strlen($stderr)
             .'; result='.json_encode($result, JSON_THROW_ON_ERROR).'; frames='.json_encode($locations, JSON_THROW_ON_ERROR);
+    }
+
+    private static function workerSqlState(string $output): string
+    {
+        if (preg_match('/SQLSTATE\\[([A-Z0-9]{5})\\]:\\s*([^\\r\\n]+)/', $output, $matches) !== 1) {
+            return 'unavailable';
+        }
+
+        $message = preg_split('/\\s+\\((?:Connection:|SQL:)|\\s+DETAIL:/', trim($matches[2]), 2)[0] ?? 'unavailable';
+        $message = preg_replace('/\\b\\d{14}\\b/', '[cnpj]', $message) ?? $message;
+        $message = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i', '[email]', $message) ?? $message;
+
+        return $matches[1].' '.substr($message, 0, 160);
     }
 
     /** @return array{pid: int, database_pid: int, checkout: string, source_hashes: array<string, string>} */
