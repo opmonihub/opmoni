@@ -235,6 +235,31 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         return ['link' => $link, 'code' => $code, 'plan_id' => (int) $plan->id];
     }
 
+    /** @param array{code: string, link: OfficeErpTrialLink} $trialLink
+     *  @return array<string, mixed>
+     */
+    protected function trialRegistrationPayload(array $office, array $trialLink, string $cnpj, string $suffix, bool $holdAccountLock = false): array
+    {
+        return [
+            'account_id' => $office['account_id'],
+            'actor_id' => $office['actor_id'],
+            'membership_id' => $office['membership_id'],
+            'trial_link_id' => (int) $trialLink['link']->id,
+            'code' => $trialLink['code'],
+            'registration' => [
+                'name' => 'Trial race owner '.$suffix,
+                'email' => 'trial-race-'.$suffix.'@example.test',
+                'password' => 'Trial-Race-Secret-'.$suffix,
+                'company_name' => 'Trial race company '.$suffix,
+                'cnpj' => $cnpj,
+                'tax_regime' => 'simple_national',
+                'establishment_name' => 'Matriz',
+            ],
+            'idempotency_key' => 'trial-race-'.$suffix,
+            'hold_row_lock' => $holdAccountLock ? 'accounts' : null,
+        ];
+    }
+
     /** @return array<string, mixed> */
     protected function effectiveInvoiceFixture(): array
     {

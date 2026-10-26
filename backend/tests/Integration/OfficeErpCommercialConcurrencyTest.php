@@ -268,6 +268,34 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame($fixture['second_contract_snapshot'], $secondContract);
     }
 
+    public function test_trial_last_licence_has_one_winner(): void
+    {
+        $fixture = $this->commercialFixture(1);
+        $trialLink = $this->trialLinkFixture($fixture);
+        $tag = bin2hex(random_bytes(6));
+        $firstCnpj = $this->uniqueCnpj();
+        $secondCnpj = $this->uniqueCnpj();
+        self::assertNotSame($firstCnpj, $secondCnpj);
+
+        $first = $this->worker('trial_register', $this->trialRegistrationPayload($fixture, $trialLink, $firstCnpj, $tag.'-last-slot-a', true));
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldLock($first, 'accounts');
+        $second = $this->worker('trial_register', $this->trialRegistrationPayload($fixture, $trialLink, $secondCnpj, $tag.'-last-slot-b'));
+        $this->assertWaitingOnTableLock($second, 'accounts');
+
+        $this->release($first);
+        $results = [$this->workerResult($first), $this->workerResult($second)];
+        $statuses = array_column($results, 'status');
+        sort($statuses);
+
+        self::assertSame([201, 409], $statuses);
+        self::assertSame(1, DB::table('erp_subscription_trials')->whereIn('cnpj', [$firstCnpj, $secondCnpj])->count());
+        self::assertSame(1, DB::table('office_erp_licence_allocations')->where('account_id', $fixture['account_id'])->where('state', 'occupied')->count());
+        self::assertSame(1, DB::table('clients')->where('account_id', $fixture['account_id'])->count());
+        self::assertSame(1, DB::table('erp_companies')->whereIn('cnpj', [$firstCnpj, $secondCnpj])->count());
+        self::assertSame(1, DB::table('erp_subscriptions')->whereIn('erp_company_id', DB::table('erp_companies')->select('id')->whereIn('cnpj', [$firstCnpj, $secondCnpj]))->count());
+    }
+
     public function test_same_period_workers_return_the_same_invoice_and_reserve_one_number(): void
     {
         $fixture = $this->effectiveInvoiceFixture();
