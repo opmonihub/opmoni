@@ -38,6 +38,7 @@ final class OfficeErpOwnerAcceptance
     {
         AccessSession::assertOwnership($request);
         $continuation = $this->continuations->verifiedContinuation($request);
+        abort_unless(($continuation['purpose'] ?? null) === 'commercial_acceptance', 409, 'invitation_purpose_mismatch');
         $state = $this->continuations->current($request);
         abort_if(in_array($state['state'] ?? null, ['invalid', 'expired', 'missing'], true), 410, 'invitation_expired');
         abort_if(($state['state'] ?? null) === 'identity_mismatch', 403, 'invitation_owner_mismatch');

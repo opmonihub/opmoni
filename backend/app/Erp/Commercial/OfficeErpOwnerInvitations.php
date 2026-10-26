@@ -154,7 +154,9 @@ final class OfficeErpOwnerInvitations
                 $invitation = $this->invitation($ctx, $id, true);
                 $contract = $this->contract($ctx, (int) $invitation->contract_id, true);
                 if ($invitation->status === 'pending' && $invitation->expires_at->isFuture()) {
-                    $this->allocator->release($ctx, $contract, 'invitation_revoked');
+                    if ($invitation->purpose === 'commercial_acceptance') {
+                        $this->allocator->release($ctx, $contract, 'invitation_revoked');
+                    }
                     $invitation->forceFill([
                         'status' => 'revoked',
                         'revoked_at' => now(),
@@ -247,7 +249,9 @@ final class OfficeErpOwnerInvitations
             $target = $this->invitation($ctx, $targetId, false);
             $contract = $this->contract($ctx, (int) $target->contract_id, false);
             $admission->lockCommercialAggregate($ctx);
-            $this->commercialSetting($ctx, true);
+            if ($target->purpose === 'commercial_acceptance') {
+                $this->commercialSetting($ctx, true);
+            }
             $this->expirePendingInvitations($ctx, $contract);
             $target = $this->invitation($ctx, $targetId, false);
             $contract = $this->contract($ctx, (int) $target->contract_id, false);
@@ -262,7 +266,13 @@ final class OfficeErpOwnerInvitations
             abort_unless($target !== null && $contract !== null, 404);
             if ($target->status === 'pending' && $target->expires_at->isFuture()) {
                 $allocation = $this->allocation($ctx, $contract, false);
-                $admission->assertCommand($ctx, 'invitation.revoke', $contract, $contract->currentRevision->module_keys, $allocation);
+                $admission->assertCommand(
+                    $ctx,
+                    $target->purpose === 'access_setup' ? 'owner.setup.issue' : 'invitation.revoke',
+                    $contract,
+                    $contract->currentRevision->module_keys,
+                    $allocation,
+                );
             } else {
                 abort_unless($admission->capabilities($ctx)['can_maintain'], 403);
             }
@@ -503,6 +513,7 @@ final class OfficeErpOwnerInvitations
                 $this->admission->prepareAdmissionLocks($ctx, $targetContract);
                 $expired = OfficeErpRecords::query($ctx, OfficeErpOwnerInvitation::class)
                     ->where('status', 'pending')
+                    ->where('purpose', 'commercial_acceptance')
                     ->where('expires_at', '<=', now())
                     ->orderBy('id')
                     ->lockForUpdate()
