@@ -11,6 +11,7 @@ use App\Enums\FiscalProcessingState;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
 use App\Enums\FiscalStorageState;
+use App\Erp\ErpCommercialGate;
 use App\Erp\Fiscal\ErpFiscalArtifactStore;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
 use App\Exceptions\AccountingPublicationFailed;
@@ -250,7 +251,7 @@ class ErpAccountingHandoffService
     /** @return array{ErpFiscalDocument, Client, string, ?array}|null */
     private function revalidate(ErpAccountingDelivery $delivery, ErpCompany $company, ?Account $account): ?array
     {
-        if ($delivery->status === ErpAccountingDelivery::STATUS_BLOCKED && ! in_array($delivery->reason_code, ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized', 'fiscal_authorization_unverified'], true)) {
+        if ($delivery->status === ErpAccountingDelivery::STATUS_BLOCKED && ! in_array($delivery->reason_code, ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized', 'fiscal_authorization_unverified', 'erp_trial_expired'], true)) {
             return null;
         }
         $reason = match (true) {
@@ -261,6 +262,12 @@ class ErpAccountingHandoffService
         };
         if ($reason !== null) {
             $this->markBlocked($delivery, $reason);
+
+            return null;
+        }
+        $commercialDenial = resolve(ErpCommercialGate::class)->operatingWriteDenialCode($company);
+        if ($commercialDenial !== null) {
+            $this->markBlocked($delivery, $commercialDenial);
 
             return null;
         }

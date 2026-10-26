@@ -230,7 +230,9 @@ final class OfficeErpContracts
     {
         $this->admission->assertCommand($ctx, 'contract.read');
         $perPage = min(100, max(1, (int) ($filters['per_page'] ?? 25)));
-        $query = OfficeErpRecords::query($ctx, OfficeErpContract::class)->with(['client', 'company.subscription', 'currentRevision', 'pendingRevision']);
+        $query = OfficeErpRecords::query($ctx, OfficeErpContract::class)->with([
+            'client', 'company.subscription.trial', 'company.subscription.plan', 'currentRevision', 'pendingRevision',
+        ]);
         if (($filters['agreement_status'] ?? '') !== '') {
             $query->where('agreement_status', $filters['agreement_status']);
         }
@@ -248,7 +250,9 @@ final class OfficeErpContracts
 
     public function show(OfficeErpExecutionContext $ctx, int $contractId): array
     {
-        $contract = $this->contract($ctx, $contractId)->load(['client', 'company.subscription', 'currentRevision', 'pendingRevision', 'revisions']);
+        $contract = $this->contract($ctx, $contractId)->load([
+            'client', 'company.subscription.trial', 'company.subscription.plan', 'currentRevision', 'pendingRevision', 'revisions',
+        ]);
         $this->admission->assertCommand($ctx, 'contract.read', $contract);
 
         return ['data' => $this->contractData($ctx, $contract, true)];
@@ -449,14 +453,17 @@ final class OfficeErpContracts
         }
         $current = $contract->currentRevision;
         $subscription = $contract->company?->subscription;
+        $subscriptionSummary = $this->linkedSubscriptionSummary($contract, $subscription);
         $data = [
             'id' => (int) $contract->id,
             'client' => ['id' => (int) $contract->client_id, 'name' => (string) $contract->client?->name],
-            'company' => $contract->company === null ? null : ['id' => (int) $contract->company->id, 'name' => (string) $contract->company->name],
+            'company' => $contract->company === null ? null : [
+                'id' => (int) $contract->company->id,
+                'name' => (string) $contract->company->name,
+                'owner_setup_status' => (string) $contract->company->owner_setup_status,
+            ],
             'agreement_status' => (string) $contract->agreement_status,
-            'licence_status' => $subscription !== null && (int) $subscription->office_erp_contract_id === (int) $contract->id
-                ? $subscription->status
-                : null,
+            ...$subscriptionSummary,
             'current_revision' => $current === null ? null : $this->revisionData($current),
             'pending_revision' => $contract->pendingRevision === null ? null : $this->revisionData($contract->pendingRevision),
             'service_anchor_on' => $contract->service_anchor_on?->toDateString(),
@@ -474,6 +481,67 @@ final class OfficeErpContracts
         }
 
         return $data;
+    }
+
+    /** @return array{licence_status:?string,erp_plan_id:?int,erp_plan:?array{id:int,name:string},trial:?array,next_billing_on:?string} */
+    public function linkedSubscriptionSummary(OfficeErpContract $contract, ?ErpSubscription $subscription): array
+    {
+        $linked = $subscription !== null && (int) $subscription->office_erp_contract_id === (int) $contract->id;
+        if (! $linked) {
+            return [
+                'licence_status' => null,
+                'erp_plan_id' => null,
+                'erp_plan' => null,
+                'trial' => null,
+                'next_billing_on' => null,
+            ];
+        }
+
+        $subscription->loadMissing(['trial', 'plan']);
+        $planId = $contract->erp_plan_id === null ? (int) $subscription->erp_plan_id : (int) $contract->erp_plan_id;
+
+        return [
+            'licence_status' => (string) $subscription->status,
+            'erp_plan_id' => $planId,
+            'erp_plan' => $subscription->plan === null ? null : [
+                'id' => $planId,
+                'name' => (string) $subscription->plan->name,
+            ],
+            'trial' => ErpTrialSummary::forLinkedContract($subscription, $contract),
+            'next_billing_on' => $this->nextBillingOn($contract, $subscription),
+        ];
+    }
+
+    private function nextBillingOn(OfficeErpContract $contract, ErpSubscription $subscription): ?string
+    {
+        if ($subscription->status === ErpSubscriptionStatus::Trialing->value
+            || $contract->agreement_status !== 'effective'
+            || $contract->service_anchor_on === null
+            || $contract->next_period_month_offset === null
+            || $contract->currentRevision === null) {
+            return null;
+        }
+
+        $now = CarbonImmutable::now($contract->billing_timezone);
+        $revision = $contract->pendingRevision;
+        if ($revision === null || $revision->service_period_start === null
+            || $revision->service_period_start->toDateString() > $now->toDateString()) {
+            $revision = $contract->currentRevision;
+        }
+
+        $period = $this->calendar->periodAtMonthOffset(
+            $contract->service_anchor_on->toDateString(),
+            (int) $revision->interval_months,
+            (int) $contract->next_period_month_offset,
+            $contract->billing_timezone,
+            (int) $revision->due_in_days,
+        );
+        if ($contract->cancel_effective_on !== null
+            && $contract->cancel_effective_on->toDateString() <= $period['start']) {
+            return null;
+        }
+
+        return $period['due_on'];
     }
 
     /** @return array<string, mixed> */

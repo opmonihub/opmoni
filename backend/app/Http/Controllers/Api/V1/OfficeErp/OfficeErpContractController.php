@@ -46,11 +46,13 @@ final class OfficeErpContractController extends Controller
                 return [
                     'id' => (int) $contract->id,
                     'client' => ['id' => (int) $contract->client_id, 'name' => (string) $contract->client?->name],
-                    'company' => $contract->company === null ? null : ['id' => (int) $contract->company->id, 'name' => (string) $contract->company->name],
+                    'company' => $contract->company === null ? null : [
+                        'id' => (int) $contract->company->id,
+                        'name' => (string) $contract->company->name,
+                        'owner_setup_status' => (string) $contract->company->owner_setup_status,
+                    ],
                     'agreement_status' => (string) $contract->agreement_status,
-                    'licence_status' => $subscription !== null && (int) $subscription->office_erp_contract_id === (int) $contract->id
-                        ? $subscription->status
-                        : null,
+                    ...$contracts->linkedSubscriptionSummary($contract, $subscription),
                     'current_revision' => $contract->currentRevision === null ? null : $contracts->revisionData($contract->currentRevision),
                     'pending_revision' => $contract->pendingRevision === null ? null : $contracts->revisionData($contract->pendingRevision),
                     'service_anchor_on' => $contract->service_anchor_on?->toDateString(),

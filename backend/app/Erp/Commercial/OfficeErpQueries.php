@@ -140,7 +140,9 @@ final class OfficeErpQueries
     {
         $filters = $this->filters($ctx, 'contracts', $filters);
         $query = OfficeErpRecords::query($ctx, OfficeErpContract::class)
-            ->with(['client', 'company.subscription', 'currentRevision', 'pendingRevision', 'licenceAllocation']);
+            ->with([
+                'client', 'company.subscription.trial', 'company.subscription.plan', 'currentRevision', 'pendingRevision', 'licenceAllocation',
+            ]);
         if (isset($filters['status'])) {
             $query->where('agreement_status', $filters['status']);
         }
