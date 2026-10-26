@@ -73,7 +73,7 @@ function load() {
   })
 }
 onMounted(load)
-useAdminReadAuthority(() => {
+const readAuthority = useAdminReadAuthority(() => {
   runLatestLoad.invalidate()
   totals.value = { accounts: 0, users: 0, subscriptions: 0, plans: 0 }
   recentLogs.value = []
@@ -81,6 +81,7 @@ useAdminReadAuthority(() => {
   hasLoaded.value = false
   loading.value = false
 })
+watch(readAuthority, load)
 </script>
 
 <template>

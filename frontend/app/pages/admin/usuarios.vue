@@ -79,8 +79,7 @@ onBeforeUnmount(runLatestLoad.invalidate)
 watch([debouncedQ, typeFilter], () => {
   page.value = 1
 }, { flush: 'sync' })
-watch(listParams, load)
-useAdminReadAuthority(() => {
+const readAuthority = useAdminReadAuthority(() => {
   runLatestLoad.invalidate()
   users.value = []
   total.value = 0
@@ -88,6 +87,7 @@ useAdminReadAuthority(() => {
   loadError.value = null
   loading.value = false
 })
+watch([listParams, readAuthority], load)
 </script>
 
 <template>

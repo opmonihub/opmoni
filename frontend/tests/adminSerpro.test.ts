@@ -538,3 +538,40 @@ it('Admin SERPRO aborts an active account catalog when leaving and discards its 
   await read
   assert.deepEqual(view.state.accountResults.value, [])
 })
+
+it('Admin SERPRO revalidates the same mounted route after authority loss and accepts a current save', async () => {
+  const states = new Map()
+  const pending = deferred()
+  let writes = 0
+  let reads = 0
+  const view = await page(async (path, options) => {
+    if (path.endsWith('/serpro/connection') && options?.method) {
+      writes++
+      if (writes === 1) return pending.promise
+      return { data: { ...saved, consumer_key_hint: 'current' } }
+    }
+    if (path.endsWith('/serpro/connection')) {
+      reads++
+      return { data: saved }
+    }
+    return standard(path)
+  }, states)
+  await view.start()
+  view.state.startEditing()
+  const old = view.state.onSubmit({ data: { consumer_key: 'old' } })
+  await flush()
+  states.get('access-session-generation').value++
+  assert.equal(view.state.metadata.value, null)
+  pending.resolve({ data: { ...saved, consumer_key_hint: 'obsolete' } })
+  await old
+  for (let attempt = 0; attempt < 12; attempt++) await flush()
+  assert.equal(reads, 2)
+  assert.equal(view.state.metadata.value.consumer_key_hint, saved.consumer_key_hint)
+  assert.equal(view.state.submitting.value, false)
+  view.state.startEditing()
+  await view.state.onSubmit({ data: { consumer_key: 'current', consumer_secret: 'current' } })
+  assert.equal(writes, 2)
+  assert.equal(view.state.metadata.value.consumer_key_hint, 'current')
+  assert.equal(view.state.editing.value, false)
+  view.stop()
+})

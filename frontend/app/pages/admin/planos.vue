@@ -123,36 +123,39 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
   const limits = { users: event.data.users ?? null, clients: event.data.clients ?? null, monitorings: event.data.monitorings ?? null }
   fieldErrors.value = {}
   saving.value = true
+  const authority = readAuthority.value
   try {
     await $api(`/admin/plans/${editTarget.value.id}`, {
       method: 'PUT',
       body: { name: event.data.name, limits, erp_commercial: event.data.erp_commercial ?? defaultOfficeErpAllowance() }
     })
-    if (!active)
+    if (!active || authority !== readAuthority.value)
       return
     toast.add({ title: 'Plano atualizado', description: event.data.name, color: 'success' })
     editOpen.value = false
     await load()
   } catch (error) {
-    if (!active)
+    if (!active || authority !== readAuthority.value)
       return
     fieldErrors.value = apiFailure(error).errors || {}
     toast.add({ title: 'Não foi possível atualizar o plano', color: 'error' })
   } finally {
-    saving.value = false
+    if (authority === readAuthority.value) saving.value = false
   }
 }
-useAdminReadAuthority(() => {
+const readAuthority = useAdminReadAuthority(() => {
+  saving.value = false
   runLatestLoad.invalidate()
   plans.value = []
   hasLoaded.value = false
   loadError.value = null
   loading.value = false
   editOpen.value = false
+  editTarget.value = null
   Object.assign(editState, { name: '', users: null, clients: null, monitorings: null, erp_commercial: defaultOfficeErpAllowance() })
   fieldErrors.value = {}
-  active = false
 })
+watch(readAuthority, load)
 </script>
 
 <template>

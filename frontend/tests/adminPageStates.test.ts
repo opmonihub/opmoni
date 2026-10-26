@@ -32,7 +32,7 @@ function session() {
   }
   return { values, useState }
 }
-async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>, routePath = '/admin/contas', props: Record<string, Runtime> = {}, app = session()) {
+async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>, routePath = '/admin/contas', props: Record<string, Runtime> = {}, app = session(), debounce: Runtime = (value: unknown) => value) {
   const navigation = require('../app/composables/useListNavigationState.ts')
   Object.assign(globalThis, { useState: app.useState, useListNavigationState: navigation.useListNavigationState, listNavigationField: navigation.listNavigationField })
   const path = name === 'commercial' ? 'components/platform/AccountCommercialModal.vue' : name === 'shell' ? 'pages/admin.vue' : name === 'layout' ? 'layouts/default.vue' : `pages/admin/${name}.vue`
@@ -49,7 +49,7 @@ async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>,
     }, useNuxtApp: () => ({ $api: api }), useAccessApi: () => ({ api }),
     useAuth: () => ({ user: Vue.ref({ is_super_admin: true }), currentAccount: Vue.ref({ id: 1, status: 'active', role: 'user' }), canManageMembers: Vue.ref(true), accounts: Vue.ref([{ id: 1, status: 'active', role: 'user' }]), switchAccount: api }),
     useToast: () => ({ add() {
-    } }), refDebounced: (value: unknown) => value,
+    } }), refDebounced: debounce,
     useAccountFilters: undefined as Runtime,
     useRetryableLoad: (options: Runtime) => ({ showError: Vue.computed(() => !!options.error.value), isLoading: options.loading, retry: options.refresh }),
     onMounted: (fn: () => unknown) => mounted.push(fn), onBeforeUnmount: (fn: () => unknown) => unmounted.push(fn)
@@ -687,3 +687,75 @@ for (const name of ['usuarios', 'assinaturas', 'contas', 'planos', 'suporte'])
     assert.equal(name === 'contas' ? rows.value : rows.value.length, name === 'contas' ? null : 0)
     view.stop()
   })
+
+for (const name of ['usuarios', 'assinaturas', 'contas', 'planos', 'suporte'])
+  it(`${name} remains usable on the same mounted route after an authority transition with default criteria`, async () => {
+    const app = session()
+    let count = 0
+    const view = await page(name, async () => {
+      count++
+      return name === 'planos' ? [{ id: count, name: 'Current', slug: 'current' }] : resource([{ id: count }])
+    }, '/admin/' + name, {}, app)
+    await view.start()
+    count = 0
+    app.values.get('access-session-generation')!.value++
+    await flush()
+    await flush()
+    assert.equal(count, 1)
+    assert.equal(view.state.loading?.value ?? view.state.loadingLogs.value, false)
+    view.stop()
+  })
+for (const name of ['assinaturas', 'planos'])
+  it(`${name} ignores prior-authority command feedback and accepts a later current-authority save`, async () => {
+    const app = session()
+    const pending = deferred()
+    let writes = 0
+    const view = await page(name, async (path, options) => {
+      if (options?.method) {
+        writes++
+        if (writes === 1) return pending.promise
+        return {}
+      }
+      if (path === '/admin/plans') return [{ id: 9, name: 'Basic', slug: 'basic' }]
+      return resource([{ id: 1, status: 'active', plan: { id: 9 } }])
+    }, '/admin/' + name, {}, app)
+    await view.start()
+    const record = name === 'assinaturas' ? { id: 1, status: 'active', plan: { id: 9 } } : { id: 9, name: 'Basic', slug: 'basic' }
+    const data = name === 'assinaturas' ? { plan_id: 9, status: 'active' } : { name: 'Basic', users: null, clients: null, monitorings: null }
+    view.state.openEdit(record)
+    await flush()
+    const old = view.state.onSave({ data })
+    app.values.get('access-session-generation')!.value++
+    await flush()
+    await flush()
+    pending.resolve({})
+    await old
+    assert.equal(view.state.editOpen.value, false)
+    view.state.openEdit(record)
+    await flush()
+    await view.state.onSave({ data })
+    assert.equal(writes, 2)
+    assert.equal(view.state.editOpen.value, false)
+    assert.equal(view.state.saving.value, false)
+    view.stop()
+  })
+
+it('Usuarios uses the actual 300ms VueUse debounce and admits only the normalized changed-search page', async () => {
+  const { refDebounced } = await import('@vueuse/core')
+  const calls: Runtime[] = []
+  const view = await page('usuarios', async (_path, options) => {
+    calls.push({ ...options.params })
+    return resource([], 61, 5)
+  }, '/admin/usuarios', {}, session(), refDebounced)
+  await view.start()
+  view.state.page.value = 3
+  await flush()
+  calls.length = 0
+  view.state.q.value = 'changed'
+  await flush()
+  assert.deepEqual(calls, [])
+  await new Promise(resolve => setTimeout(resolve, 350))
+  await flush()
+  assert.deepEqual(calls, [{ page: 1, q: 'changed' }])
+  view.stop()
+})

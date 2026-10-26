@@ -250,6 +250,7 @@ async function uploadSource() {
     sourceFieldErrors.value.certificate = invalid
     return
   }
+  const authority = readAuthority.value
   uploadingSource.value = true
   // Replacing an attached vault rotates the existing connection too.
   runRead.invalidate()
@@ -258,22 +259,23 @@ async function uploadSource() {
   connectivityError.value = ''
   try {
     const value = await uploadContractingCertificate(target.id, sourceCertificate.value!, sourcePassword.value)
-    if (!active)
+    if (!active || authority !== readAuthority.value)
       return
     sourceMetadata.value = value
     await load()
-    if (!active)
+    if (!active || authority !== readAuthority.value)
       return
     toast.add({ title: 'Certificado contratante salvo', color: 'success' })
   } catch (error) {
-    if (!active)
+    if (!active || authority !== readAuthority.value)
       return
     sourceFieldErrors.value = apiFieldErrors(error)
     sourceError.value = failureMessage(error)
   } finally {
-    clearSensitive()
-    if (active)
+    if (active && authority === readAuthority.value) {
+      clearSensitive()
       uploadingSource.value = false
+    }
   }
 }
 async function onSubmit(event: FormSubmitEvent<Schema>) {
@@ -305,12 +307,13 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       payload.password = event.data.password ?? ''
     }
   }
+  const authority = readAuthority.value
   submitting.value = true
   runRead.invalidate()
   runDiagnostic.invalidate()
   try {
     const value = await saveConnection(payload)
-    if (!active)
+    if (!active || authority !== readAuthority.value)
       return
     runRead.invalidate()
     metadata.value = value
@@ -320,14 +323,15 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     editing.value = false
     toast.add({ title: 'Conexão com o Integra Contador salva', color: 'success' })
   } catch (error) {
-    if (!active)
+    if (!active || authority !== readAuthority.value)
       return
     fieldErrors.value = apiFieldErrors(error)
     operationError.value = failureMessage(error)
   } finally {
-    clearSensitive()
-    if (active)
+    if (active && authority === readAuthority.value) {
+      clearSensitive()
       submitting.value = false
+    }
   }
 }
 function onTestConnectivity() {
@@ -369,8 +373,11 @@ onBeforeUnmount(() => {
   clearSensitive()
   state.consumer_key = ''
 })
-useAdminReadAuthority(() => {
-  active = false
+const readAuthority = useAdminReadAuthority(() => {
+  submitting.value = false
+  uploadingSource.value = false
+  testing.value = false
+  sourceLoading.value = false
   runRead.invalidate()
   runSource.invalidate()
   runCatalog.invalidate()
@@ -387,6 +394,7 @@ useAdminReadAuthority(() => {
   loading.value = false
   resetForm()
 })
+watch(readAuthority, load)
 </script>
 
 <template>
