@@ -10,6 +10,7 @@ import type { MonitoringAssessmentPeriod, SerproConnectionMetadata } from '../ap
 import type { WorkTemplate, WorkTemplatePayload } from '../app/types/work.ts'
 import { whatsappGuideTarget } from '../app/utils/whatsappDispatch.ts'
 import { vueSource } from './helpers/compileVueComponent.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -149,7 +150,20 @@ interface SerproPage {
 async function serproPage(configured: boolean | null) {
   const metadata = configured === null ? null : { configured, consumer_key_hint: '••••1234' }
   const writes: CredentialFields[] = []
+  const states = new Map<string, Vue.Ref>()
+  const useState = (key: string, initial: () => unknown) => {
+    if (!states.has(key)) states.set(key, Vue.ref(initial()))
+    return states.get(key)!
+  }
+  const navigation = loadAppComposable<typeof import('../app/composables/useListNavigationState.ts')>(
+    'composables/useListNavigationState.ts', { useState }
+  )
+  const authority = loadAppComposable<typeof import('../app/composables/useAdminReadAuthority.ts')>(
+    'composables/useAdminReadAuthority.ts', navigation
+  )
   const page = await setupPage<SerproPage>('pages/admin/serpro.vue', {
+    ...navigation,
+    ...authority,
     useNuxtApp: () => ({ $api: async () => [] }),
     useSerpro: () => ({
       connection: async () => metadata,
