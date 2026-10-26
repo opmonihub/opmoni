@@ -6,7 +6,7 @@ import { compileVueComponent } from './helpers/compileVueComponent.ts'
 type Node = { tag?: string, text?: string, props: Record<string, unknown>, children: Node[], parent?: Node | null }
 const capabilities = Vue.ref({ can_read: true, can_maintain: true, can_sell_new: true, capability_key: 'cap-1', allowance: { module_keys: ['purchases'] } })
 const revision = { id: 1, revision_number: 1, price: '99.00', interval_months: 1, due_in_days: 10, module_keys: ['purchases'], service_period_start: '2026-10-25', service_period_end: '2026-11-24', reason: 'accepted' }
-const detail = { id: 12, client: { id: 3, name: 'Mercado Central' }, company: { id: 4, name: 'Mercado ERP' }, agreement_status: 'effective', licence_status: 'active', current_revision: revision, pending_revision: null, service_anchor_on: '2026-10-25', next_period_month_offset: 1, cancel_effective_on: null, cancellation_reason: null, manual_hold: false, balance: { outstanding: '50.00', invoice_count: 2 }, revisions: [revision] }
+const detail = { id: 12, erp_plan_id: 7, erp_plan: { id: 7, name: 'Contábil Essencial' }, client: { id: 3, name: 'Mercado Central' }, company: { id: 4, name: 'Mercado ERP', owner_setup_status: 'unclaimed' }, trial: null, next_billing_on: '2026-11-24', agreement_status: 'effective', licence_status: 'active', current_revision: revision, pending_revision: null, service_anchor_on: '2026-10-25', next_period_month_offset: 1, cancel_effective_on: null, cancellation_reason: null, manual_hold: false, balance: { outstanding: '50.00', invoice_count: 2 }, revisions: [revision] }
 
 function nodes(node: Node, predicate: (candidate: Node) => boolean): Node[] {
   return [...(predicate(node) ? [node] : []), ...node.children.flatMap(child => nodes(child, predicate))]
@@ -125,6 +125,9 @@ test('renders the contracts list SFC and keeps agreement and licence statuses di
     await settle()
     assert.match(text(page.root), /Mercado Central/)
     assert.match(text(page.root), /R\$ 99,00/)
+    assert.match(text(page.root), /Contábil Essencial/)
+    assert.match(text(page.root), /Próxima cobrança/)
+    assert.match(text(page.root), /aguardando configuração/)
     assert.match(text(page.root), /Vigente/)
     assert.match(text(page.root), /Ativa/)
     assert.ok(page.calls.some(call => call.path === '/erp-commercial/contracts'))
@@ -154,11 +157,142 @@ test('labels every canonical agreement state and never describes unknown states 
   }
 })
 
+test('shows factual trial dates without inventing a next invoice', async () => {
+  const trialRecord = {
+    ...detail,
+    licence_status: 'trialing',
+    trial: {
+      id: 71,
+      started_at: '2026-10-25T12:00:00Z',
+      ends_at: '2026-11-01T12:00:00Z',
+      converted_at: null,
+      expired_at: null,
+      situation: 'trialing'
+    },
+    next_billing_on: null
+  }
+  const list = harness('pages/gestao-erp/assinaturas/index.vue', detail, null, [trialRecord])
+  const page = harness('pages/gestao-erp/assinaturas/[id].vue', trialRecord)
+  try {
+    await settle()
+    assert.match(text(list.root), /Em teste/)
+    assert.match(text(list.root), /Encerra 01\/11\/2026/)
+    assert.doesNotMatch(text(list.root), /Próxima cobrança/)
+    assert.match(text(page.root), /Teste de 7 dias/)
+    assert.match(text(page.root), /Encerra 01\/11\/2026/)
+    assert.doesNotMatch(text(page.root), /Próxima cobrança/)
+  } finally {
+    list.app.unmount()
+    page.app.unmount()
+  }
+})
+
+test('keeps paid subscription status and next billing visible after trial conversion', async () => {
+  const rows = ['active', 'suspended', 'past_due', 'canceled'].map((licence_status, index) => ({
+    ...detail,
+    id: 81 + index,
+    licence_status,
+    trial: {
+      id: 91 + index,
+      started_at: '2026-10-18T12:00:00Z',
+      ends_at: '2026-10-25T12:00:00Z',
+      converted_at: '2026-10-25T12:00:00Z',
+      expired_at: null,
+      situation: 'converted'
+    },
+    next_billing_on: '2026-11-25'
+  }))
+  const page = harness('pages/gestao-erp/assinaturas/index.vue', detail, null, rows)
+  const convertedActiveDetail = harness('pages/gestao-erp/assinaturas/[id].vue', {
+    ...detail,
+    licence_status: 'active',
+    trial: rows[0]!.trial,
+    next_billing_on: '2026-11-25'
+  })
+  const convertedCanceledDetail = harness('pages/gestao-erp/assinaturas/[id].vue', {
+    ...detail,
+    licence_status: 'canceled',
+    trial: rows[3]!.trial,
+    next_billing_on: null
+  })
+  try {
+    await settle()
+    const rendered = text(page.root)
+    assert.match(rendered, /Ativa/)
+    assert.match(rendered, /Suspensa/)
+    assert.match(rendered, /Em atraso/)
+    assert.match(rendered, /Cancelada/)
+    assert.equal((rendered.match(/Próxima cobrança 25\/11\/2026/g) ?? []).length, 4)
+    assert.equal((rendered.match(/Período de teste convertido: 25\/10\/2026/g) ?? []).length, 4)
+    assert.match(text(convertedActiveDetail.root), /Próxima cobrança 2026-11-25/)
+    assert.match(text(convertedActiveDetail.root), /Período original até/)
+    assert.match(text(convertedCanceledDetail.root), /Período original até/)
+    assert.doesNotMatch(text(convertedCanceledDetail.root), /Próxima cobrança/)
+  } finally {
+    page.app.unmount()
+    convertedActiveDetail.app.unmount()
+    convertedCanceledDetail.app.unmount()
+  }
+})
+
+test('shows an accepted trial as operating while retaining legacy activation copy elsewhere', async () => {
+  const acceptedTrial = {
+    ...detail,
+    agreement_status: 'accepted',
+    licence_status: 'trialing',
+    trial: {
+      id: 71,
+      started_at: '2026-10-25T12:00:00Z',
+      ends_at: '2026-11-01T12:00:00Z',
+      converted_at: null,
+      expired_at: null,
+      situation: 'trialing'
+    },
+    next_billing_on: null
+  }
+  const page = harness('pages/gestao-erp/assinaturas/[id].vue', acceptedTrial)
+  try {
+    await settle()
+    assert.match(text(page.root), /Em teste/)
+    assert.doesNotMatch(text(page.root), /Teste iniciado · aguardando ativação/)
+    assert.match(text(page.root), /Teste de 7 dias/)
+  } finally {
+    page.app.unmount()
+  }
+})
+
+test('shows an expired accepted trial as ended instead of awaiting activation', async () => {
+  const expiredTrial = {
+    ...detail,
+    agreement_status: 'accepted',
+    licence_status: 'trial_expired',
+    trial: {
+      id: 71,
+      started_at: '2026-10-18T12:00:00Z',
+      ends_at: '2026-10-25T12:00:00Z',
+      converted_at: null,
+      expired_at: '2026-10-25T12:00:00Z',
+      situation: 'expired'
+    },
+    next_billing_on: null
+  }
+  const page = harness('pages/gestao-erp/assinaturas/[id].vue', expiredTrial)
+  try {
+    await settle()
+    assert.match(text(page.root), /Teste encerrado/)
+    assert.doesNotMatch(text(page.root), /Aceito · aguardando ativação/)
+  } finally {
+    page.app.unmount()
+  }
+})
+
 test('renders the contract detail SFC, dispatches lifecycle actions, and recovers unknown outcomes', async () => {
   const page = harness('pages/gestao-erp/assinaturas/[id].vue')
   try {
     await settle()
     assert.match(text(page.root), /Mercado Central/)
+    assert.match(text(page.root), /Contábil Essencial/)
+    assert.match(text(page.root), /Aguardando configuração/)
     assert.match(text(page.root), /Saldo em aberto/)
     const renew = nodes(page.root, node => node.tag === 'button' && text(node).includes('Renovar sem mudar termos'))[0]
     assert.ok(renew)

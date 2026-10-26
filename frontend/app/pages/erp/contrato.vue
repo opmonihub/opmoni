@@ -22,6 +22,7 @@ interface ErpSubscriptionPayload {
     status: string
     plan: { name: string, modules: Array<{ module_key: string }> }
     company: { name: string, status: string }
+    trial?: { started_at: string, ends_at: string, converted_at: string | null, expired_at: string | null, situation: 'trialing' | 'expired' | 'converted' }
     retail_contract?: RetailContract
   }
 }
@@ -149,7 +150,10 @@ const statusLabel = computed(() => {
     active: 'Ativo',
     past_due: 'Em atraso',
     suspended: 'Suspenso',
-    canceled: 'Cancelado'
+    canceled: 'Cancelado',
+    trialing: 'Em teste',
+    trial_expired: 'Teste encerrado',
+    converted: 'Ativo'
   }
   return subscription.value ? map[subscription.value.status] ?? subscription.value.status : ''
 })
@@ -165,6 +169,13 @@ const retailContractStatusLabel = computed(() => {
 
 function formatPeriod(intervalMonths: number) {
   return intervalMonths === 1 ? 'Mensal' : `A cada ${intervalMonths} meses`
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.valueOf())
+    ? 'Data indisponível'
+    : new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeStyle: 'short' }).format(date)
 }
 
 async function load() {
@@ -313,6 +324,21 @@ onMounted(load)
         </div>
       </dl>
     </UCard>
+    <UAlert
+      v-if="subscription?.trial"
+      :color="subscription.trial.situation === 'trialing' ? 'success' : 'neutral'"
+      :title="subscription.trial.situation === 'trialing' ? 'Em teste' : subscription.trial.situation === 'expired' ? 'Teste encerrado' : 'Teste convertido'"
+    >
+      <template #description>
+        <div class="space-y-1">
+          <p>Início: {{ formatDate(subscription.trial.started_at) }}</p>
+          <p>Fim original do teste: {{ formatDate(subscription.trial.ends_at) }}</p>
+          <p v-if="subscription.trial.situation === 'expired'">
+            O período de teste terminou. Seus dados continuam disponíveis para consulta.
+          </p>
+        </div>
+      </template>
+    </UAlert>
     <USkeleton v-else-if="loading" class="h-40 w-full" />
 
     <template v-if="subscription?.retail_contract">

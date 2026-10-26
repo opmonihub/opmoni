@@ -11,7 +11,11 @@ type Capabilities = {
   can_maintain: boolean
   can_configure: boolean
   can_sell_new: boolean
+  can_provision: boolean
+  can_start_trial: boolean
+  can_manage_trial_link: boolean
   capability_key: string
+  capability_reasons: Record<'can_configure' | 'can_sell_new' | 'can_provision' | 'can_start_trial' | 'can_manage_trial_link', string[]>
   reasons: Record<string, string[]>
   allowance: { enabled: boolean, licence_limit: number | null, module_keys: string[] }
   usage: { reserved: number, occupied: number }
@@ -44,7 +48,17 @@ const fullCapabilities = (capabilityKey: string): Capabilities => ({
   can_maintain: true,
   can_configure: true,
   can_sell_new: true,
+  can_provision: true,
+  can_start_trial: false,
+  can_manage_trial_link: true,
   capability_key: capabilityKey,
+  capability_reasons: {
+    can_configure: [],
+    can_sell_new: [],
+    can_provision: [],
+    can_start_trial: [],
+    can_manage_trial_link: []
+  },
   reasons: {},
   allowance: { enabled: true, licence_limit: 8, module_keys: ['purchases'] },
   usage: { reserved: 0, occupied: 2 }

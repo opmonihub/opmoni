@@ -24,6 +24,66 @@ export interface OfficeErpCapabilities {
   usage: { reserved: number, occupied: number }
 }
 
+export interface OfficeErpEnrollmentPlan {
+  id: number
+  slug: string
+  name: string
+  module_keys: string[]
+}
+
+export interface OfficeErpEnrollmentPlansResponse {
+  data: OfficeErpEnrollmentPlan[]
+  eligibility: {
+    can_provision: boolean
+    reasons: string[]
+    licence_limit: number | null
+    used_licences: number
+    available_module_keys: string[]
+  }
+}
+
+export interface OfficeErpNewClientInput {
+  tax_id: string
+  tax_regime: 'mei' | 'simple_national' | 'presumed_profit' | 'actual_profit' | 'other'
+  name?: string
+  email?: string
+  phone?: string
+}
+
+export interface OfficeErpEnrollmentTerms {
+  erp_plan_id: number
+  price: string
+  currency: 'BRL'
+  interval_months: 1 | 3 | 6 | 12
+  due_in_days: number
+  start_on: string
+  billing_timezone: string
+}
+
+export type OfficeErpEnrollmentInput = OfficeErpEnrollmentTerms & (
+  | { client_id: number, new_client?: never }
+  | { new_client: OfficeErpNewClientInput, client_id?: never }
+)
+
+export interface OfficeErpEnrollmentOutcome {
+  client_id: number
+  company_id: number
+  subscription_id: number
+  contract_id: number
+  invoice_id: number
+  owner_setup_status: 'unclaimed' | 'claimed'
+}
+
+export interface OfficeErpOwnerSetupOutcome {
+  invitation_id: number
+  contract_id: number
+  company_id: number
+  owner_setup_status: 'unclaimed' | 'claimed'
+  expires_at: string
+  status: 'pending' | 'accepted' | 'revoked' | 'expired'
+  url?: string
+}
+
 export interface OfficeErpInvoiceBalance {
   original_total: string
   adjusted_charge: string
@@ -101,6 +161,24 @@ export interface OfficeErpPortfolioClient {
   name: string
   trade_name: string | null
   tax_id: string | null
+  subscription?: OfficeErpClientSubscriptionSummary | null
+}
+
+export interface OfficeErpClientSubscriptionSummary {
+  contract_id: number
+  agreement_status: string
+  licence_status: string | null
+  erp_plan_id: number | null
+  erp_plan: { id: number, name: string } | null
+  trial: {
+    id: number
+    started_at: string
+    ends_at: string
+    converted_at: string | null
+    expired_at: string | null
+    situation: 'trialing' | 'expired' | 'converted'
+  } | null
+  next_billing_on: string | null
 }
 
 export interface OfficeErpPortfolioClientListResponse {
@@ -150,4 +228,48 @@ export interface OfficeErpInvitationOutcome {
   expires_at: string
   status: 'pending' | 'accepted' | 'revoked' | 'expired'
   url?: string
+}
+
+export type ErpCompanyTaxRegime = 'mei' | 'simple_national' | 'presumed_profit' | 'actual_profit' | 'other'
+
+export interface TrialRegistrationInput {
+  name: string
+  email: string
+  password?: string
+  company_name: string
+  cnpj: string
+  tax_regime: ErpCompanyTaxRegime
+  confirm_existing_association?: boolean
+}
+
+export interface TrialRegistrationOutcome {
+  client_id: number
+  company_id: number
+  subscription_id: number
+  contract_id: number
+  trial_id: number
+  status: 'trialing'
+  started_at: string
+  ends_at: string
+}
+
+export interface TrialRegistrationResponse {
+  identity: import('./access').Identity
+  data: TrialRegistrationOutcome
+}
+
+export interface TrialRegistrationAvailability {
+  sponsor: { name: string }
+  plan: { name: string, description?: string | null, module_keys?: string[] }
+  duration_days: 7
+  available: boolean
+  reason?: string | null
+}
+
+export interface TrialRegistrationAvailabilityResponse {
+  data: TrialRegistrationAvailability
+}
+
+export interface TrialRegistrationOutcomeResponse {
+  data: TrialRegistrationOutcome
 }

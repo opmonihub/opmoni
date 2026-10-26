@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
 import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import { officeErpSidebarItem } from '../app/utils/sidebarNav.ts'
 
 type TestNode = { tag?: string, text?: string, props: Record<string, unknown>, children: TestNode[], parent?: TestNode | null }
@@ -15,6 +16,7 @@ type InvitationCommand = {
   recoverCalls: string[]
   executeResults: unknown[]
   recoveryResult: unknown
+  restore?: (key: string, result: unknown) => void
   execute: (...args: unknown[]) => Promise<unknown>
   recover: (key: string) => Promise<unknown>
 }
@@ -93,18 +95,22 @@ function uiComponents(): Record<string, Vue.Component> {
       }
     },
     USelectMenu: {
-      props: ['modelValue', 'items', 'disabled', 'loading'],
+      props: ['modelValue', 'items', 'disabled', 'loading', 'valueKey', 'labelKey'],
       emits: ['update:modelValue', 'update:searchTerm'],
       setup(props, context) {
+        const itemValue = (item: Record<string, unknown>) => item.id ?? item[props.valueKey as string] ?? item.value
+        const itemLabel = (item: Record<string, unknown>) => item.label ?? item[props.labelKey as string] ?? item.name
         return () => Vue.h('select', {
           ...context.attrs,
-          value: (props.modelValue as { id?: number } | null)?.id ?? '',
+          value: props.modelValue && typeof props.modelValue === 'object'
+            ? itemValue(props.modelValue as Record<string, unknown>) ?? ''
+            : props.modelValue ?? '',
           disabled: props.disabled,
           onChange: (event: { target: { value: string } }) => {
-            const item = (props.items as Array<{ id: number }>).find(option => String(option.id) === event.target.value)
+            const item = (props.items as Array<Record<string, unknown>>).find(option => String(itemValue(option)) === event.target.value)
             context.emit('update:modelValue', item)
           }
-        }, [Vue.h('option', { value: '' }, 'Selecione'), ...(props.items as Array<{ id: number, label: string }>).map(item => Vue.h('option', { value: String(item.id) }, item.label))])
+        }, [Vue.h('option', { value: '' }, 'Selecione'), ...(props.items as Array<Record<string, unknown>>).map(item => Vue.h('option', { value: String(itemValue(item)) }, String(itemLabel(item) ?? '')))])
       }
     },
     UForm: {
@@ -129,7 +135,11 @@ function uiComponents(): Record<string, Vue.Component> {
       props: ['data', 'loading'],
       setup(props, context) {
         return () => (props.data as Array<Record<string, unknown>>).length
-          ? Vue.h('table', {}, (props.data as Array<Record<string, unknown>>).map(row => Vue.h('tr', {}, [Vue.h('td', {}, String(row.name ?? '')), context.slots['actions-cell']?.({ row: { original: row } })])))
+          ? Vue.h('table', {}, (props.data as Array<Record<string, unknown>>).map(row => Vue.h('tr', {}, (context.attrs.columns as Array<{ id?: string, accessorKey?: string }>).map((column) => {
+              const key = column.id ?? column.accessorKey ?? ''
+              const cell = context.slots[`${key}-cell`]?.({ row: { original: row } })
+              return Vue.h('td', {}, cell ?? String(row[key] ?? ''))
+            }))))
           : Vue.h('table', {}, context.slots.empty?.())
       }
     },
@@ -168,6 +178,10 @@ function createCommand(initialKey: string | null = null): InvitationCommand {
     recoverCalls,
     executeResults: [],
     recoveryResult: { status: 'stale' },
+    restore(operationKey, result) {
+      key.value = operationKey
+      command.recoveryResult = result
+    },
     async execute(...args) {
       executeCalls.push(args)
       busy.value = true
@@ -194,6 +208,9 @@ const testCapabilities = Vue.ref({
   can_maintain: true,
   can_configure: true,
   can_sell_new: true,
+  can_provision: true,
+  can_start_trial: false,
+  can_manage_trial_link: true,
   capability_key: 'capability-1',
   reasons: {},
   allowance: { enabled: true, licence_limit: 4, module_keys: ['purchases'] },
@@ -235,6 +252,14 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
   initialRecovery?: unknown
   routeQuery?: Record<string, string | number>
   origin?: string
+  lookupCnpj?: () => Promise<unknown>
+  clipboardWrite?: (value: string) => Promise<void>
+  officeContext?: {
+    capabilities: Vue.ComputedRef<unknown>
+    capture: () => { key: string, generation: number }
+    isCurrent: (token: { key: string, generation: number }) => boolean
+    refresh: () => Promise<void>
+  }
 } = {}) {
   const user = Vue.ref(identity(office(8)))
   const currentAccount = Vue.computed(() => user.value.current_account)
@@ -243,7 +268,7 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
   const stateKeys: string[] = []
   const command = options.command ?? createCommand()
   if (options.initialRecovery !== undefined) command.recoveryResult = options.initialRecovery
-  const context = {
+  const context = options.officeContext ?? {
     capabilities: testCapabilities,
     capture: () => ({ key: JSON.stringify([user.value.id, session.value, currentAccount.value?.id, testCapabilities.value.capability_key]), generation: session.value }),
     isCurrent: (token: { key: string, generation: number }) => token.key === JSON.stringify([user.value.id, session.value, currentAccount.value?.id, testCapabilities.value.capability_key]) && token.generation === session.value,
@@ -262,14 +287,78 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
     },
     useOfficeErpContext: () => context,
     useOfficeErpCommand: () => command,
+    useClients: () => ({ lookupCnpj: options.lookupCnpj ?? (async () => { throw new Error('Consulta de CNPJ indisponível') }) }),
     useRoute: () => ({ query: options.routeQuery ?? {} }),
     window: { location: { origin: options.origin ?? 'http://localhost:3346' } },
+    navigator: { clipboard: { writeText: options.clipboardWrite ?? (async () => {}) } },
     useToast: () => ({ add() {} }),
     onBeforeUnmount: Vue.onBeforeUnmount,
     definePageMeta() {}
   })
   const mounted = mountTree(component, uiComponents())
   return { ...mounted, user, session, apiCalls, stateKeys, command, context }
+}
+
+function realCommandFixture(storage = new Map<string, string>(), api: (path: string, init?: Record<string, unknown>) => Promise<unknown>) {
+  const user = Vue.ref(identity(office(8)))
+  const session = Vue.ref(1)
+  const states = new Map<string, Vue.Ref<unknown>>()
+  const calls: Array<{ path: string, init?: Record<string, unknown> }> = []
+  const capabilities = {
+    can_read: true,
+    can_maintain: true,
+    can_configure: true,
+    can_sell_new: true,
+    can_provision: true,
+    can_start_trial: false,
+    can_manage_trial_link: true,
+    capability_reasons: { can_configure: [], can_sell_new: [], can_provision: [], can_start_trial: [], can_manage_trial_link: [] },
+    capability_key: 'fresh-reload-capability',
+    reasons: {},
+    allowance: { enabled: true, licence_limit: 4, module_keys: ['purchases'] },
+    usage: { reserved: 0, occupied: 0 }
+  }
+  const bindings = {
+    ref: Vue.ref,
+    computed: Vue.computed,
+    watch: Vue.watch,
+    readonly: Vue.readonly,
+    onScopeDispose: Vue.onScopeDispose,
+    useNuxtApp: () => ({}),
+    useState: <T>(key: string, factory: () => T) => {
+      if (key === 'access-session-generation') return session as Vue.Ref<T>
+      if (!states.has(key)) states.set(key, Vue.ref(factory()))
+      return states.get(key) as Vue.Ref<T>
+    },
+    useAuth: () => ({ user, currentAccount: Vue.computed(() => user.value.current_account) }),
+    useAccessApi: () => ({
+      api: async (path: string, init?: Record<string, unknown>) => {
+        calls.push({ path, init })
+        return api(path, init)
+      },
+      refreshCsrf: async () => {}
+    }),
+    crypto: { randomUUID: () => '7cbbdbb6-7f88-4479-a78a-471e4cb16c78' },
+    sessionStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) }
+    }
+  }
+  const contextModule = loadAppComposable<Record<string, unknown>>('composables/useOfficeErpContext.ts', bindings)
+  const commandModule = loadAppComposable<Record<string, unknown>>('composables/useOfficeErpCommand.ts', {
+    ...bindings,
+    useOfficeErpContext: contextModule.useOfficeErpContext
+  })
+  const scope = Vue.effectScope()
+  const context = scope.run(() => (contextModule.useOfficeErpContext as () => {
+    capabilities: Vue.ComputedRef<unknown>
+    capture: () => { key: string, generation: number }
+    isCurrent: (token: { key: string, generation: number }) => boolean
+    refresh: () => Promise<void>
+  })())!
+  const command = scope.run(() => (commandModule.useOfficeErpCommand as () => InvitationCommand)())!
+  return { command, context, capabilities, calls, storage, stop: () => scope.stop() }
 }
 
 function flush() {
@@ -293,6 +382,17 @@ function selectOption(root: TestNode, field: string, value: string) {
   ;(select.props.onChange as (event: { target: { value: string } }) => void)({ target: { value } })
 }
 
+function fillNewEnrollment(page: ReturnType<typeof harness>, name = 'Cliente de teste') {
+  updateInput(page.root, 'new_client.tax_id', '27865757000102')
+  updateInput(page.root, 'new_client.name', name)
+  updateInput(page.root, 'new_client.email', 'cliente@example.test')
+  updateInput(page.root, 'new_client.phone', '+5511999999999')
+  selectOption(page.root, 'erp_plan_id', '7')
+  updateInput(page.root, 'price', '100,00')
+  updateInput(page.root, 'due_in_days', '7')
+  updateInput(page.root, 'start_on', '2026-10-25')
+}
+
 describe('Office ERP seller onboarding SFC', () => {
   it('loads the own-office active portfolio with server search and counted pagination', async () => {
     const page = harness('pages/gestao-erp/clientes/index.vue')
@@ -303,7 +403,98 @@ describe('Office ERP seller onboarding SFC', () => {
     await flush()
     const call = page.apiCalls.filter(item => item.path === '/erp-commercial/clients').at(-1)
     assert.deepEqual(call?.options?.params, { q: 'São José', page: 1, per_page: 25 })
-    assert.ok(findButton(page.root, 'Novo convite'))
+    assert.ok(findButton(page.root, 'Cadastrar cliente ERP'))
+    page.app.unmount()
+  })
+
+  it('shows the attributed contract summary and a direct contract action in each customer row', async () => {
+    const page = harness('pages/gestao-erp/clientes/index.vue', {
+      api: async path => path === '/erp-commercial/clients'
+        ? {
+            data: [
+              { id: 18, name: 'Mercado São José', trade_name: 'São José', tax_id: '27865757000102', subscription: { contract_id: 42, agreement_status: 'effective', licence_status: 'active', erp_plan_id: 7, erp_plan: { id: 7, name: 'ERP Varejo' }, trial: null, next_billing_on: '2026-11-01' } },
+              { id: 19, name: 'Oficina Norte', trade_name: null, tax_id: null, subscription: { contract_id: 43, agreement_status: 'effective', licence_status: 'active', erp_plan_id: 8, erp_plan: { id: 8, name: 'ERP Oficina' }, trial: { id: 2, started_at: '2026-10-20T12:00:00Z', ends_at: '2026-10-27T12:00:00Z', converted_at: null, expired_at: null, situation: 'trialing' }, next_billing_on: null } },
+              { id: 20, name: 'Sem contrato', trade_name: null, tax_id: null, subscription: null },
+              { id: 21, name: 'Resumo faltando', trade_name: null, tax_id: null },
+              ...['active', 'suspended', 'canceled'].map((licence_status, index) => ({
+                id: 22 + index,
+                name: `Trial convertido ${licence_status}`,
+                trade_name: null,
+                tax_id: null,
+                subscription: { contract_id: 50 + index, agreement_status: 'effective', licence_status, erp_plan_id: 9, erp_plan: { id: 9, name: 'ERP Convertido' }, trial: { id: 10 + index, started_at: '2026-10-20T12:00:00Z', ends_at: '2026-10-27T12:00:00Z', converted_at: '2026-10-27T12:00:00Z', expired_at: null, situation: 'converted' }, next_billing_on: '2026-12-01' }
+              }))
+            ],
+            meta: { current_page: 1, last_page: 1, per_page: 25, total: 7 }
+          }
+        : testOffers()
+    })
+    await flush()
+    assert.match(textOf(page.root), /ERP Varejo/)
+    assert.match(textOf(page.root), /01\/11\/2026/)
+    assert.match(textOf(page.root), /ERP Oficina/)
+    assert.match(textOf(page.root), /Em teste/)
+    assert.match(textOf(page.root), /27\/10\/2026/)
+    assert.match(textOf(page.root), /Sem contrato ERP vinculado/)
+    assert.match(textOf(page.root), /Resumo do contrato indisponível/)
+    const converted = textOf(page.root)
+    assert.ok((converted.match(/Assinatura ativa/g) ?? []).length >= 2)
+    assert.match(converted, /Assinatura suspensa/)
+    assert.match(converted, /Assinatura cancelada/)
+    assert.equal((converted.match(/Próxima cobrança 01\/12\/2026/g) ?? []).length, 3)
+    assert.equal((converted.match(/Período de teste convertido/g) ?? []).length, 3)
+    const contractLink = findAll(page.root, node => node.tag === 'button' && textOf(node).includes('Ver contrato'))[0]
+    assert.deepEqual(contractLink?.props.to, '/gestao-erp/assinaturas/42')
+    page.app.unmount()
+  })
+
+  it('releases trial-link busy state on authority change without letting the stale completion clear a new copy', async () => {
+    const pending: Array<(value: unknown) => void> = []
+    const copied: string[] = []
+    const trialUrl = 'http://localhost:3346/erp/testar/550e8400-e29b-41d4-a716-446655440000'
+    const page = harness('pages/gestao-erp/clientes/index.vue', {
+      api: async path => path === '/erp-commercial/trial-link'
+        ? new Promise(resolve => pending.push(resolve))
+        : testClients(),
+      clipboardWrite: async (value) => { copied.push(value) } })
+    await flush()
+    const copyButton = findButton(page.root, 'Copiar link de teste')
+    assert.ok(copyButton)
+    ;(copyButton.props.onClick as () => void)()
+    await flush()
+    assert.equal(findButton(page.root, 'Copiar link de teste')?.props['data-loading'], 'true')
+
+    page.user.value = identity(office(9))
+    await flush()
+    assert.equal(findButton(page.root, 'Copiar link de teste')?.props['data-loading'], 'false')
+    ;(findButton(page.root, 'Copiar link de teste')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(pending.length, 2)
+    assert.equal(findButton(page.root, 'Copiar link de teste')?.props['data-loading'], 'true')
+
+    pending[0]!({ data: { configured: true, enabled: true, url: trialUrl } })
+    await flush()
+    assert.equal(findButton(page.root, 'Copiar link de teste')?.props['data-loading'], 'true')
+    assert.deepEqual(copied, [])
+    pending[1]!({ data: { configured: true, enabled: true, url: trialUrl } })
+    await flush()
+    assert.deepEqual(copied, [trialUrl])
+    assert.equal(findButton(page.root, 'Copiar link de teste')?.props['data-loading'], 'false')
+    page.app.unmount()
+  })
+
+  it('explains provision eligibility codes in Portuguese with a next step', async () => {
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [], eligibility: { can_provision: false, reasons: ['subscription_inactive', 'licence_capacity_reached', 'commercial_module_not_allowed'], licence_limit: 1, used_licences: 1, available_module_keys: [] } }
+        : testClients()
+    })
+    await flush()
+    const rendered = textOf(page.root)
+    assert.match(rendered, /A assinatura do escritório está inativa/)
+    assert.match(rendered, /licenças disponíveis/)
+    assert.match(rendered, /módulos ERP necessários/)
+    assert.match(rendered, /Próximo passo/)
+    assert.doesNotMatch(rendered, /subscription_inactive|licence_capacity_reached|commercial_module_not_allowed/)
     page.app.unmount()
   })
 
@@ -318,20 +509,19 @@ describe('Office ERP seller onboarding SFC', () => {
     page.app.unmount()
   })
 
-  it('uses subtle retry alerts when invitation portfolio and offer reads fail', async () => {
+  it('uses a subtle retry alert when the technical plan read fails', async () => {
     const page = harness('pages/gestao-erp/clientes/novo.vue', { api: async () => {
       throw new Error('Serviço temporariamente indisponível')
     } })
     await flush()
     const alerts = findAll(page.root, node => node.tag === 'aside' && node.props['data-color'] === 'error')
-    assert.equal(alerts.length, 2)
-    assert.match(textOf(alerts[0]!), /Carteira indisponível/)
-    assert.match(textOf(alerts[1]!), /Ofertas indisponíveis/)
+    assert.equal(alerts.length, 1)
+    assert.match(textOf(alerts[0]!), /Serviço temporariamente indisponível/)
     for (const alert of alerts) {
       assert.equal(alert.props['data-variant'], 'subtle')
       assert.ok(findButton(alert, 'Tentar novamente'))
     }
-    assert.doesNotMatch(textOf(page.root), /Nenhuma oferta ativa/)
+    assert.doesNotMatch(textOf(page.root), /Nenhum plano ERP disponível/)
     page.app.unmount()
   })
 
@@ -361,7 +551,7 @@ describe('Office ERP seller onboarding SFC', () => {
     await flush()
     ;(findButton(page.root, 'Próxima')?.props.onClick as () => void)()
     await flush()
-    const invitationLink = findButton(page.root, 'Convidar responsável')
+    const invitationLink = findButton(page.root, 'Selecionar da carteira')
     assert.ok(invitationLink)
     const destination = invitationLink.props.to as { query: Record<string, unknown> }
     assert.deepEqual(destination.query, { cliente: 77, pagina: 2, q: 'Caribe' })
@@ -369,7 +559,7 @@ describe('Office ERP seller onboarding SFC', () => {
     const form = harness('pages/gestao-erp/clientes/novo.vue', {
       routeQuery: destination.query as Record<string, string | number>,
       api: async (path, init) => {
-        if (path === '/erp-commercial/plans') return testOffers()
+        if (path === '/erp-commercial/enrollment-plans') return { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
         if (path !== '/erp-commercial/clients') return testPreview()
         const params = init?.params as Record<string, unknown>
         return {
@@ -380,200 +570,53 @@ describe('Office ERP seller onboarding SFC', () => {
     })
     await flush()
     assert.deepEqual(form.apiCalls.find(call => call.path === '/erp-commercial/clients')?.options?.params, { page: 2, per_page: 25, q: 'Caribe' })
-    assert.equal(controlFor(form.root, 'client_id')?.props.value, 77)
+    assert.equal(controlFor(form.root, 'client_id')?.props.value, 77, textOf(form.root))
     page.app.unmount()
     form.app.unmount()
   })
 
-  it('retains the selected immutable offer revision while searching another offer page', async () => {
-    const page = harness('pages/gestao-erp/clientes/novo.vue', { api: async (path, init) => {
-      if (path === '/erp-commercial/plans' && (init?.params as Record<string, unknown> | undefined)?.q === 'Serviços') {
-        return {
-          data: [{ id: 9, name: 'ERP Serviços', description: null, status: 'active', archived_at: null, current_revision: { id: 99, revision_number: 2, name: 'ERP Serviços', description: null, price: '99.00', currency: 'BRL', interval_months: 1, due_in_days: 7, module_keys: [], published_at: '2026-10-24T10:00:00Z', published: true } }],
-          meta: { current_page: 1, last_page: 2, per_page: 25, total: 27 }
-        }
-      }
-      return path === '/erp-commercial/plans' ? testOffers() : testClients()
-    } })
-    await flush()
-    selectOption(page.root, 'revision_id', '34')
-    updateInput(page.root, 'offer-search', 'Serviços')
-    await flush()
-    assert.equal(controlFor(page.root, 'revision_id')?.props.value, 34)
-    const latestOfferRequest = page.apiCalls.filter(call => call.path === '/erp-commercial/plans').at(-1)
-    assert.equal((latestOfferRequest?.options?.params as Record<string, unknown>)?.q, 'Serviços')
-    page.app.unmount()
+  it('keeps the direct portfolio preselection while the same authority resolves its initial ERP capabilities', async () => {
+    const actual = realCommandFixture(new Map(), async (path) => {
+      if (path === '/erp-commercial/context') return { data: actual.capabilities }
+      return { data: {} }
+    })
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command: actual.command,
+      officeContext: actual.context,
+      routeQuery: { cliente: 18 },
+      api: async path => path === '/erp-commercial/clients'
+        ? testClients()
+        : {
+            data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }],
+            eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] }
+          }
+    })
+    try {
+      assert.equal(actual.context.capabilities.value, null)
+      await flush()
+      assert.equal(controlFor(page.root, 'client_id')?.props.value, 18, textOf(page.root))
+      assert.notEqual(actual.context.capabilities.value, null)
+    } finally {
+      page.app.unmount()
+      actual.stop()
+    }
   })
 
-  it('reviews the selected published revision, preserves owner fields through unknown recovery, and requires explicit reissue for a new link', async () => {
-    const command = createCommand()
-    command.executeResults.push(
-      { status: 'unknown', key: '7cbbdbb6-7f88-4479-a78a-471e4cb16c78' },
-      { status: 'confirmed', data: { invitation_id: 92, expires_at: '2026-11-01 12:00:00', status: 'pending', url: `http://localhost:3346/erp/ativar#token=${'a'.repeat(64)}` } },
-      { status: 'confirmed', data: { invitation_id: 93, expires_at: '2026-11-01 12:00:00', status: 'pending', url: `https://attacker.test/erp/ativar#token=${'b'.repeat(64)}` } }
-    )
-    command.recoveryResult = { status: 'confirmed', data: { data: { invitation_id: 91, expires_at: '2026-11-01 12:00:00', status: 'pending' } } }
-    const page = harness('pages/gestao-erp/clientes/novo.vue', { command })
+  it('does not reapply a route-selected client after the Account changes', async () => {
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      routeQuery: { cliente: 18 },
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
     await flush()
-
-    selectOption(page.root, 'client_id', '18')
-    selectOption(page.root, 'revision_id', '34')
-    updateInput(page.root, 'owner.full_name', 'Ana Souza')
-    updateInput(page.root, 'owner.email', 'ana@example.test')
+    assert.equal(controlFor(page.root, 'client_id')?.props.value, 18)
+    page.user.value = identity(office(9))
     await flush()
-    ;(findButton(page.root, 'Revisar termos')?.props.onClick as () => void)()
+    assert.equal(controlFor(page.root, 'client_id'), undefined)
+    ;(findButton(page.root, 'Selecionar da carteira')?.props.onClick as () => void)()
     await flush()
-
-    const previewCall = page.apiCalls.find(item => item.path === '/erp-commercial/clients/18/onboarding-preview')
-    assert.deepEqual(previewCall?.options?.body, { revision_id: 34, owner: { full_name: 'Ana Souza', email: 'ana@example.test' } })
-    assert.match(textOf(page.root), /R\$\s?249,90/)
-    assert.match(textOf(page.root), /A cada 3 meses/)
-    assert.match(textOf(page.root), /12 dias/)
-    assert.match(textOf(page.root), /Escritório 8/)
-    assert.match(textOf(page.root), /Ana Souza/)
-    assert.doesNotMatch(textOf(page.root), /Rascunho interno/)
-
-    ;(findButton(page.root, 'Enviar convite')?.props.onClick as () => void)()
-    await flush()
-    assert.equal(command.executeCalls.length, 1)
-    assert.equal(command.executeCalls[0]?.[0], 'invitation.issue')
-    assert.equal(command.executeCalls[0]?.[1], '/erp-commercial/clients/18/invitations')
-    assert.deepEqual(command.executeCalls[0]?.[2], { revision_id: 34, owner: { full_name: 'Ana Souza', email: 'ana@example.test' } })
-    assert.match(textOf(page.root), /Verificar resultado/)
-    assert.doesNotMatch(textOf(page.root), /one-time-secret/)
-
-    ;(findButton(page.root, 'Verificar resultado')?.props.onClick as () => void)()
-    await flush()
-    assert.deepEqual(command.recoverCalls, ['7cbbdbb6-7f88-4479-a78a-471e4cb16c78'])
-    assert.equal(command.executeCalls.length, 1)
-    assert.match(textOf(page.root), /Convite emitido/)
-    assert.doesNotMatch(textOf(page.root), /one-time-secret/)
-    assert.ok(findButton(page.root, 'Gerar novo link'))
-    assert.equal(controlFor(page.root, 'owner.full_name')?.props.value, 'Ana Souza')
-    assert.equal(controlFor(page.root, 'owner.email')?.props.value, 'ana@example.test')
-
-    ;(findButton(page.root, 'Gerar novo link')?.props.onClick as () => void)()
-    await flush()
-    assert.equal(command.executeCalls.length, 2)
-    assert.equal(command.executeCalls[1]?.[0], 'invitation.issue')
-    assert.equal(command.executeCalls[1]?.[1], '/erp-commercial/invitations/91/reissue')
-    const activationLink = findAll(page.root, node => node.tag === 'a')[0]
-    assert.equal(activationLink?.props.href, `http://localhost:3346/erp/ativar#token=${'a'.repeat(64)}`)
-    assert.equal(page.stateKeys.includes('office-erp-invitation-token'), false)
-    ;(findButton(page.root, 'Gerar novo link')?.props.onClick as () => void)()
-    await flush()
-    assert.doesNotMatch(textOf(page.root), /attacker\.test|token=b{64}/)
-    page.app.unmount()
-    assert.doesNotMatch(textOf(page.root), /one-time-secret/)
-  })
-
-  it('invalidates the review when owner fields change and does not send a stale issue', async () => {
-    const command = createCommand()
-    const page = harness('pages/gestao-erp/clientes/novo.vue', { command })
-    await flush()
-    selectOption(page.root, 'client_id', '18')
-    selectOption(page.root, 'revision_id', '34')
-    updateInput(page.root, 'owner.full_name', 'Ana Souza')
-    updateInput(page.root, 'owner.email', 'ana@example.test')
-    await flush()
-    ;(findButton(page.root, 'Revisar termos')?.props.onClick as () => void)()
-    await flush()
-    assert.match(textOf(page.root), /Confirme os termos antes de enviar/)
-    updateInput(page.root, 'owner.email', 'outra@example.test')
-    await flush()
-    assert.doesNotMatch(textOf(page.root), /Confirme os termos antes de enviar/)
-    assert.equal(findButton(page.root, 'Enviar convite'), undefined)
-    assert.equal(command.executeCalls.length, 0)
-    page.app.unmount()
-  })
-
-  it('does not treat an unrelated recovered commercial resource as an invitation', async () => {
-    const command = createCommand('7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
-    command.recoveryResult = { status: 'confirmed', data: { data: { id: 7, name: 'Oferta Varejo' } } }
-    const page = harness('pages/gestao-erp/clientes/novo.vue', { command })
-    await flush()
-    assert.equal(findButton(page.root, 'Verificar resultado')?.props.disabled, false)
-    selectOption(page.root, 'client_id', '18')
-    selectOption(page.root, 'revision_id', '34')
-    updateInput(page.root, 'owner.full_name', 'Ana Souza')
-    updateInput(page.root, 'owner.email', 'ana@example.test')
-    await flush()
-    assert.equal(findButton(page.root, 'Revisar termos')?.props.disabled, true)
-    assert.equal(typeof findButton(page.root, 'Revisar termos')?.props.disabled, 'boolean')
-    ;(findButton(page.root, 'Verificar resultado')?.props.onClick as () => void)()
-    await flush()
-    assert.match(textOf(page.root), /resultado não corresponde a um convite/)
-    assert.doesNotMatch(textOf(page.root), /Convite emitido/)
-    assert.doesNotMatch(textOf(page.root), /Oferta Varejo/)
-    assert.equal(command.executeCalls.length, 0)
-    page.app.unmount()
-  })
-
-  it('translates a denied invitation preview without offering an issue action', async () => {
-    const page = harness('pages/gestao-erp/clientes/novo.vue', { api: async (path) => {
-      if (path.includes('onboarding-preview')) return { data: { ...testPreview().data, capacity: { ...testPreview().data.capacity, can_issue: false, reason: 'commercial_resale_disabled' } } }
-      return path === '/erp-commercial/plans' ? testOffers() : testClients()
-    } })
-    await flush()
-    selectOption(page.root, 'client_id', '18')
-    selectOption(page.root, 'revision_id', '34')
-    updateInput(page.root, 'owner.full_name', 'Ana Souza')
-    updateInput(page.root, 'owner.email', 'ana@example.test')
-    await flush()
-    ;(findButton(page.root, 'Revisar termos')?.props.onClick as () => void)()
-    await flush()
-    assert.match(textOf(page.root), /O plano do escritório não liberou a revenda de ERP\./)
-    assert.doesNotMatch(textOf(page.root), /commercial_resale_disabled/)
-    assert.equal(findButton(page.root, 'Enviar convite'), undefined)
-    assert.equal(page.command.executeCalls.length, 0)
-    page.app.unmount()
-  })
-
-  it('uses a Portuguese fallback for an unknown denied invitation reason', async () => {
-    const page = harness('pages/gestao-erp/clientes/novo.vue', { api: async (path) => {
-      if (path.includes('onboarding-preview')) return { data: { ...testPreview().data, capacity: { ...testPreview().data.capacity, can_issue: false, reason: 'future_internal_reason' } } }
-      return path === '/erp-commercial/plans' ? testOffers() : testClients()
-    } })
-    await flush()
-    selectOption(page.root, 'client_id', '18')
-    selectOption(page.root, 'revision_id', '34')
-    updateInput(page.root, 'owner.full_name', 'Ana Souza')
-    updateInput(page.root, 'owner.email', 'ana@example.test')
-    await flush()
-    ;(findButton(page.root, 'Revisar termos')?.props.onClick as () => void)()
-    await flush()
-    assert.match(textOf(page.root), /Este convite não pode ser emitido com a capacidade atual\./)
-    assert.doesNotMatch(textOf(page.root), /future_internal_reason/)
-    assert.equal(findButton(page.root, 'Enviar convite'), undefined)
-    assert.equal(page.command.executeCalls.length, 0)
-    page.app.unmount()
-  })
-
-  it('revokes through the journal command and displays its confirmed data result', async () => {
-    const command = createCommand()
-    command.executeResults.push(
-      { status: 'confirmed', data: { invitation_id: 92, expires_at: '2026-11-01 12:00:00', status: 'pending' } },
-      { status: 'confirmed', data: { invitation_id: 92, expires_at: '2026-11-01 12:00:00', status: 'revoked' } }
-    )
-    const page = harness('pages/gestao-erp/clientes/novo.vue', { command })
-    await flush()
-    selectOption(page.root, 'client_id', '18')
-    selectOption(page.root, 'revision_id', '34')
-    updateInput(page.root, 'owner.full_name', 'Ana Souza')
-    updateInput(page.root, 'owner.email', 'ana@example.test')
-    await flush()
-    ;(findButton(page.root, 'Revisar termos')?.props.onClick as () => void)()
-    await flush()
-    ;(findButton(page.root, 'Enviar convite')?.props.onClick as () => void)()
-    await flush()
-    updateInput(page.root, 'revoke.reason', 'Solicitação do responsável')
-    await flush()
-    ;(findButton(page.root, 'Revogar convite')?.props.onClick as () => void)()
-    await flush()
-    assert.equal(command.executeCalls[1]?.[0], 'invitation.revoke')
-    assert.equal(command.executeCalls[1]?.[1], '/erp-commercial/invitations/92/revoke')
-    assert.deepEqual(command.executeCalls[1]?.[2], { reason: 'Solicitação do responsável' })
-    assert.match(textOf(page.root), /Convite revogado/)
+    assert.equal(controlFor(page.root, 'client_id')?.props.value, '', 'the old deep-link client must not be selected under a new Account')
     page.app.unmount()
   })
 
@@ -593,14 +636,505 @@ describe('Office ERP seller onboarding SFC', () => {
     assert.doesNotMatch(textOf(page.root), /Mercado São José/)
     page.app.unmount()
   })
+
+  it('clears new-client lookup drafts and releases its busy state after authority changes', async () => {
+    let finishLookup!: (value: unknown) => void
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      lookupCnpj: () => new Promise((resolve) => { finishLookup = resolve }),
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    updateInput(page.root, 'new_client.tax_id', '12345678000199')
+    await flush()
+    updateInput(page.root, 'new_client.name', 'Nome protegido')
+    await flush()
+    updateInput(page.root, 'new_client.email', 'protegido@example.test')
+    await flush()
+    updateInput(page.root, 'new_client.phone', '11999999999')
+    await flush()
+    assert.equal(controlFor(page.root, 'new_client.tax_id')?.props.value, '12345678000199')
+    const lookupButton = findButton(page.root, 'Consultar CNPJ')
+    assert.ok(lookupButton, textOf(page.root))
+    assert.equal(typeof lookupButton.props.onClick, 'function', JSON.stringify(lookupButton.props))
+    ;(lookupButton.props.onClick as () => void)()
+    await flush()
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, true)
+    page.user.value = identity(office(9))
+    await flush()
+    assert.equal(controlFor(page.root, 'new_client.tax_id')?.props.value, '')
+    assert.equal(controlFor(page.root, 'new_client.name')?.props.value, '')
+    assert.equal(controlFor(page.root, 'new_client.email')?.props.value, '')
+    assert.equal(controlFor(page.root, 'new_client.phone')?.props.value, '')
+    updateInput(page.root, 'new_client.tax_id', '12345678000199')
+    await flush()
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, false)
+    finishLookup({ tax_id: '27865757000102', name: 'Resultado antigo', mei: false, simple_national: false, email: null, phone: null })
+    await flush()
+    assert.equal(controlFor(page.root, 'new_client.tax_id')?.props.value, '12345678000199')
+    assert.equal(controlFor(page.root, 'new_client.name')?.props.value, '')
+    assert.doesNotMatch(textOf(page.root), /Nome protegido|Resultado antigo/)
+    page.app.unmount()
+  })
+
+  it('keeps the newest CNPJ lookup busy when an older same-authority lookup finishes', async () => {
+    const lookups: Array<(value: unknown) => void> = []
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      lookupCnpj: () => new Promise(resolve => lookups.push(resolve)),
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    updateInput(page.root, 'new_client.tax_id', '12345678000199')
+    await flush()
+    ;(findButton(page.root, 'Consultar CNPJ')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, true)
+
+    updateInput(page.root, 'new_client.tax_id', '27865757000102')
+    await flush()
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, false)
+    ;(findButton(page.root, 'Consultar CNPJ')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(lookups.length, 2)
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, true)
+
+    lookups[0]!({ tax_id: '12345678000199', name: 'Empresa antiga', mei: false, simple_national: false, email: null, phone: null })
+    await flush()
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, true)
+    assert.equal(controlFor(page.root, 'new_client.tax_id')?.props.value, '27865757000102')
+    lookups[1]!({ tax_id: '27865757000102', name: 'Empresa atual', mei: false, simple_national: false, email: null, phone: null })
+    await flush()
+    assert.equal(findButton(page.root, 'Consultar CNPJ')?.props.disabled, false)
+    assert.equal(controlFor(page.root, 'new_client.name')?.props.value, 'Empresa atual')
+    assert.doesNotMatch(textOf(page.root), /Empresa antiga/)
+    page.app.unmount()
+  })
+
+  it('registers_without_published_offer', async () => {
+    const command = createCommand()
+    command.executeResults.push({ status: 'confirmed', data: {
+      client_id: 18, company_id: 40, subscription_id: 41, contract_id: 42, invoice_id: 43, owner_setup_status: 'unclaimed'
+    } })
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command,
+      lookupCnpj: async () => ({ tax_id: '12345678000199', name: 'Mercado São José', mei: false, simple_national: false, email: null, phone: null }),
+      api: async (path, _init) => {
+        if (path === '/erp-commercial/enrollment-plans') return {
+          data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }],
+          eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] }
+        }
+        if (path === '/erp-commercial/clients') return testClients()
+        return { data: { owner_setup_status: 'unclaimed' } }
+      }
+    })
+    await flush()
+    updateInput(page.root, 'new_client.tax_id', '12345678000199')
+    updateInput(page.root, 'new_client.name', 'Mercado São José')
+    await flush()
+    ;(findButton(page.root, 'Consultar CNPJ')?.props.onClick as () => void)()
+    await flush()
+    selectOption(page.root, 'erp_plan_id', '7')
+    updateInput(page.root, 'price', '9.007.199.254.740.993,01')
+    selectOption(page.root, 'interval_months', '1')
+    updateInput(page.root, 'due_in_days', '7')
+    updateInput(page.root, 'start_on', '2026-10-25')
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    const request = command.executeCalls[0]
+    assert.equal(request?.[0], 'customer.enroll')
+    assert.equal(request?.[1], '/erp-commercial/enrollments')
+    const body = request?.[2] as Record<string, unknown>
+    assert.equal(body.price, '9007199254740993.01')
+    assert.equal('revision_id' in body, false)
+    assert.equal('password' in body, false)
+    assert.equal(body.currency, 'BRL')
+    assert.equal(body.erp_plan_id, 7)
+    assert.deepEqual(body.new_client, {
+      tax_id: '12345678000199',
+      tax_regime: 'presumed_profit',
+      name: 'Mercado São José'
+    })
+    assert.match(textOf(page.root), /Assinatura cadastrada/)
+    page.app.unmount()
+  })
+
+  it('allows correction after local validation and a definitive server 422', async () => {
+    const command = createCommand()
+    command.executeResults.push(
+      { status: 'failed', failure: { code: 'validation', message: 'O preço foi recusado.', http_status: 422, errors: { price: ['Informe outro valor.'] } } },
+      { status: 'confirmed', data: { client_id: 18, company_id: 40, subscription_id: 41, contract_id: 42, invoice_id: 43, owner_setup_status: 'unclaimed' } }
+    )
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command,
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    fillNewEnrollment(page)
+    updateInput(page.root, 'price', 'valor inválido')
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    assert.match(textOf(page.root), /Informe um valor em reais com até duas casas decimais/)
+    updateInput(page.root, 'price', '100,00')
+    await flush()
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(command.executeCalls.length, 1)
+    assert.match(textOf(page.root), /O preço foi recusado/)
+    updateInput(page.root, 'price', '110,00')
+    await flush()
+    assert.equal(findButton(page.root, 'Cadastrar cliente ERP')?.props.disabled, false)
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(command.executeCalls.length, 2)
+    assert.match(textOf(page.root), /Assinatura cadastrada/)
+    page.app.unmount()
+  })
+
+  it('releases an old enrollment busy state without letting its late result mask the new operation', async () => {
+    const command = createCommand()
+    const executions: Array<(result: unknown) => void> = []
+    command.execute = async (...args) => {
+      command.executeCalls.push(args)
+      return new Promise(resolve => executions.push(resolve))
+    }
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command,
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    fillNewEnrollment(page)
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(findButton(page.root, 'Cadastrar cliente ERP')?.props.disabled, true)
+    page.user.value = identity(office(9))
+    await flush()
+    fillNewEnrollment(page, 'Novo escritório')
+    await flush()
+    assert.equal(findButton(page.root, 'Cadastrar cliente ERP')?.props.disabled, false)
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(executions.length, 2)
+    executions[0]!({ status: 'confirmed', data: { client_id: 18, company_id: 40, subscription_id: 41, contract_id: 42, invoice_id: 43, owner_setup_status: 'unclaimed' } })
+    await flush()
+    assert.equal(findButton(page.root, 'Cadastrar cliente ERP')?.props.disabled, true)
+    assert.doesNotMatch(textOf(page.root), /Assinatura cadastrada/)
+    executions[1]!({ status: 'confirmed', data: { client_id: 28, company_id: 50, subscription_id: 51, contract_id: 52, invoice_id: 53, owner_setup_status: 'unclaimed' } })
+    await flush()
+    assert.match(textOf(page.root), /Assinatura cadastrada/)
+    assert.match(textOf(page.root), /52/)
+    page.app.unmount()
+  })
+
+  it('restores the recovery action when the command key arrives after the SFC mounts', async () => {
+    const command = createCommand()
+    const page = harness('pages/gestao-erp/clientes/novo.vue', { command })
+    await flush()
+    command.restore('7cbbdbb6-7f88-4479-a78a-471e4cb16c78', { status: 'confirmed', data: {
+      client_id: 18, company_id: 40, subscription_id: 41, contract_id: 42, invoice_id: 43, owner_setup_status: 'unclaimed'
+    } })
+    await flush()
+    assert.ok(findButton(page.root, 'Verificar resultado'))
+    ;(findButton(page.root, 'Verificar resultado')?.props.onClick as () => void)()
+    await flush()
+    assert.deepEqual(command.recoverCalls, ['7cbbdbb6-7f88-4479-a78a-471e4cb16c78'])
+    assert.equal(command.executeCalls.length, 0)
+    assert.match(textOf(page.root), /Assinatura cadastrada/)
+    page.app.unmount()
+  })
+
+  it('restores a real command after fresh reload and recovers from the rendered SFC without another enrollment POST', async () => {
+    const storage = new Map<string, string>()
+    const outcome = { client_id: 18, company_id: 40, subscription_id: 41, contract_id: 42, invoice_id: 43, owner_setup_status: 'unclaimed' }
+    const first = realCommandFixture(storage, async (path) => {
+      if (path === '/erp-commercial/context') return { data: first.capabilities }
+      throw new Error('connection dropped after dispatch')
+    })
+    const unknown = await first.command.execute('customer.enroll', '/erp-commercial/enrollments', { new_client: { tax_id: '12345678000199' }, price: '100.00' })
+    assert.deepEqual(unknown, { status: 'unknown', key: '7cbbdbb6-7f88-4479-a78a-471e4cb16c78' })
+    assert.equal(first.calls.filter(call => call.path === '/erp-commercial/enrollments').length, 1)
+    first.stop()
+
+    const reloaded = realCommandFixture(storage, async (path) => {
+      if (path === '/erp-commercial/context') return { data: reloaded.capabilities }
+      if (path === '/erp-commercial/operations/7cbbdbb6-7f88-4479-a78a-471e4cb16c78') return { data: outcome }
+      throw new Error(`Unexpected recovered request: ${path}`)
+    })
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command: reloaded.command,
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    try {
+      await flush()
+      assert.equal(findButton(page.root, 'Verificar resultado'), undefined)
+      await reloaded.context.refresh()
+      await flush()
+      assert.ok(findButton(page.root, 'Verificar resultado'))
+      ;(findButton(page.root, 'Verificar resultado')?.props.onClick as () => void)()
+      await flush()
+      assert.match(textOf(page.root), /Assinatura cadastrada/)
+      assert.equal(reloaded.calls.filter(call => call.path === '/erp-commercial/enrollments').length, 0)
+      assert.equal(reloaded.calls.filter(call => call.path === '/erp-commercial/operations/7cbbdbb6-7f88-4479-a78a-471e4cb16c78').length, 1)
+    } finally {
+      page.app.unmount()
+      reloaded.stop()
+    }
+  })
+
+  it('selects_portfolio_client_without_duplicate', async () => {
+    const command = createCommand()
+    command.executeResults.push({ status: 'confirmed', data: {
+      client_id: 18, company_id: 40, subscription_id: 41, contract_id: 42, invoice_id: 43, owner_setup_status: 'claimed'
+    } })
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command,
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    ;(findButton(page.root, 'Selecionar da carteira')?.props.onClick as () => void)()
+    await flush()
+    selectOption(page.root, 'client_id', '18')
+    await flush()
+    selectOption(page.root, 'erp_plan_id', '7')
+    updateInput(page.root, 'price', '100,00')
+    selectOption(page.root, 'interval_months', '1')
+    updateInput(page.root, 'due_in_days', '7')
+    updateInput(page.root, 'start_on', '2026-10-25')
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    const body = command.executeCalls[0]?.[2] as Record<string, unknown>
+    assert.equal(body.client_id, 18)
+    assert.equal('new_client' in body, false)
+    assert.equal('password' in body, false)
+    page.app.unmount()
+  })
+
+  it('recovers_enrollment_without_second_invoice', async () => {
+    const command = createCommand()
+    command.executeResults.push({ status: 'unknown', key: '7cbbdbb6-7f88-4479-a78a-471e4cb16c78' })
+    command.recoveryResult = { status: 'confirmed', data: { data: {
+      client_id: 18, company_id: 40, subscription_id: 41, contract_id: 42, invoice_id: 43, owner_setup_status: 'unclaimed'
+    } } }
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command,
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    ;(findButton(page.root, 'Selecionar da carteira')?.props.onClick as () => void)()
+    await flush()
+    selectOption(page.root, 'client_id', '18')
+    await flush()
+    selectOption(page.root, 'erp_plan_id', '7')
+    updateInput(page.root, 'price', '100,00')
+    selectOption(page.root, 'interval_months', '1')
+    updateInput(page.root, 'due_in_days', '7')
+    updateInput(page.root, 'start_on', '2026-10-25')
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    ;(findButton(page.root, 'Verificar resultado')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(command.executeCalls.length, 1)
+    assert.deepEqual(command.recoverCalls, ['7cbbdbb6-7f88-4479-a78a-471e4cb16c78'])
+    assert.match(textOf(page.root), /Assinatura cadastrada/)
+    page.app.unmount()
+  })
+
+  it('preserves_inputs_on_lookup_failure', async () => {
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      lookupCnpj: async () => { throw new Error('Receita indisponível') },
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    updateInput(page.root, 'new_client.tax_id', '12345678000199')
+    updateInput(page.root, 'new_client.name', 'Nome digitado para revisão')
+    await flush()
+    ;(findButton(page.root, 'Consultar CNPJ')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(controlFor(page.root, 'new_client.tax_id')?.props.value, '12345678000199')
+    assert.equal(controlFor(page.root, 'new_client.name')?.props.value, 'Nome digitado para revisão')
+    assert.match(textOf(page.root), /Receita indisponível/)
+    page.app.unmount()
+  })
+
+  it('clears_protected_customer_after_authority_change', async () => {
+    let selectedAccount = 8
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : selectedAccount === 9 ? { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } : testClients()
+    })
+    await flush()
+    ;(findButton(page.root, 'Selecionar da carteira')?.props.onClick as () => void)()
+    await flush()
+    selectOption(page.root, 'client_id', '18')
+    await flush()
+    assert.match(textOf(page.root), /São José/)
+    selectedAccount = 9
+    page.user.value = identity(office(9))
+    await flush()
+    assert.doesNotMatch(textOf(page.root), /Mercado São José/)
+    page.app.unmount()
+  })
+
+  it('prepares_optional_owner_access_after_confirmed_enrollment', async () => {
+    const command = createCommand()
+    command.executeResults.push(
+      { status: 'confirmed', data: { client_id: 18, company_id: 40, subscription_id: 41, contract_id: 42, invoice_id: 43, owner_setup_status: 'unclaimed' } },
+      { status: 'confirmed', data: { invitation_id: 77, contract_id: 42, company_id: 40, owner_setup_status: 'unclaimed', expires_at: '2026-11-01T12:00:00Z', status: 'pending', url: `http://localhost:3346/erp/ativar#token=${'a'.repeat(64)}` } }
+    )
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command,
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    ;(findButton(page.root, 'Selecionar da carteira')?.props.onClick as () => void)()
+    await flush()
+    selectOption(page.root, 'client_id', '18')
+    await flush()
+    selectOption(page.root, 'erp_plan_id', '7')
+    updateInput(page.root, 'price', '100,00')
+    updateInput(page.root, 'due_in_days', '7')
+    updateInput(page.root, 'start_on', '2026-10-25')
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    updateInput(page.root, 'owner.full_name', 'Ana Souza')
+    updateInput(page.root, 'owner.email', 'ana@example.test')
+    await flush()
+    ;(findButton(page.root, 'Preparar acesso do responsável')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(command.executeCalls.length, 2)
+    assert.equal(command.executeCalls[1]?.[0], 'owner.setup.issue')
+    assert.equal(command.executeCalls[1]?.[1], '/erp-commercial/contracts/42/owner-setup')
+    assert.deepEqual(command.executeCalls[1]?.[2], { owner: { full_name: 'Ana Souza', email: 'ana@example.test' } })
+    assert.equal('password' in (command.executeCalls[1]?.[2] as Record<string, unknown>), false)
+    assert.match(textOf(page.root), /Acesso preparado/)
+    assert.equal(findAll(page.root, node => node.tag === 'a')[0]?.props.href, `http://localhost:3346/erp/ativar#token=${'a'.repeat(64)}`)
+    page.app.unmount()
+  })
+
+  it('clears owner setup drafts and busy state without accepting a stale owner result', async () => {
+    const command = createCommand()
+    const ownerExecutions: Array<(result: unknown) => void> = []
+    let enrollments = 0
+    command.execute = async (...args) => {
+      command.executeCalls.push(args)
+      if (args[0] === 'customer.enroll') {
+        enrollments++
+        const offset = enrollments === 1 ? 0 : 10
+        return { status: 'confirmed', data: { client_id: 18 + offset, company_id: 40 + offset, subscription_id: 41 + offset, contract_id: 42 + offset, invoice_id: 43 + offset, owner_setup_status: 'unclaimed' } }
+      }
+      return new Promise(resolve => ownerExecutions.push(resolve))
+    }
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command,
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    fillNewEnrollment(page, 'Cliente antigo')
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    updateInput(page.root, 'owner.full_name', 'Responsável antigo')
+    updateInput(page.root, 'owner.email', 'antigo@example.test')
+    ;(findButton(page.root, 'Preparar acesso do responsável')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(findButton(page.root, 'Preparar acesso do responsável')?.props['data-loading'], 'true')
+
+    page.user.value = identity(office(9))
+    await flush()
+    assert.equal(controlFor(page.root, 'new_client.tax_id')?.props.value, '')
+    assert.equal(controlFor(page.root, 'new_client.name')?.props.value, '')
+    assert.equal(controlFor(page.root, 'new_client.email')?.props.value, '')
+    assert.equal(controlFor(page.root, 'new_client.phone')?.props.value, '')
+    assert.equal(controlFor(page.root, 'price')?.props.value, '')
+    assert.doesNotMatch(textOf(page.root), /Cliente antigo|Responsável antigo|antigo@example\.test|Acesso preparado/)
+
+    fillNewEnrollment(page, 'Cliente novo')
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(controlFor(page.root, 'owner.full_name')?.props.value, '')
+    assert.equal(controlFor(page.root, 'owner.email')?.props.value, '')
+    assert.equal(findButton(page.root, 'Preparar acesso do responsável')?.props['data-loading'], 'false')
+    updateInput(page.root, 'owner.full_name', 'Responsável novo')
+    updateInput(page.root, 'owner.email', 'novo@example.test')
+    ;(findButton(page.root, 'Preparar acesso do responsável')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(ownerExecutions.length, 2)
+    ownerExecutions[0]!({ status: 'confirmed', data: { invitation_id: 77, contract_id: 42, company_id: 40, owner_setup_status: 'unclaimed', expires_at: '2026-11-01T12:00:00Z', status: 'pending', url: `http://localhost:3346/erp/ativar#token=${'a'.repeat(64)}` } })
+    await flush()
+    assert.equal(findButton(page.root, 'Preparar acesso do responsável')?.props['data-loading'], 'true')
+    assert.equal(controlFor(page.root, 'owner.full_name')?.props.value, 'Responsável novo')
+    assert.doesNotMatch(textOf(page.root), /Responsável antigo|antigo@example\.test/)
+    ownerExecutions[1]!({ status: 'confirmed', data: { invitation_id: 78, contract_id: 52, company_id: 50, owner_setup_status: 'unclaimed', expires_at: '2026-11-02T12:00:00Z', status: 'pending', url: `http://localhost:3346/erp/ativar#token=${'b'.repeat(64)}` } })
+    await flush()
+    assert.equal(findAll(page.root, node => node.tag === 'a').at(-1)?.props.href, `http://localhost:3346/erp/ativar#token=${'b'.repeat(64)}`)
+    page.app.unmount()
+  })
+
+  it('recovers_owner_setup_without_issuing_a_second_access_link', async () => {
+    const command = createCommand()
+    command.executeResults.push(
+      { status: 'confirmed', data: { client_id: 18, company_id: 40, subscription_id: 41, contract_id: 42, invoice_id: 43, owner_setup_status: 'unclaimed' } },
+      { status: 'unknown', key: '9a1bdbb6-7f88-4479-a78a-471e4cb16c78' }
+    )
+    command.recoveryResult = { status: 'confirmed', data: {
+      invitation_id: 77, contract_id: 42, company_id: 40, owner_setup_status: 'unclaimed', expires_at: '2026-11-01T12:00:00Z', status: 'pending'
+    } }
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command,
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    ;(findButton(page.root, 'Selecionar da carteira')?.props.onClick as () => void)()
+    await flush()
+    selectOption(page.root, 'client_id', '18')
+    await flush()
+    selectOption(page.root, 'erp_plan_id', '7')
+    updateInput(page.root, 'price', '100,00')
+    updateInput(page.root, 'due_in_days', '7')
+    updateInput(page.root, 'start_on', '2026-10-25')
+    ;(findButton(page.root, 'Cadastrar cliente ERP')?.props.onClick as () => void)()
+    await flush()
+    updateInput(page.root, 'owner.full_name', 'Ana Souza')
+    updateInput(page.root, 'owner.email', 'ana@example.test')
+    await flush()
+    ;(findButton(page.root, 'Preparar acesso do responsável')?.props.onClick as () => void)()
+    await flush()
+    ;(findButton(page.root, 'Verificar resultado')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(command.executeCalls.length, 2)
+    assert.deepEqual(command.recoverCalls, ['9a1bdbb6-7f88-4479-a78a-471e4cb16c78'])
+    assert.match(textOf(page.root), /resultado foi confirmado sem recuperar o link único/)
+    assert.ok(findButton(page.root, 'Emitir novo link de acesso'))
+    assert.equal(findAll(page.root, node => node.tag === 'a' && textOf(node).includes('Abrir link de acesso')).length, 0)
+    page.app.unmount()
+  })
 })
 
 describe('Office ERP seller navigation', () => {
   it('links the overview and every shipped ERP page while marking the portfolio client active', () => {
     assert.deepEqual(officeErpSidebarItem('/gestao-erp/clientes').children, [
       { label: 'Visão geral', to: '/gestao-erp', exact: true, active: false },
-      { label: 'Ofertas', to: '/gestao-erp/planos', exact: true, active: false },
-      { label: 'Clientes da carteira', to: '/gestao-erp/clientes', exact: true, active: true },
+      { label: 'Clientes ERP', to: '/gestao-erp/clientes', exact: true, active: true },
       { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: false },
       { label: 'Faturas', to: '/gestao-erp/faturas', exact: false, active: false },
       { label: 'Recebimentos', to: '/gestao-erp/recebimentos', exact: true, active: false },
