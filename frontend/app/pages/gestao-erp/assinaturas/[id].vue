@@ -88,6 +88,10 @@ const conversionOpen = ref(false)
 const conversionLoading = ref(false)
 const conversionPlans = ref<EnrollmentPlan[]>([])
 const conversionPlanId = ref<number | null>(null)
+const conversionPlanSelectModel = computed<number | undefined>({
+  get: () => conversionPlanId.value ?? undefined,
+  set: (value) => { conversionPlanId.value = value ?? null }
+})
 const conversionPrice = ref('')
 const conversionIntervalMonths = ref('1')
 const conversionDueInDays = ref('0')
@@ -238,8 +242,9 @@ async function prepareTrialConversion() {
     conversionPlans.value = plans.data.filter(plan => Number.isSafeInteger(plan.id) && typeof plan.name === 'string' && Array.isArray(plan.module_keys))
     if (plans.eligibility?.trial_conversion?.eligible !== true || conversionPlans.value.length === 0)
       throw new Error('O escritório não tem capacidade ou plano elegível para converter este teste agora.')
-    conversionPlanId.value = conversionPlans.value.some(plan => plan.id === record.value?.erp_plan_id)
-      ? record.value!.erp_plan_id
+    const existingPlanId = record.value?.erp_plan_id ?? null
+    conversionPlanId.value = conversionPlans.value.some(plan => plan.id === existingPlanId)
+      ? existingPlanId
       : null
     conversionStartOn.value = todayLocalDate()
     conversionTimezone.value = settings.data.billing_timezone
@@ -512,7 +517,7 @@ watch(identityStamp, () => {
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField label="Plano ERP" required>
               <USelect
-                v-model="conversionPlanId"
+                v-model="conversionPlanSelectModel"
                 :items="conversionPlans.map(plan => ({ label: plan.name, value: plan.id }))"
                 placeholder="Selecione um plano elegível"
                 class="w-full"

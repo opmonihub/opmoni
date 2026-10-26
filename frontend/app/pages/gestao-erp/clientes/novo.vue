@@ -20,6 +20,8 @@ definePageMeta({ middleware: 'auth' })
 
 type SourceMode = 'new' | 'portfolio'
 type RecoveryAction = 'enrollment' | 'owner_setup' | 'detect' | null
+type OfficeErpClientOption = OfficeErpPortfolioClient & { label: string, description: string | undefined }
+type OfficeErpPlanOption = OfficeErpEnrollmentPlan & { label: string }
 
 const { api } = useAccessApi()
 const clientsApi = useClients()
@@ -95,7 +97,7 @@ const commandPending = computed(() => command.pending.value)
 const canManage = computed(() => context.capabilities.value?.can_configure === true)
 const canProvision = computed(() => canManage.value && eligibility.value?.can_provision === true
   && selectedPlan.value !== null && selectedPlan.value.module_keys.some(key => eligibility.value?.available_module_keys.includes(key)))
-const clientOptions = computed(() => clients.value.map(client => ({
+const clientOptions = computed<OfficeErpClientOption[]>(() => clients.value.map(client => ({
   ...client,
   label: client.trade_name || client.name,
   description: client.tax_id ?? undefined
@@ -108,7 +110,19 @@ const canSubmit = computed(() => sourceReady.value && canProvision.value && pric
   && Number(dueInDays.value) >= 0 && Number(dueInDays.value) <= 65535 && startOn.value !== '' && !formError.value
   && !commandBusy.value && !commandPending.value && enrollment.value === null)
 
-const planItems = computed(() => plans.value.map(plan => ({ ...plan, label: plan.name })))
+const planItems = computed<OfficeErpPlanOption[]>(() => plans.value.map(plan => ({ ...plan, label: plan.name })))
+const selectedClientModel = computed<OfficeErpClientOption | undefined>({
+  get: () => selectedClient.value
+    ? clientOptions.value.find(client => client.id === selectedClient.value?.id)
+    : undefined,
+  set: (option) => { selectedClient.value = option ? clients.value.find(client => client.id === option.id) ?? null : null }
+})
+const selectedPlanModel = computed<OfficeErpPlanOption | undefined>({
+  get: () => selectedPlan.value
+    ? planItems.value.find(plan => plan.id === selectedPlan.value?.id)
+    : undefined,
+  set: (option) => { selectedPlan.value = option ? plans.value.find(plan => plan.id === option.id) ?? null : null }
+})
 const intervals = [
   { label: 'Mensal', value: 1 },
   { label: 'A cada 3 meses', value: 3 },
@@ -316,7 +330,7 @@ async function enroll() {
   formError.value = ''
   fieldErrors.value = {}
   try {
-    const result = await command.execute<OfficeErpEnrollmentOutcome>('customer.enroll', '/erp-commercial/enrollments', input) as OfficeErpCommandResult<OfficeErpEnrollmentOutcome>
+    const result = await command.execute<OfficeErpEnrollmentOutcome>('customer.enroll', '/erp-commercial/enrollments', { ...input }) as OfficeErpCommandResult<OfficeErpEnrollmentOutcome>
     if (identity !== identityStamp.value || !context.isCurrent(token)) return
     if (result.status === 'confirmed') acceptEnrollment(result.data)
     else if (result.status === 'unknown') {
@@ -796,7 +810,7 @@ watch(() => context.capabilities.value?.capability_key, () => {
             </UFormField>
             <UFormField label="Cliente da carteira" name="client_id" required>
               <USelectMenu
-                v-model="selectedClient"
+                v-model="selectedClientModel"
                 :items="clientOptions"
                 :loading="clientsLoading"
                 label-key="label"
@@ -864,7 +878,7 @@ watch(() => context.capabilities.value?.capability_key, () => {
             <div class="grid gap-4 md:grid-cols-2">
               <UFormField label="Plano ERP" name="erp_plan_id" required>
                 <USelectMenu
-                  v-model="selectedPlan"
+                  v-model="selectedPlanModel"
                   :items="planItems"
                   :loading="plansLoading"
                   label-key="label"

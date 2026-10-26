@@ -68,6 +68,10 @@ const recoveryMessage = ref('')
 const recoveryAction = ref<'policy' | 'trial-link'>('policy')
 const trialLink = ref<TrialLinkResource | null>(null)
 const trialLinkPlanId = ref<number | null>(null)
+const trialLinkPlanSelectModel = computed<number | undefined>({
+  get: () => trialLinkPlanId.value ?? undefined,
+  set: (value) => { trialLinkPlanId.value = value ?? null }
+})
 const trialLinkEnabled = ref(false)
 const trialLinkLoading = ref(false)
 const trialLinkBusy = ref(false)
@@ -299,9 +303,7 @@ async function loadSettings() {
       throw new Error('Não foi possível confirmar o acesso comercial do escritório.')
     }
     if (!capabilities.value.can_read) {
-      loadDenied.value = currentAccount.value?.status === 'suspended'
-        ? 'O escritório selecionado está suspenso. Selecione um escritório ativo para continuar.'
-        : 'O contexto comercial atual não permite consultar estas configurações.'
+      loadDenied.value = 'O contexto comercial atual não permite consultar estas configurações.'
       return
     }
     token = context.capture()
@@ -580,7 +582,7 @@ onMounted(() => {
         <div v-else class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <UFormField label="Plano ERP do teste" required>
             <USelect
-              v-model="trialLinkPlanId"
+              v-model="trialLinkPlanSelectModel"
               :items="trialLinkPlans.map(plan => ({ label: plan.name, value: plan.id }))"
               placeholder="Selecione um plano"
               class="w-full"

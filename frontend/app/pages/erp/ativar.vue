@@ -36,6 +36,7 @@ const route = useRoute()
 const state = ref<ContinuationResponse['state'] | 'loading' | 'retryable' | 'recovering' | 'recovery_required' | 'identity_login_required' | 'forbidden'>('loading')
 const purpose = ref<'commercial_acceptance' | 'access_setup'>('commercial_acceptance')
 const invitation = ref<InvitationData | null>(null)
+const commercialOffer = computed(() => purpose.value === 'commercial_acceptance' ? invitation.value?.offer : undefined)
 const pendingAcceptance = ref<PendingAcceptance | null>(null)
 const operationKey = ref('')
 const selectedCompanyId = ref<number | null>(null)
@@ -517,12 +518,12 @@ onBeforeUnmount(() => {
                 {{ invitation.client.tax_id }}
               </dd>
             </div>
-            <div v-if="purpose === 'commercial_acceptance'">
+            <div v-if="commercialOffer">
               <dt class="text-muted">
                 Plano
               </dt>
               <dd class="font-medium text-default">
-                {{ invitation.offer.name || 'Plano ERP' }}
+                {{ commercialOffer.name || 'Plano ERP' }}
               </dd>
             </div>
             <div v-if="purpose === 'access_setup'">
@@ -533,20 +534,20 @@ onBeforeUnmount(() => {
                 {{ invitation.owner_setup_status === 'claimed' ? 'Configurado' : 'Aguardando configuração' }}
               </dd>
             </div>
-            <div v-if="purpose === 'commercial_acceptance'">
+            <div v-if="commercialOffer">
               <dt class="text-muted">
                 Valor e ciclo
               </dt>
               <dd class="font-medium text-default">
-                R$ {{ invitation.offer.price.replace('.', ',') }} / {{ invitation.offer.interval_months }} {{ invitation.offer.interval_months === 1 ? 'mês' : 'meses' }}
+                R$ {{ commercialOffer.price.replace('.', ',') }} / {{ commercialOffer.interval_months }} {{ commercialOffer.interval_months === 1 ? 'mês' : 'meses' }}
               </dd>
             </div>
-            <div v-if="purpose === 'commercial_acceptance'">
+            <div v-if="commercialOffer">
               <dt class="text-muted">
                 Vencimento após ativação
               </dt>
               <dd class="font-medium text-default">
-                {{ invitation.offer.due_in_days }} dias
+                {{ commercialOffer.due_in_days }} dias
               </dd>
             </div>
           </dl>
