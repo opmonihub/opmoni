@@ -28,10 +28,15 @@ function runtime(permissions: string[] = ['*'], role = 'owner') {
   } | null>({ id: 5 })
   const generation = Vue.ref(1)
   const scope = Vue.effectScope()
+  const states = new Map<string, Vue.Ref>()
   const bindings = {
     computed: Vue.computed, ref: Vue.ref, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose,
     useAuth: () => ({ user, currentCompany: company, currentAccount: Vue.ref(null), refresh: async () => user.value }),
-    useState: () => generation,
+    useState: (key: string, init: () => unknown) => {
+      if (key === 'access-session-generation') return generation
+      if (!states.has(key)) states.set(key, Vue.ref(init()))
+      return states.get(key)!
+    },
     useAccessApi: () => ({ refreshCsrf: async () => undefined, api: (url: string, options = {}) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject })) })
   }
   const module = loadAppComposable<{

@@ -33,11 +33,16 @@ function contacts(company: Partial<CompanyMembership> = {}, failStatus = 0, csrf
   const writes: Array<{ method: string, body: unknown, signal?: AbortSignal }> = []
   let reads = 0
   let authConfirmed = true
+  const states = new Map<string, Vue.Ref>()
   const bindings = {
     computed: Vue.computed, ref: Vue.ref, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose,
     definePageMeta() {}, useHead() {},
     useAuth: () => ({ user, currentCompany, currentAccount, refresh: async () => authConfirmed ? user.value : null }),
-    useState: () => session,
+    useState: (key: string, init: () => unknown) => {
+      if (key === 'access-session-generation') return session
+      if (!states.has(key)) states.set(key, Vue.ref(init()))
+      return states.get(key)!
+    },
     useAccessApi: () => ({
       refreshCsrf: csrf ?? (async () => {}),
       api: async (path: string, options: { method?: string, body?: unknown, signal?: AbortSignal } = {}) => {
