@@ -78,7 +78,7 @@ Keep the resolution in a focused reusable backend service called by eligible com
 
 A product profile can supply supported tax fields. Nature, direction, issuer, destination and document model supply operation context. Avoid assigning one universal CFOP to a product and reusing it for every purchase, sale and return.
 
-Reuse the in-flight [product-setup change](../../../openspec/changes/align-erp-template-and-product-setup/proposal.md) and its [design](../../../openspec/changes/align-erp-template-and-product-setup/design.md) for the existing profile/default work. Multiple-CFOP associations and product exceptions are additional research candidates; that proposal does not establish that they are approved or implemented.
+Reuse the in-flight [product-setup change](../../../openspec/changes/archive/2026-10-24-align-erp-template-and-product-setup/proposal.md) and its [design](../../../openspec/changes/archive/2026-10-24-align-erp-template-and-product-setup/design.md) for the existing profile/default work. Multiple-CFOP associations and product exceptions are additional research candidates; that proposal does not establish that they are approved or implemented.
 
 **Acceptance evidence needed:** profile inheritance does not override operation context or double-apply existing commercial tax amounts.
 

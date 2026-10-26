@@ -121,8 +121,8 @@ function uiComponents(): Record<string, Vue.Component> {
       setup(props, context) { return () => Vue.h('div', { 'data-field': props.name }, context.slots.default?.()) }
     },
     UAlert: {
-      props: ['title', 'description'],
-      setup(props, context) { return () => Vue.h('aside', {}, [Vue.h('strong', {}, props.title as string ?? ''), Vue.h('p', {}, context.slots.description?.() ?? props.description as string ?? '')]) }
+      props: ['title', 'description', 'color', 'variant'],
+      setup(props, context) { return () => Vue.h('aside', { 'data-color': props.color, 'data-variant': props.variant }, [Vue.h('strong', {}, props.title as string ?? ''), Vue.h('p', {}, context.slots.description?.() ?? props.description as string ?? '')]) }
     },
     UBadge: { setup(_props, context) { return () => Vue.h('span', {}, context.slots.default?.()) } },
     UTable: {
@@ -315,6 +315,23 @@ describe('Office ERP seller onboarding SFC', () => {
     assert.match(textOf(page.root), /Carteira indisponível/)
     assert.doesNotMatch(textOf(page.root), /Nenhum cliente cadastrado/)
     assert.ok(findButton(page.root, 'Tentar novamente'))
+    page.app.unmount()
+  })
+
+  it('uses subtle retry alerts when invitation portfolio and offer reads fail', async () => {
+    const page = harness('pages/gestao-erp/clientes/novo.vue', { api: async () => {
+      throw new Error('Serviço temporariamente indisponível')
+    } })
+    await flush()
+    const alerts = findAll(page.root, node => node.tag === 'aside' && node.props['data-color'] === 'error')
+    assert.equal(alerts.length, 2)
+    assert.match(textOf(alerts[0]!), /Carteira indisponível/)
+    assert.match(textOf(alerts[1]!), /Ofertas indisponíveis/)
+    for (const alert of alerts) {
+      assert.equal(alert.props['data-variant'], 'subtle')
+      assert.ok(findButton(alert, 'Tentar novamente'))
+    }
+    assert.doesNotMatch(textOf(page.root), /Nenhuma oferta ativa/)
     page.app.unmount()
   })
 

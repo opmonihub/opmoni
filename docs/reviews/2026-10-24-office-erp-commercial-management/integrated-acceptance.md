@@ -1,6 +1,6 @@
 # Office ERP commercial management — integrated local acceptance
 
-Recorded 2026-10-25 through implementation source `47a2d59` in the isolated `office-erp-commercial-design` worktree. All 55 implementation/checklist items are locally accepted with the evidence boundaries below. This does not enable production release or external provider dispatch.
+Historical integrated checkpoint recorded 2026-10-25 through implementation source `47a2d59` in the then-isolated `office-erp-commercial-design` worktree. The later local-main verification, completed archive and cleanup are recorded in [archive-record.md](archive-record.md). All 55 implementation/checklist items are locally accepted with the evidence boundaries below. This does not enable production release or external provider dispatch.
 
 ## Product boundary and routes
 
@@ -40,7 +40,7 @@ The earlier full PostgreSQL run exited 2 with 243 tests, 4,124 assertions, 49 er
 
 All **55/55** original tasks and **69/69** individual scenarios are locally accepted. A selective cross-layer integration review of source `6c5d81b` found no Critical or Important findings; it was not a line-by-line review of all 206 files. Subsequent financial/context fixes received their bounded reviews and checks. The two final presentation changes received actual browser RED/GREEN and focused tests, typecheck and build.
 
-The five delta capabilities have been semantically merged into canonical specs: `access-pages`, `erp-commercial-access`, `office-erp-billing`, `office-erp-commercial-management` and `platform-commercial-management`. Existing Purpose sections, unrelated requirements and 35 original scenarios were preserved. Strict validation passed all 29 canonical specs and the selected active change. The change remains active, with no archive, merge to main, push or production rollout performed.
+The five delta capabilities have been semantically merged into canonical specs: `access-pages`, `erp-commercial-access`, `office-erp-billing`, `office-erp-commercial-management` and `platform-commercial-management`. Existing Purpose sections, unrelated requirements and 35 original scenarios were preserved. Strict validation at that checkpoint passed all 29 canonical specs and the selected active change. Subsequently, local `main` at `f86172e` passed the final verification and the change was archived after an idempotent re-sync; see the [archive record](archive-record.md). No remote push or production rollout was performed.
 
 Registration/release, live fiscal/SERPRO, payment integrations and provider dispatch remain separately gated and unchanged. Native OS printing, physical mobile hardware and broad accessibility certification were not performed. The inherited global sidebar landmark finding, two incomplete targeted table-axe checks and existing unrelated lint/build warnings remain explicit limits, rather than certification claims. The Nuxt scroll delegation imports an installed internal router path and must be revalidated when updating Nuxt.
 

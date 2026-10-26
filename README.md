@@ -15,6 +15,10 @@ The [archived reconcile-system-specs change](openspec/changes/archive/2026-10-13
 
 The nine ERP changes and complete-XML accounting workflow were synchronized and archived on 2026-10-17; the [archive record](docs/architecture/system-spec-reconciliation.md#erp-and-complete-xml-archive--2026-10-17) lists their scope and evidence limits. Live fiscal canaries, production release approval, and several browser acceptance flows remain unverified in the recorded evidence. Archiving does not enable ERP production, fiscal transmission, or wider automatic science.
 
+The [ERP template and product setup change](openspec/changes/archive/2026-10-24-align-erp-template-and-product-setup/proposal.md) completed 58/58 local implementation tasks, was integrated and pushed to `main` at `f8efb50`, and was synchronized and archived on 2026-10-24. Its eight capability deltas add 24 requirements and modify four; canonical contracts now include company initialization and product tax profiles. See the [archive record](docs/reviews/2026-10-23-erp-template-product-setup/archive-record.md). Provider production acceptance and release remain separate.
+
+The [Office ERP commercial management change](openspec/changes/archive/2026-10-25-add-office-erp-commercial-management/proposal.md) completed 55/55 local tasks and 69/69 scenario acceptance, was merged into local `main` at `f86172e`, and archived on 2026-10-25 after rechecking all five synchronized capabilities. See its [archive and final verification record](docs/reviews/2026-10-24-office-erp-commercial-management/archive-record.md). No remote push or production rollout was performed; registration, provider, fiscal and payment gates remain unchanged.
+
 ## Development
 
 ### Docker Compose

@@ -1,5 +1,11 @@
 # OpenSpec task execution report
 
+## Delivery update — 2026-10-24
+
+Implementation was integrated and pushed to `main` at `f8efb50`; the eight capability deltas were subsequently synchronized and the completed change [archived](../../../openspec/changes/archive/2026-10-24-align-erp-template-and-product-setup/proposal.md). See the [archive record](archive-record.md). Statements below about pending sync/archive/merge describe their original collection checkpoint.
+
+After integration, the user explicitly requested deletion of auxiliary worktrees, local worker branches, private finishing backups and the recovery bundle. Ignored `.superpowers` files and former-worktree paths below are historical collection locations, not a claim that those raw private artifacts are still retained. Tracked reports, manifests and published captures remain available in Git. Recorded passing runs and their external-provider limitations are unchanged; this archive operation does not rerun application suites or enable production.
+
 Snapshot: 2026-10-24, America/Sao_Paulo. Change: `align-erp-template-and-product-setup`. Implementation source: `7d9b6bf` (frontend), `0c29afc` (regular backend), `53ed7e5` (full PostgreSQL) in isolated branch `codex/align-erp-template-and-product-setup`. The original OpenSpec task checklist controls acceptance. This report records final local acceptance. Sync/archive and production rollout remain separate.
 
 **58 of 58 tasks accepted for the selected implementation/local acceptance scope.** Implementation, passing focused tests, source review and full acceptance are distinct states. No merge, push, archive or production/provider rollout was performed.

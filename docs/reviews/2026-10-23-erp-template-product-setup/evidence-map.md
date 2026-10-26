@@ -1,5 +1,11 @@
 # ERP template and product setup — evidence map
 
+## Delivery update — 2026-10-24
+
+Implementation was integrated and pushed to `main` at `f8efb50`; the eight capability deltas were subsequently synchronized and the completed change [archived](../../../openspec/changes/archive/2026-10-24-align-erp-template-and-product-setup/proposal.md). See the [archive record](archive-record.md). Statements below about pending sync/archive/merge describe their original collection checkpoint.
+
+After integration, the user explicitly requested deletion of auxiliary worktrees, local worker branches, private finishing backups and the recovery bundle. Ignored `.superpowers` files and former-worktree paths below are historical collection locations, not a claim that those raw private artifacts are still retained. Tracked reports, manifests and published captures remain available in Git. Recorded passing runs and their external-provider limitations are unchanged; this archive operation does not rerun application suites or enable production.
+
 ## Final local ledger state (2026-10-24)
 
 `acceptance-coverage.csv` is the current row-level result for the 38 selected A/F/V/adopted-B items and all 91 selected delta-spec scenarios. It preserves every ID, source reference, approved task mapping, and the original eight-column CSV schema. B05 remains excluded by the approved scope.

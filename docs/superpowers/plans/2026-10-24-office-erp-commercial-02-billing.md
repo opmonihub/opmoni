@@ -8,7 +8,7 @@
 
 **Tech Stack:** Laravel 13 / PHP 8.4 / PostgreSQL 18 / Redis 8; Nuxt 4.6.0 / Vue 3.5.43 / Nuxt UI 4.11.3 / TypeScript / Zod 4.6.5; existing BCMath, PHPUnit and Node test runner.
 
-**Spec:** [design](../../../openspec/changes/add-office-erp-commercial-management/design.md), [five delta specifications](../../../openspec/changes/add-office-erp-commercial-management/specs/), and [master execution plan](2026-10-24-office-erp-commercial-management.md). All original OpenSpec requirements remain in scope.
+**Spec:** [design](../../../openspec/changes/archive/2026-10-25-add-office-erp-commercial-management/design.md), [five delta specifications](../../../openspec/changes/archive/2026-10-25-add-office-erp-commercial-management/specs/), and [master execution plan](2026-10-24-office-erp-commercial-management.md). All original OpenSpec requirements remain in scope.
 
 ## Global Constraints
 

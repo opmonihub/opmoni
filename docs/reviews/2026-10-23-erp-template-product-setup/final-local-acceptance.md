@@ -1,5 +1,11 @@
 # ERP template and product setup — final local acceptance
 
+## Delivery update — 2026-10-24
+
+Implementation was integrated and pushed to `main` at `f8efb50`; the eight capability deltas were subsequently synchronized and the completed change [archived](../../../openspec/changes/archive/2026-10-24-align-erp-template-and-product-setup/proposal.md). See the [archive record](archive-record.md). Statements below about pending sync/archive/merge describe their original collection checkpoint.
+
+After integration, the user explicitly requested deletion of auxiliary worktrees, local worker branches, private finishing backups and the recovery bundle. Ignored `.superpowers` files and former-worktree paths below are historical collection locations, not a claim that those raw private artifacts are still retained. Tracked reports, manifests and published captures remain available in Git. Recorded passing runs and their external-provider limitations are unchanged; this archive operation does not rerun application suites or enable production.
+
 All **58 original tasks** are accepted within the selected implementation/local scope; the 129-row ledger preserves one explicit external-provider dependency rather than claiming live charge acceptance.
 
 Recorded 2026-10-24 in isolated `codex/align-erp-template-and-product-setup`. This is implementation and local acceptance of the selected change. Main, production configuration, release/registration/provider gates, existing identities and development stores are preserved. Sync, archive, merge, push and production rollout are separate workflows.

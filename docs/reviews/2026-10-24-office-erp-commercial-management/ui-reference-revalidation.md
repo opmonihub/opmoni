@@ -1,6 +1,6 @@
 # UI reference and component revalidation (task 1.4)
 
-Checked on 2026-10-24 at `a535f3c11c02ac19ae789b67b091ea78ac4a9861` in `.worktrees/office-erp-commercial-design`. The source of visual evidence is the read-only absolute path `/home/obsidian/dev/opmoni/.dashboard/app`. This record rechecks [the change audit](../../../openspec/changes/add-office-erp-commercial-management/ui-reference-audit.md) and [component matrix](../../../openspec/changes/add-office-erp-commercial-management/component-matrix.md) before UI implementation; it does not establish rendered or behavioral acceptance.
+Checked on 2026-10-24 at `a535f3c11c02ac19ae789b67b091ea78ac4a9861` in `.worktrees/office-erp-commercial-design`. The source of visual evidence is the read-only absolute path `/home/obsidian/dev/opmoni/.dashboard/app`. This record rechecks [the change audit](../../../openspec/changes/archive/2026-10-25-add-office-erp-commercial-management/ui-reference-audit.md) and [component matrix](../../../openspec/changes/archive/2026-10-25-add-office-erp-commercial-management/component-matrix.md) before UI implementation; it does not establish rendered or behavioral acceptance.
 
 ## Reference fingerprints
 

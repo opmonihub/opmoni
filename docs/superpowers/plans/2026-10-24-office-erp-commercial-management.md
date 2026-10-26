@@ -8,7 +8,7 @@
 
 **Tech Stack:** Laravel 13 / PHP 8.4 / PostgreSQL 18 / Redis 8; Nuxt 4.6.0 / Vue 3.5.43 / Nuxt UI 4.11.3 / TypeScript / Zod 4.6.5 / pnpm 12.11.2; existing BCMath, PHPUnit and Node test runner. No added dependencies.
 
-**Spec:** [proposal](../../../openspec/changes/add-office-erp-commercial-management/proposal.md), [design](../../../openspec/changes/add-office-erp-commercial-management/design.md), [five deltas](../../../openspec/changes/add-office-erp-commercial-management/specs/), [55-item checklist](../../../openspec/changes/add-office-erp-commercial-management/tasks.md), [69-scenario crosswalk](../../reviews/2026-10-24-office-erp-commercial-management/scenario-crosswalk.csv), [component matrix](../../../openspec/changes/add-office-erp-commercial-management/component-matrix.md).
+**Spec:** [proposal](../../../openspec/changes/archive/2026-10-25-add-office-erp-commercial-management/proposal.md), [design](../../../openspec/changes/archive/2026-10-25-add-office-erp-commercial-management/design.md), [five deltas](../../../openspec/changes/archive/2026-10-25-add-office-erp-commercial-management/specs/), [55-item checklist](../../../openspec/changes/archive/2026-10-25-add-office-erp-commercial-management/tasks.md), [69-scenario crosswalk](../../reviews/2026-10-24-office-erp-commercial-management/scenario-crosswalk.csv), [component matrix](../../../openspec/changes/archive/2026-10-25-add-office-erp-commercial-management/component-matrix.md).
 
 ## Global Constraints
 

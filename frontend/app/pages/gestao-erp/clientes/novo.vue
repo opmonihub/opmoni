@@ -420,6 +420,7 @@ onBeforeUnmount(() => {
           <UAlert
             v-if="clientsError"
             color="error"
+            variant="subtle"
             title="Carteira indisponível"
             :description="clientsError"
           >
@@ -483,6 +484,7 @@ onBeforeUnmount(() => {
           <UAlert
             v-if="offersError"
             color="error"
+            variant="subtle"
             title="Ofertas indisponíveis"
             :description="offersError"
           >
