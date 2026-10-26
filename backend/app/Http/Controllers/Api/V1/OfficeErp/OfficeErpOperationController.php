@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpContracts;
+use App\Erp\Commercial\OfficeErpCustomerEnrollment;
 use App\Erp\Commercial\OfficeErpDelinquency;
 use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpOperations;
@@ -19,7 +20,7 @@ use Illuminate\Validation\ValidationException;
 
 final class OfficeErpOperationController extends Controller
 {
-    public function __invoke(Request $request, string $key, OfficeErpAdmission $admission, OfficeErpOperations $operations, ErpOperationJournal $journal, OfficeErpSalesPlans $plans, OfficeErpDelinquency $delinquency, OfficeErpInvoices $invoices, OfficeErpOwnerInvitations $invitations, OfficeErpOwnerSetup $ownerSetup, OfficeErpReceipts $receipts, OfficeErpContracts $contracts): JsonResponse
+    public function __invoke(Request $request, string $key, OfficeErpAdmission $admission, OfficeErpOperations $operations, ErpOperationJournal $journal, OfficeErpSalesPlans $plans, OfficeErpDelinquency $delinquency, OfficeErpInvoices $invoices, OfficeErpOwnerInvitations $invitations, OfficeErpOwnerSetup $ownerSetup, OfficeErpReceipts $receipts, OfficeErpContracts $contracts, OfficeErpCustomerEnrollment $enrollment): JsonResponse
     {
         $routeKey = $key;
         $headerKey = $request->header('Idempotency-Key');
@@ -35,7 +36,12 @@ final class OfficeErpOperationController extends Controller
         $outcome = $operations->lookup(
             $ctx,
             $validatedKey,
-            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey, $delinquency, $invoices, $invitations, $ownerSetup, $receipts, $contracts): void {
+            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey, $delinquency, $invoices, $invitations, $ownerSetup, $receipts, $contracts, $enrollment): void {
+                if ($action === 'customer.enroll') {
+                    $enrollment->authorizeOperation($ctx, $action, $payload, $validatedKey);
+
+                    return;
+                }
                 if ($action === 'policy.configure') {
                     $delinquency->authorizeOperation($ctx, $action, $payload);
 
