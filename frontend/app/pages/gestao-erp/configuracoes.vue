@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { ContextToken, OfficeErpCommandResult } from '#shared/types/officeErpCommercial'
+import type { ContextToken, OfficeErpCapabilities, OfficeErpCommandResult } from '#shared/types/officeErpCommercial'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage, apiFieldErrors } from '~/composables/useApiError'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
@@ -13,6 +13,20 @@ interface OfficeErpSettings {
   mode: PolicyMode
   grace_days: number
   billing_timezone: string
+}
+interface TrialLinkPlan {
+  id: number
+  name: string
+  module_keys: string[]
+}
+interface TrialLinkResource {
+  configured: boolean
+  enabled: boolean
+  revision: number | null
+  url: string | null
+  erp_plan_id: number | null
+  plan: { name: string, module_keys: string[] } | null
+  plans: TrialLinkPlan[]
 }
 interface PolicyPreviewRow {
   contract_id: number
@@ -51,8 +65,17 @@ const confirmOpen = ref(false)
 const commandBusy = ref(false)
 const commandBusyGeneration = ref(0)
 const recoveryMessage = ref('')
+const recoveryAction = ref<'policy' | 'trial-link'>('policy')
+const trialLink = ref<TrialLinkResource | null>(null)
+const trialLinkPlanId = ref<number | null>(null)
+const trialLinkEnabled = ref(false)
+const trialLinkLoading = ref(false)
+const trialLinkBusy = ref(false)
+const trialLinkError = ref('')
+const trialLinkPlans = ref<TrialLinkPlan[]>([])
 let readGeneration = 0
 let previewGeneration = 0
+let trialLinkGeneration = 0
 
 const capabilities = context.capabilities
 const identityStamp = computed(() => JSON.stringify([
@@ -79,6 +102,7 @@ const configureRestriction = computed(() => {
   }).filter(Boolean)
   return [...new Set(messages)].join(' ') || 'O acesso do escritório não permite alterar esta configuração.'
 })
+const canManageTrialLink = computed(() => capabilities.value?.can_manage_trial_link === true)
 const saveDisabled = computed(() => !loaded.value || !canConfigure.value || loading.value || commandBusy.value || command.pending.value || !isValidDraft())
 const previewRows = computed(() => preview.value?.data ?? [])
 const totalAffected = computed(() => preview.value?.affected_count ?? null)
@@ -120,6 +144,7 @@ function clearProtectedState() {
   fieldErrors.value = {}
   draftError.value = ''
   recoveryMessage.value = ''
+  recoveryAction.value = 'policy'
   loaded.value = false
   loading.value = false
   previewLoading.value = false
@@ -127,6 +152,118 @@ function clearProtectedState() {
   settings.mode = 'manual'
   settings.grace_days = 0
   settings.billing_timezone = 'America/Sao_Paulo'
+  trialLinkGeneration++
+  trialLink.value = null
+  trialLinkPlans.value = []
+  trialLinkPlanId.value = null
+  trialLinkEnabled.value = false
+  trialLinkError.value = ''
+  trialLinkLoading.value = false
+  trialLinkBusy.value = false
+}
+
+async function loadTrialLink() {
+  const request = ++trialLinkGeneration
+  const scope = identityStamp.value
+  let token = context.capture()
+  trialLinkLoading.value = true
+  trialLinkError.value = ''
+  trialLink.value = null
+  trialLinkPlans.value = []
+  trialLinkPlanId.value = null
+  try {
+    await context.refresh()
+    if (request !== trialLinkGeneration || !isCurrent(scope, token)) return
+    if (!canManageTrialLink.value) return
+    token = context.capture()
+    const response = await api<{ data: TrialLinkResource }>('/erp-commercial/trial-link')
+    if (request !== trialLinkGeneration || !isCurrent(scope, token)) return
+    const data = response?.data
+    if (!data || typeof data.configured !== 'boolean' || typeof data.enabled !== 'boolean'
+      || !Array.isArray(data.plans) || (data.url !== null && typeof data.url !== 'string')
+      || (data.erp_plan_id !== null && !Number.isSafeInteger(data.erp_plan_id))) {
+      throw new Error('O link de teste retornou dados incompletos.')
+    }
+    trialLink.value = data
+    trialLinkPlans.value = data.plans.filter(plan => Number.isSafeInteger(plan.id) && typeof plan.name === 'string' && Array.isArray(plan.module_keys))
+    trialLinkPlanId.value = data.erp_plan_id
+    trialLinkEnabled.value = data.enabled
+  } catch (error) {
+    if (request === trialLinkGeneration && isCurrent(scope, token))
+      trialLinkError.value = apiErrorMessage(error) ?? (error instanceof Error ? error.message : 'Não foi possível carregar o link de teste.')
+  } finally {
+    if (request === trialLinkGeneration && isCurrent(scope, token))
+      trialLinkLoading.value = false
+  }
+}
+
+function applyTrialLinkResult(result: OfficeErpCommandResult<TrialLinkResource>, scope: string, token: ContextToken) {
+  if (!isCurrent(scope, token)) return false
+  if (result.status === 'confirmed') {
+    trialLinkError.value = ''
+    recoveryMessage.value = ''
+    recoveryAction.value = 'policy'
+    trialLink.value = result.data
+    trialLinkPlanId.value = result.data.erp_plan_id
+    trialLinkEnabled.value = result.data.enabled
+    trialLinkPlans.value = result.data.plans
+    return true
+  }
+  if (result.status === 'unknown') {
+    recoveryAction.value = 'trial-link'
+    recoveryMessage.value = 'O link não foi atualizado com confirmação. Consulte a operação original antes de tentar novamente.'
+  } else if (result.status === 'failed') {
+    trialLinkError.value = result.failure.message
+  }
+  return false
+}
+
+async function saveTrialLink() {
+  if (!canManageTrialLink.value || !trialLinkPlanId.value || commandBusy.value || command.pending.value) return
+  const scope = identityStamp.value
+  const token = context.capture()
+  const finishCommand = beginCommand()
+  trialLinkBusy.value = true
+  trialLinkError.value = ''
+  try {
+    const result = await command.execute<TrialLinkResource>('trial.link.configure', '/erp-commercial/trial-link', {
+      erp_plan_id: trialLinkPlanId.value,
+      enabled: trialLinkEnabled.value
+    }, 'PUT')
+    if (applyTrialLinkResult(result, scope, token))
+      toast.add({ title: 'Link de teste atualizado', color: 'success' })
+  } finally {
+    finishCommand()
+    trialLinkBusy.value = false
+  }
+}
+
+async function rotateTrialLink() {
+  if (!canManageTrialLink.value || !trialLink.value?.configured || commandBusy.value || command.pending.value) return
+  const scope = identityStamp.value
+  const token = context.capture()
+  const finishCommand = beginCommand()
+  trialLinkBusy.value = true
+  trialLinkError.value = ''
+  try {
+    const result = await command.execute<TrialLinkResource>('trial.link.rotate', '/erp-commercial/trial-link/rotate', {}, 'POST')
+    if (applyTrialLinkResult(result, scope, token))
+      toast.add({ title: 'Link de teste renovado', color: 'success' })
+  } finally {
+    finishCommand()
+    trialLinkBusy.value = false
+  }
+}
+
+async function copyTrialLink() {
+  const url = trialLink.value?.url
+  if (!url) return
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.add({ title: 'Link copiado', color: 'success' })
+  } catch {
+    trialLinkError.value = 'Não foi possível copiar automaticamente. Selecione o endereço e copie manualmente.'
+  }
 }
 
 function invalidatePreview() {
@@ -284,13 +421,25 @@ async function recoverOperation() {
   const scope = identityStamp.value
   const token = context.capture()
   const finishCommand = beginCommand()
-  let result: OfficeErpCommandResult<OfficeErpSettings>
+  let result: OfficeErpCommandResult<unknown>
   try {
-    result = await command.recover<OfficeErpSettings>(key)
+    result = await command.recover<unknown>(key)
   } finally {
     finishCommand()
   }
   if (!isCurrent(scope, token)) return
+  if (recoveryAction.value === 'trial-link') {
+    if (result.status === 'confirmed') {
+      recoveryAction.value = 'policy'
+      recoveryMessage.value = ''
+      await loadTrialLink()
+    } else if (result.status === 'unknown') {
+      recoveryMessage.value = 'Ainda não foi possível confirmar a atualização do link. Nenhuma nova operação foi enviada.'
+    } else if (result.status === 'failed') {
+      trialLinkError.value = result.failure.message
+    }
+    return
+  }
   if (applyCommandResult(result, scope)) {
     toast.add({ title: 'Operação confirmada', color: 'success' })
     await loadSettings()
@@ -311,8 +460,12 @@ watch(identityStamp, () => {
   commandBusy.value = false
   clearProtectedState()
   void loadSettings()
+  void loadTrialLink()
 }, { flush: 'sync' })
-onMounted(loadSettings)
+onMounted(() => {
+  void loadSettings()
+  void loadTrialLink()
+})
 </script>
 
 <template>
@@ -361,11 +514,120 @@ onMounted(loadSettings)
       </template>
     </UAlert>
 
+    <UCard v-if="canManageTrialLink || trialLinkLoading">
+      <template #header>
+        <div class="space-y-1">
+          <h2 class="font-semibold text-highlighted">
+            Link de teste ERP
+          </h2>
+          <p class="text-sm text-muted">
+            Compartilhe um acesso de avaliação atribuído a este escritório. O link não concede acesso operacional ao escritório.
+          </p>
+        </div>
+      </template>
+      <USkeleton v-if="trialLinkLoading" class="h-36 w-full" />
+      <div v-else class="space-y-5">
+        <UAlert
+          v-if="trialLinkError"
+          color="error"
+          title="Não foi possível atualizar o link"
+          :description="trialLinkError"
+        >
+          <template #actions>
+            <UButton
+              color="neutral"
+              variant="outline"
+              :loading="trialLinkLoading"
+              @click="loadTrialLink"
+            >
+              Tentar novamente
+            </UButton>
+          </template>
+        </UAlert>
+        <div v-if="trialLink?.url" class="space-y-2">
+          <UFormField label="Endereço público do teste">
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <UInput
+                :model-value="trialLink.url"
+                readonly
+                class="min-w-0 flex-1"
+                aria-label="Endereço do link de teste"
+              />
+              <UButton
+                color="neutral"
+                variant="outline"
+                :disabled="!trialLink.enabled || trialLinkBusy"
+                @click="copyTrialLink"
+              >
+                Copiar link
+              </UButton>
+            </div>
+          </UFormField>
+          <p v-if="!trialLink.enabled" class="text-sm text-warning">
+            O link está desativado e não inicia novos testes.
+          </p>
+          <p v-else class="text-sm text-muted">
+            Plano atual: {{ trialLink.plan?.name ?? 'Plano técnico selecionado' }} · revisão {{ trialLink.revision ?? '—' }}
+          </p>
+        </div>
+        <UAlert
+          v-if="!trialLinkPlans.length"
+          color="warning"
+          title="Nenhum plano disponível"
+          description="O escritório precisa de capacidade ERP e módulos liberados pela plataforma para configurar um link de teste."
+        />
+        <div v-else class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <UFormField label="Plano ERP do teste" required>
+            <USelect
+              v-model="trialLinkPlanId"
+              :items="trialLinkPlans.map(plan => ({ label: plan.name, value: plan.id }))"
+              placeholder="Selecione um plano"
+              class="w-full"
+            />
+          </UFormField>
+          <USwitch v-model="trialLinkEnabled" label="Link ativo" :disabled="trialLinkBusy || commandBusy || command.pending.value" />
+        </div>
+        <div class="flex flex-wrap items-center gap-3 border-t border-default pt-5">
+          <UButton :loading="trialLinkBusy" :disabled="!trialLinkPlanId || !trialLinkPlans.length || trialLinkBusy || commandBusy || command.pending.value" @click="saveTrialLink">
+            {{ trialLink?.configured ? 'Salvar link' : 'Criar link' }}
+          </UButton>
+          <UButton
+            v-if="trialLink?.configured"
+            color="warning"
+            variant="outline"
+            :loading="trialLinkBusy"
+            :disabled="trialLinkBusy || commandBusy || command.pending.value"
+            @click="rotateTrialLink"
+          >
+            Renovar endereço do link
+          </UButton>
+        </div>
+      </div>
+    </UCard>
+    <UAlert
+      v-if="recoveryKey && recoveryAction === 'trial-link'"
+      color="warning"
+      title="A atualização do link precisa ser verificada"
+      :description="recoveryMessage"
+    >
+      <template #actions>
+        <UButton
+          color="neutral"
+          variant="outline"
+          :loading="commandBusy"
+          :disabled="commandBusy"
+          @click="recoverOperation"
+        >
+          Consultar operação original
+        </UButton>
+      </template>
+    </UAlert>
+
     <USkeleton v-if="loading && !loaded" class="h-56 w-full" />
 
     <template v-else-if="loaded">
       <UAlert
-        v-if="recoveryKey"
+        v-if="recoveryKey && recoveryAction === 'policy'"
         color="warning"
         title="Há uma alteração sem confirmação"
         description="A alteração não será reenviada automaticamente. Consulte o resultado original antes de iniciar outra."

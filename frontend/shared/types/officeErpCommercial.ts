@@ -213,3 +213,47 @@ export interface OfficeErpInvitationOutcome {
   status: 'pending' | 'accepted' | 'revoked' | 'expired'
   url?: string
 }
+
+export type ErpCompanyTaxRegime = 'mei' | 'simple_national' | 'presumed_profit' | 'actual_profit' | 'other'
+
+export interface TrialRegistrationInput {
+  name: string
+  email: string
+  password?: string
+  company_name: string
+  cnpj: string
+  tax_regime: ErpCompanyTaxRegime
+  confirm_existing_association?: boolean
+}
+
+export interface TrialRegistrationOutcome {
+  client_id: number
+  company_id: number
+  subscription_id: number
+  contract_id: number
+  trial_id: number
+  status: 'trialing'
+  started_at: string
+  ends_at: string
+}
+
+export interface TrialRegistrationResponse {
+  identity: import('./access').Identity
+  data: TrialRegistrationOutcome
+}
+
+export interface TrialRegistrationAvailability {
+  sponsor: { name: string }
+  plan: { name: string, description?: string | null, module_keys?: string[] }
+  trial_duration_hours: 168
+  available: boolean
+  reason?: string | null
+}
+
+export interface TrialRegistrationAvailabilityResponse {
+  data: TrialRegistrationAvailability
+}
+
+export interface TrialRegistrationOutcomeResponse {
+  data: TrialRegistrationOutcome
+}

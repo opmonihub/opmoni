@@ -16,13 +16,21 @@ interface ContractRevision {
   service_period_end: string | null
   reason: string | null
 }
+interface ContractTrial {
+  id: number
+  started_at: string
+  ends_at: string
+  converted_at: string | null
+  expired_at: string | null
+  situation: 'trialing' | 'expired' | 'converted'
+}
 interface ContractDetail {
   id: number
   erp_plan_id?: number | null
   erp_plan?: { id: number, name: string } | null
   client: { id: number, name: string }
   company: { id: number, name: string, owner_setup_status?: 'unclaimed' | 'claimed' } | null
-  trial?: { id: number, started_at: string, ends_at: string, converted_at: string | null, expired_at: string | null, situation: 'trialing' | 'expired' | 'converted' } | null
+  trial: ContractTrial | null
   next_billing_on?: string | null
   agreement_status: string
   licence_status: string | null
@@ -35,6 +43,19 @@ interface ContractDetail {
   manual_hold: boolean
   balance: { outstanding: string, invoice_count: number }
   revisions: ContractRevision[]
+}
+interface EnrollmentPlan {
+  id: number
+  slug: string
+  name: string
+  module_keys: string[]
+}
+interface EnrollmentPlansResponse {
+  data: EnrollmentPlan[]
+  eligibility: { can_provision: boolean, reasons: string[], licence_limit: number | null, used_licences: number, available_module_keys: string[] }
+}
+interface OfficeErpSettingsResponse {
+  data: { billing_timezone: string }
 }
 
 const route = useRoute()
@@ -55,7 +76,18 @@ const price = ref('')
 const intervalMonths = ref('1')
 const dueInDays = ref('0')
 const selectedModules = ref<string[]>([])
+const conversionOpen = ref(false)
+const conversionLoading = ref(false)
+const conversionPlans = ref<EnrollmentPlan[]>([])
+const conversionPlanId = ref<number | null>(null)
+const conversionPrice = ref('')
+const conversionIntervalMonths = ref('1')
+const conversionDueInDays = ref('0')
+const conversionStartOn = ref('')
+const conversionTimezone = ref('America/Sao_Paulo')
+const conversionError = ref('')
 let loadGeneration = 0
+let conversionGeneration = 0
 
 const identityStamp = computed(() => JSON.stringify([
   user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null,
@@ -64,6 +96,7 @@ const identityStamp = computed(() => JSON.stringify([
 ]))
 const recoveryKey = computed(() => command.recoveryKey.value)
 const canMaintain = computed(() => !!context.capabilities.value?.can_maintain && !!record.value)
+const canConvertTrial = computed(() => canMaintain.value && ['trialing', 'expired'].includes(record.value?.trial?.situation ?? ''))
 const lifecycleStatus = computed(() => record.value?.agreement_status === 'effective' ? 'Vigente' : record.value?.agreement_status === 'accepted' ? 'Aceito · aguardando ativação' : record.value?.agreement_status === 'canceled' ? 'Cancelado' : record.value?.agreement_status ?? 'Indisponível')
 const licenceStatus = computed(() => ({ active: 'Ativa', pending: 'Pendente', suspended: 'Suspensa', past_due: 'Em atraso', canceled: 'Cancelada' } as Record<string, string>)[record.value?.licence_status ?? ''] ?? 'Sem licença vinculada')
 const trialStatus = computed(() => ({ trialing: 'Em teste', expired: 'Teste encerrado', converted: 'Convertido em assinatura paga' } as Record<string, string>)[record.value?.trial?.situation ?? ''] ?? '')
@@ -113,6 +146,10 @@ async function execute(action: string, path: string, body: Record<string, unknow
   if (result.status === 'confirmed') {
     pendingAction.value = ''
     actionReason.value = ''
+    if (action === 'trial.convert') {
+      conversionOpen.value = false
+      conversionError.value = ''
+    }
     toast.add({ title: 'Alteração confirmada', color: 'success' })
     await loadContract()
   } else if (result.status === 'unknown') {
@@ -135,6 +172,8 @@ async function recoverOperation() {
       mutationError.value = ''
       pendingAction.value = ''
       actionReason.value = ''
+      if (record.value?.trial)
+        conversionOpen.value = false
       await loadContract()
     } else if (result.status === 'failed') {
       mutationError.value = result.failure.message
@@ -159,6 +198,88 @@ function amend() {
   }, 'PATCH')
 }
 
+function todayLocalDate() {
+  const date = new Date()
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.valueOf())
+    ? 'Data indisponível'
+    : new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeStyle: 'short' }).format(date)
+}
+
+async function prepareTrialConversion() {
+  if (!canConvertTrial.value || conversionLoading.value || command.pending.value || !record.value) return
+  const request = ++conversionGeneration
+  const scope = identityStamp.value
+  conversionLoading.value = true
+  conversionError.value = ''
+  try {
+    await context.refresh()
+    if (request !== conversionGeneration || scope !== identityStamp.value || !canConvertTrial.value) return
+    const token = context.capture()
+    const [plans, settings] = await Promise.all([
+      api<EnrollmentPlansResponse>('/erp-commercial/enrollment-plans'),
+      api<OfficeErpSettingsResponse>('/erp-commercial/settings')
+    ])
+    if (request !== conversionGeneration || scope !== identityStamp.value || !context.isCurrent(token)) return
+    if (!Array.isArray(plans.data) || typeof settings.data?.billing_timezone !== 'string')
+      throw new Error('Não foi possível carregar os termos disponíveis para conversão.')
+    conversionPlans.value = plans.data.filter(plan => Number.isSafeInteger(plan.id) && typeof plan.name === 'string' && Array.isArray(plan.module_keys))
+    if (plans.eligibility?.can_provision !== true || conversionPlans.value.length === 0)
+      throw new Error('O escritório não tem capacidade ou plano elegível para converter este teste agora.')
+    conversionPlanId.value = conversionPlans.value.some(plan => plan.id === record.value?.erp_plan_id)
+      ? record.value!.erp_plan_id
+      : null
+    conversionStartOn.value = todayLocalDate()
+    conversionTimezone.value = settings.data.billing_timezone
+    conversionOpen.value = true
+  } catch (error) {
+    if (request === conversionGeneration && scope === identityStamp.value)
+      conversionError.value = apiErrorMessage(error) ?? (error instanceof Error ? error.message : 'Não foi possível preparar a conversão agora.')
+  } finally {
+    if (request === conversionGeneration)
+      conversionLoading.value = false
+  }
+}
+
+function confirmTrialConversion() {
+  if (!canConvertTrial.value || !record.value || command.pending.value) return
+  let canonicalPrice: string
+  try {
+    canonicalPrice = parseOfficeErpMoney(conversionPrice.value.trim())
+  } catch {
+    conversionError.value = 'Informe um preço em reais com até duas casas decimais.'
+    return
+  }
+  const interval = Number(conversionIntervalMonths.value)
+  const dueInDays = Number(conversionDueInDays.value)
+  if (!conversionPlans.value.some(plan => plan.id === conversionPlanId.value)) {
+    conversionError.value = 'Selecione um plano ERP disponível para este escritório.'
+    return
+  }
+  if (![1, 3, 6, 12].includes(interval) || !Number.isInteger(dueInDays) || dueInDays < 0 || dueInDays > 65535) {
+    conversionError.value = 'Confira o ciclo e os dias até o vencimento.'
+    return
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(conversionStartOn.value) || !conversionTimezone.value.trim()) {
+    conversionError.value = 'Informe a data de início e o fuso horário de cobrança.'
+    return
+  }
+  conversionError.value = ''
+  void execute('trial.convert', `/erp-commercial/contracts/${record.value.id}/convert-trial`, {
+    erp_plan_id: conversionPlanId.value,
+    price: canonicalPrice,
+    currency: 'BRL',
+    interval_months: interval,
+    due_in_days: dueInDays,
+    start_on: conversionStartOn.value,
+    billing_timezone: conversionTimezone.value.trim()
+  })
+}
+
 function confirmReasonAction() {
   if (!actionReason.value.trim()) {
     mutationError.value = 'Informe o motivo para continuar.'
@@ -173,9 +294,14 @@ function confirmReasonAction() {
 const cancelMode = ref<'immediate' | 'period_end'>('period_end')
 watch(identityStamp, () => {
   loadGeneration++
+  conversionGeneration++
   record.value = null
   mutationError.value = ''
   loadError.value = ''
+  conversionOpen.value = false
+  conversionPlans.value = []
+  conversionPlanId.value = null
+  conversionError.value = ''
   void loadContract()
 }, { immediate: true, flush: 'sync' })
 </script>
@@ -327,6 +453,113 @@ watch(identityStamp, () => {
         <p v-if="record.pending_revision" class="mt-1 text-sm text-muted">
           Próxima revisão: {{ formatOfficeErpMoney(record.pending_revision.price) }} · {{ record.pending_revision.interval_months }} mês(es) · {{ record.pending_revision.module_keys.join(', ') || 'nenhum' }}
         </p>
+      </section>
+
+      <UAlert
+        v-if="record.trial"
+        :color="record.trial.situation === 'trialing' ? 'success' : 'neutral'"
+        :title="record.trial.situation === 'trialing' ? 'Em teste' : record.trial.situation === 'expired' ? 'Teste encerrado' : 'Teste convertido'"
+      >
+        <template #description>
+          <div class="space-y-1">
+            <p>Início do teste: {{ formatDate(record.trial.started_at) }}</p>
+            <p>Fim original: {{ formatDate(record.trial.ends_at) }}</p>
+            <p v-if="record.trial.situation === 'expired'">
+              A licença do teste foi liberada. A conversão depende da capacidade atual do escritório.
+            </p>
+          </div>
+        </template>
+      </UAlert>
+
+      <section v-if="canConvertTrial" class="border-t border-default pt-4">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="max-w-2xl space-y-1">
+            <h2 class="font-semibold text-highlighted">
+              Conversão paga explícita
+            </h2>
+            <p class="text-sm leading-6 text-muted">
+              A conversão mantém a mesma empresa e assinatura. Nenhum valor será cobrado até você confirmar os termos e a data de início.
+            </p>
+          </div>
+          <UButton
+            color="primary"
+            :loading="conversionLoading"
+            :disabled="conversionLoading || !canMaintain || command.pending.value"
+            @click="prepareTrialConversion"
+          >
+            Iniciar cobrança paga
+          </UButton>
+        </div>
+        <UAlert
+          v-if="conversionError"
+          class="mt-4"
+          color="error"
+          title="Não foi possível preparar a conversão"
+          :description="conversionError"
+        />
+        <div v-if="conversionOpen" class="mt-5 space-y-4 rounded-xl border border-default p-4 sm:p-5">
+          <p class="text-sm font-medium text-highlighted">
+            Confirme o plano e os termos pagos
+          </p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField label="Plano ERP" required>
+              <USelect
+                v-model="conversionPlanId"
+                :items="conversionPlans.map(plan => ({ label: plan.name, value: plan.id }))"
+                placeholder="Selecione um plano elegível"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Preço em reais" required hint="Até duas casas decimais.">
+              <UInput
+                v-model="conversionPrice"
+                inputmode="decimal"
+                autocomplete="off"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Ciclo de cobrança" required>
+              <USelect v-model="conversionIntervalMonths" :items="[{ label: 'Mensal', value: '1' }, { label: 'A cada 3 meses', value: '3' }, { label: 'A cada 6 meses', value: '6' }, { label: 'Anual', value: '12' }]" class="w-full" />
+            </UFormField>
+            <UFormField label="Dias até o vencimento" required>
+              <UInput
+                v-model="conversionDueInDays"
+                type="number"
+                min="0"
+                max="65535"
+                step="1"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Início da cobrança" required>
+              <UInput v-model="conversionStartOn" type="date" class="w-full" />
+            </UFormField>
+            <UFormField label="Fuso horário de cobrança" required>
+              <UInput v-model="conversionTimezone" autocomplete="off" class="w-full" />
+            </UFormField>
+          </div>
+          <p class="text-sm text-muted">
+            O teste não será cobrado retroativamente. Se estiver encerrado, a conversão exige uma licença ERP disponível no escritório.
+          </p>
+          <div class="flex flex-wrap gap-3">
+            <UButton
+              color="primary"
+              :loading="command.pending.value"
+              :disabled="command.pending.value || !canMaintain"
+              @click="confirmTrialConversion"
+            >
+              Confirmar conversão e emitir primeira fatura
+            </UButton>
+            <UButton
+              color="neutral"
+              variant="outline"
+              :disabled="command.pending.value"
+              @click="conversionOpen = false"
+            >
+              Cancelar
+            </UButton>
+          </div>
+        </div>
       </section>
 
       <section v-if="record.agreement_status === 'accepted'" class="border-t border-default pt-4">

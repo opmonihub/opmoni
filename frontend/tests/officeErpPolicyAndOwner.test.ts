@@ -70,14 +70,17 @@ function mount(component: Vue.Component) {
   })
   const app = renderer.createApp(component)
   const components: Record<string, Vue.Component> = {
+    NuxtLink: { props: ['to'], setup: (props, context) => () => Vue.h('a', { href: props.to }, context.slots.default?.()) },
     UButton: { props: ['disabled', 'loading', 'type'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, 'disabled': props.disabled, 'data-loading': props.loading }, context.slots.default?.()) },
     UAlert: { props: ['title', 'description'], setup: (props, context) => () => Vue.h('aside', {}, [String(props.title ?? ''), String(props.description ?? ''), context.slots.default?.(), context.slots.description?.()]) },
-    UCard: { setup: (_props, context) => () => Vue.h('section', {}, context.slots.default?.()) },
+    UCard: { setup: (_props, context) => () => Vue.h('section', {}, [context.slots.header?.(), context.slots.default?.()]) },
     UModal: { props: ['open'], setup: (props, context) => () => props.open ? Vue.h('section', { role: 'dialog' }, [context.slots.body?.(), context.slots.footer?.()]) : null },
     UBadge: { setup: (_props, context) => () => Vue.h('span', {}, context.slots.default?.()) },
     UFormField: { props: ['name', 'label', 'error'], setup: (props, context) => () => Vue.h('div', { 'data-field': props.name, 'aria-label': props.label }, [context.slots.default?.(), props.error ? String(props.error) : '']) },
     UInput: { props: ['modelValue', 'type', 'disabled'], setup: (props, context) => () => Vue.h('input', { ...context.attrs, ...props, 'onUpdate:modelValue': context.emit.bind(null, 'update:modelValue') }) },
     USelect: { props: ['modelValue', 'items', 'disabled'], setup: (props, context) => () => Vue.h('select', { ...context.attrs, 'modelValue': props.modelValue, 'disabled': props.disabled, 'onUpdate:modelValue': context.emit.bind(null, 'update:modelValue') }) },
+    USelectMenu: { props: ['modelValue', 'items', 'multiple'], setup: (props, context) => () => Vue.h('select', { ...context.attrs, 'modelValue': props.modelValue, 'multiple': props.multiple, 'onUpdate:modelValue': context.emit.bind(null, 'update:modelValue') }) },
+    UTextarea: { props: ['modelValue'], setup: (props, context) => () => Vue.h('textarea', { ...context.attrs, 'onUpdate:modelValue': context.emit.bind(null, 'update:modelValue') }, String(props.modelValue ?? '')) },
     USwitch: { props: ['modelValue', 'disabled'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, 'role': 'switch', 'aria-checked': String(props.modelValue), 'disabled': props.disabled, 'onUpdate:modelValue': context.emit.bind(null, 'update:modelValue') }) },
     USkeleton: { setup: () => () => Vue.h('div', { 'aria-label': 'Carregando' }) },
     UTable: {
@@ -95,7 +98,7 @@ function flush() {
   return Vue.nextTick().then(() => new Promise<void>(resolve => setImmediate(resolve))).then(() => Vue.nextTick())
 }
 
-function fixture(options: { account?: { id: number, status: string, role: string }, read?: () => Promise<unknown>, preview?: (body: Record<string, unknown>) => Promise<unknown>, execute?: (...args: unknown[]) => Promise<unknown>, recover?: (key: string) => Promise<unknown> } = {}) {
+function fixture(options: { account?: { id: number, status: string, role: string }, read?: () => Promise<unknown>, preview?: (body: Record<string, unknown>) => Promise<unknown>, execute?: (...args: unknown[]) => Promise<unknown>, recover?: (key: string) => Promise<unknown>, trialLink?: () => Promise<unknown> } = {}) {
   testAccount.value = options.account ?? { id: 8, status: 'active', role: 'admin' }
   testUser.value = { id: 5 }
   sessionGeneration.value = 2
@@ -149,6 +152,7 @@ function fixture(options: { account?: { id: number, status: string, role: string
       calls.push({ path, options: request })
       if (path === '/erp-commercial/settings/preview' && options.preview) return options.preview(request?.body as Record<string, unknown>)
       if (path === '/erp-commercial/settings' && options.read) return options.read()
+      if (path === '/erp-commercial/trial-link' && options.trialLink) return options.trialLink()
       return { data: { mode: 'manual', grace_days: 0, billing_timezone: 'America/Sao_Paulo' } }
     } }),
     useToast: () => ({ add(value: Record<string, unknown>) { toasts.push(value) } }),
@@ -177,6 +181,48 @@ function ownerContractFixture(api: (path: string) => Promise<unknown>) {
   })
 
   return { ...mount(component), currentCompany, currentAccount, sessionGeneration, calls }
+}
+
+function trialContractFixture(api: (path: string) => Promise<unknown>, execute: (...args: unknown[]) => Promise<unknown>) {
+  const currentAccount = Vue.ref({ id: 8, status: 'active', role: 'admin' })
+  const sessionGeneration = Vue.ref(1)
+  const capabilities = Vue.ref({
+    capability_key: 'office-capability-1', can_read: true, can_configure: true, can_maintain: true,
+    allowance: { module_keys: ['purchases'] }
+  })
+  const calls: string[] = []
+  const executeCalls: unknown[][] = []
+  const context = {
+    capabilities,
+    capture: () => ({ key: `${sessionGeneration.value}:${currentAccount.value.id}`, generation: sessionGeneration.value }),
+    isCurrent: (token: { key: string, generation: number }) => token.key === `${sessionGeneration.value}:${currentAccount.value.id}` && token.generation === sessionGeneration.value,
+    refresh: async () => {}
+  }
+  const command = {
+    pending: Vue.ref(false),
+    recoveryKey: Vue.ref<string | null>(null),
+    async execute(...args: unknown[]) {
+      executeCalls.push(args)
+      return execute(...args)
+    },
+    async recover() { return { status: 'unknown' } }
+  }
+  const component = compileVueComponent('pages/gestao-erp/assinaturas/[id].vue', {
+    onScopeDispose: () => {},
+    useRoute: () => ({ params: { id: '31' } }),
+    useAuth: () => ({ user: testUser, currentAccount }),
+    useState: () => sessionGeneration,
+    useOfficeErpContext: () => context,
+    useOfficeErpCommand: () => command,
+    useAccessApi: () => ({ api: async (path: string) => {
+      calls.push(path)
+      return api(path)
+    } }),
+    useToast: () => ({ add() {} }),
+    useHead() {},
+    definePageMeta() {}
+  })
+  return { ...mount(component), calls, executeCalls }
 }
 
 describe('Company ERP contract page', () => {
@@ -303,6 +349,29 @@ describe('Company ERP contract page', () => {
     assert.match(renderText(view.root), /Plano ERP legado/)
     assert.match(renderText(view.root), /Módulos do plano/)
     assert.doesNotMatch(renderText(view.root), /Contrato de revenda|Faturas do contrato/)
+    assert.deepEqual(view.calls, ['/erp/subscription'])
+    view.app.unmount()
+  })
+
+  it('renders the server trial situation and original end date for the owner', async () => {
+    const view = ownerContractFixture(async () => ({ data: {
+      status: 'trial_expired',
+      plan: { name: 'Plano ERP de teste', modules: [{ module_key: 'purchases' }] },
+      company: { name: 'Empresa em avaliação', status: 'active' },
+      trial: {
+        started_at: '2026-10-18T10:00:00Z',
+        ends_at: '2026-10-25T10:00:00Z',
+        converted_at: null,
+        expired_at: '2026-10-25T10:00:00Z',
+        situation: 'expired'
+      }
+    } }))
+    await flush()
+
+    assert.match(renderText(view.root), /Teste encerrado/)
+    assert.match(renderText(view.root), /Fim original do teste/)
+    assert.match(renderText(view.root), /Fim original do teste: 25 de outubro de 2026 às 07:00/)
+    assert.doesNotMatch(renderText(view.root), /Ativar contrato|Converter teste/)
     assert.deepEqual(view.calls, ['/erp/subscription'])
     view.app.unmount()
   })
@@ -608,6 +677,134 @@ describe('Office ERP policy settings page', () => {
       finish({ data: [{ contract_id: 2, client_name: 'Conta anterior', company_name: 'Empresa antiga', current_status: 'active', resulting_status: 'past_due', outstanding: '1.00', overdue: true }], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 }, affected_count: 1 })
       await flush()
       assert.doesNotMatch(renderText(view.root), /Conta anterior/)
+      view.app.unmount()
+    }
+  })
+
+  it('renders and copies the office trial link, then rotates it through the keyed command', async () => {
+    const resource = {
+      configured: true,
+      enabled: true,
+      revision: 4,
+      url: 'https://app.example.test/erp/testar/link-atual',
+      erp_plan_id: 73,
+      plan: { name: 'ERP Essencial', module_keys: ['purchases'] },
+      plans: [{ id: 73, name: 'ERP Essencial', module_keys: ['purchases'] }]
+    }
+    const copied: string[] = []
+    const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { clipboard: { writeText: async (value: string) => { copied.push(value) } } }
+    })
+    const view = fixture({
+      trialLink: async () => ({ data: resource }),
+      execute: async (..._args: unknown[]) => ({ status: 'confirmed', data: { ...resource, revision: 5, url: 'https://app.example.test/erp/testar/link-novo' } })
+    })
+    try {
+      await flush()
+      assert.match(renderText(view.root), /Link de teste ERP/)
+      assert.match(renderText(view.root), /ERP Essencial/)
+      const copy = find(view.root, node => node.tag === 'button' && renderText(node).includes('Copiar link'))[0]
+      assert.ok(copy)
+      ;(copy.props.onClick as () => void)()
+      await flush()
+      assert.deepEqual(copied, [resource.url])
+
+      const rotate = find(view.root, node => node.tag === 'button' && renderText(node).includes('Renovar endereço do link'))[0]
+      assert.ok(rotate)
+      ;(rotate.props.onClick as () => void)()
+      await flush()
+      assert.deepEqual(view.executeCalls[0], ['trial.link.rotate', '/erp-commercial/trial-link/rotate', {}, 'POST'])
+      assert.match(renderText(view.root), /5/)
+      assert.equal(view.calls.some(call => call.path === '/erp-commercial/trial-link'), true)
+    } finally {
+      view.app.unmount()
+      if (previousNavigator)
+        Object.defineProperty(globalThis, 'navigator', previousNavigator)
+      else
+        Reflect.deleteProperty(globalThis, 'navigator')
+    }
+  })
+
+  it('loads eligible plans for office-only trial conversion and submits explicit paid terms', async () => {
+    const detail = {
+      id: 31,
+      client: { id: 4, name: 'Cliente contábil' },
+      company: { id: 12, name: 'Empresa em teste' },
+      erp_plan_id: 73,
+      trial: { id: 81, started_at: '2026-10-18T10:00:00Z', ends_at: '2026-10-25T10:00:00Z', converted_at: null, expired_at: null, situation: 'trialing' },
+      agreement_status: 'effective', licence_status: 'trialing', current_revision: null, pending_revision: null,
+      service_anchor_on: null, next_period_month_offset: null, cancel_effective_on: null, cancellation_reason: null,
+      manual_hold: false, balance: { outstanding: '0.00', invoice_count: 0 }, revisions: []
+    }
+    const view = trialContractFixture(async (path) => {
+      if (path === '/erp-commercial/contracts/31') return { data: detail }
+      if (path === '/erp-commercial/enrollment-plans') return {
+        data: [{ id: 73, slug: 'essencial', name: 'ERP Essencial', module_keys: ['purchases'] }],
+        eligibility: { can_provision: true, reasons: [], licence_limit: 2, used_licences: 1, available_module_keys: ['purchases'] }
+      }
+      if (path === '/erp-commercial/settings') return { data: { billing_timezone: 'America/Sao_Paulo' } }
+      throw new Error(`Unexpected request ${path}`)
+    }, async () => ({ status: 'confirmed', data: { contract_id: 31, invoice_id: 99 } }))
+    try {
+      await flush()
+      assert.match(renderText(view.root), /Em teste/)
+      const start = find(view.root, node => node.tag === 'button' && renderText(node).includes('Iniciar cobrança paga'))[0]
+      assert.ok(start)
+      ;(start.props.onClick as () => void)()
+      await flush()
+      assert.match(renderText(view.root), /Confirme o plano e os termos pagos/)
+
+      const fields = find(view.root, node => node.tag === 'div' && node.props['aria-label'] === 'Plano ERP')
+      const planSelect = find(fields[0]!, node => node.tag === 'select')[0]
+      ;(planSelect.props['onUpdate:modelValue'] as (value: number) => void)(73)
+      const priceField = find(view.root, node => node.tag === 'div' && node.props['aria-label'] === 'Preço em reais')[0]!
+      const priceInput = find(priceField, node => node.tag === 'input')[0]!
+      ;(priceInput.props['onUpdate:modelValue'] as (value: string) => void)('149,90')
+      await flush()
+
+      const confirm = find(view.root, node => node.tag === 'button' && renderText(node).includes('Confirmar conversão e emitir primeira fatura'))[0]
+      assert.ok(confirm)
+      ;(confirm.props.onClick as () => void)()
+      await flush()
+      assert.deepEqual(view.executeCalls[0], [
+        'trial.convert', '/erp-commercial/contracts/31/convert-trial',
+        { erp_plan_id: 73, price: '149.90', currency: 'BRL', interval_months: 1, due_in_days: 0, start_on: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`, billing_timezone: 'America/Sao_Paulo' },
+        'POST'
+      ])
+      assert.equal(view.calls.includes('/erp-commercial/enrollment-plans'), true)
+    } finally {
+      view.app.unmount()
+    }
+  })
+
+  it('does not offer trial conversion when enrollment capacity is unavailable', async () => {
+    const detail = {
+      id: 31, client: { id: 4, name: 'Cliente' }, company: { id: 12, name: 'Empresa' }, erp_plan_id: 73,
+      trial: { id: 81, started_at: '2026-10-18T10:00:00Z', ends_at: '2026-10-25T10:00:00Z', converted_at: null, expired_at: '2026-10-25T10:00:00Z', situation: 'expired' },
+      agreement_status: 'effective', licence_status: 'trial_expired', current_revision: null, pending_revision: null,
+      service_anchor_on: null, next_period_month_offset: null, cancel_effective_on: null, cancellation_reason: null,
+      manual_hold: false, balance: { outstanding: '0.00', invoice_count: 0 }, revisions: []
+    }
+    const view = trialContractFixture(async (path) => {
+      if (path === '/erp-commercial/contracts/31') return { data: detail }
+      if (path === '/erp-commercial/enrollment-plans') return {
+        data: [{ id: 73, slug: 'essencial', name: 'ERP Essencial', module_keys: ['purchases'] }],
+        eligibility: { can_provision: false, reasons: ['licence_limit_reached'], licence_limit: 1, used_licences: 1, available_module_keys: ['purchases'] }
+      }
+      if (path === '/erp-commercial/settings') return { data: { billing_timezone: 'America/Sao_Paulo' } }
+      throw new Error(`Unexpected request ${path}`)
+    }, async () => ({ status: 'confirmed', data: {} }))
+    try {
+      await flush()
+      const start = find(view.root, node => node.tag === 'button' && renderText(node).includes('Iniciar cobrança paga'))[0]!
+      ;(start.props.onClick as () => void)()
+      await flush()
+      assert.match(renderText(view.root), /capacidade ou plano elegível/)
+      assert.doesNotMatch(renderText(view.root), /Confirme o plano e os termos pagos/)
+      assert.equal(view.executeCalls.length, 0)
+    } finally {
       view.app.unmount()
     }
   })

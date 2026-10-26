@@ -121,6 +121,22 @@ test('separate API transports for separate Nuxt apps dispatch independently', as
   assert.deepEqual(await Promise.all([first, second]), ['one', 'two'])
 })
 
+test('public trial routes keep selected tenant headers out of their transport', async () => {
+  let captured: { path: string, options?: Record<string, unknown> } | null = null
+  const transport = accessApi(async (path, options) => {
+    captured = { path: String(path), options: options as Record<string, unknown> }
+    return { data: { available: true } }
+  })
+  await transport.api('/erp/trials/public-code', {
+    method: 'GET',
+    headers: { 'X-Account-Id': '999', 'X-Company-Id': '888' }
+  })
+  assert.equal(captured?.path, '/api/v1/erp/trials/public-code')
+  const headers = new Headers(captured?.options?.headers as HeadersInit)
+  assert.equal(headers.has('X-Account-Id'), false)
+  assert.equal(headers.has('X-Company-Id'), false)
+})
+
 test('aborted or stale queued work is rejected without transport dispatch', async () => {
   const queue = createAccessApiAdmissionQueue()
   const hold = deferred<undefined>()
