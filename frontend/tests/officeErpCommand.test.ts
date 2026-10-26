@@ -10,7 +10,11 @@ type Capabilities = {
   can_maintain: boolean
   can_configure: boolean
   can_sell_new: boolean
+  can_provision: boolean
+  can_start_trial: boolean
+  can_manage_trial_link: boolean
   capability_key: string
+  capability_reasons: Record<'can_configure' | 'can_sell_new' | 'can_provision' | 'can_start_trial' | 'can_manage_trial_link', string[]>
   reasons: Record<string, string[]>
   allowance: { enabled: boolean, licence_limit: number | null, module_keys: string[] }
   usage: { reserved: number, occupied: number }
@@ -23,11 +27,24 @@ type Result<T>
 type Command = {
   pending: Vue.Ref<boolean>
   recoveryKey: Vue.Ref<string | null>
-  execute<T>(action: string, path: string, body: Record<string, unknown>, method?: 'POST' | 'PATCH'): Promise<Result<T>>
+  execute<T>(action: string, path: string, body: Record<string, unknown>, method?: 'POST' | 'PATCH' | 'PUT'): Promise<Result<T>>
   recover<T>(key: string): Promise<Result<T>>
 }
 
-const caps: Capabilities = { can_read: true, can_maintain: true, can_configure: true, can_sell_new: true, capability_key: 'cap-1', reasons: {}, allowance: { enabled: true, licence_limit: 8, module_keys: ['purchases'] }, usage: { reserved: 0, occupied: 2 } }
+const caps: Capabilities = {
+  can_read: true,
+  can_maintain: true,
+  can_configure: true,
+  can_sell_new: true,
+  can_provision: true,
+  can_start_trial: false,
+  can_manage_trial_link: true,
+  capability_key: 'cap-1',
+  capability_reasons: { can_configure: [], can_sell_new: [], can_provision: [], can_start_trial: [], can_manage_trial_link: [] },
+  reasons: {},
+  allowance: { enabled: true, licence_limit: 8, module_keys: ['purchases'] },
+  usage: { reserved: 0, occupied: 2 }
+}
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (reason: unknown) => void
@@ -86,6 +103,36 @@ function fixture(options: { api?: (path: string, init?: Record<string, unknown>)
 }
 
 describe('useOfficeErpCommand', () => {
+  it('sends PUT with the operation key and recovers an ambiguous result without resending', async (t) => {
+    let loseResponse = true
+    const harness = fixture({ api: async (path, init) => {
+      harness.calls.push({ path, init })
+      if (path === '/erp-commercial/context') return { data: caps }
+      if (path === '/erp-commercial/settings/trial-link' && loseResponse) {
+        loseResponse = false
+        throw new Error('connection dropped')
+      }
+      if (path.startsWith('/erp-commercial/operations/')) return { data: { id: 72, enabled: true } }
+      return { data: { id: 72, enabled: true } }
+    } })
+    t.after(harness.stop)
+
+    const result = await harness.command.execute('trial_link.update', '/erp-commercial/settings/trial-link', { erp_plan_id: 9, enabled: true }, 'PUT')
+    assert.equal(result.status, 'unknown')
+    assert.equal(harness.command.pending.value, true)
+    const write = harness.calls.find(call => call.path === '/erp-commercial/settings/trial-link')!
+    assert.equal(write.init?.method, 'PUT')
+    const key = (write.init?.headers as Record<string, string>)['Idempotency-Key']
+    assert.equal(key, '7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+
+    assert.deepEqual(await harness.command.recover<{ id: number, enabled: boolean }>(key), {
+      status: 'confirmed', data: { id: 72, enabled: true }
+    })
+    assert.equal(harness.calls.filter(call => call.path === '/erp-commercial/settings/trial-link').length, 2, 'one mutation is recorded at both API harness layers')
+    assert.equal(harness.calls.at(-1)?.path, `/erp-commercial/operations/${key}`)
+    assert.equal(harness.command.pending.value, false)
+  })
+
   it('admits one frozen payload and idempotency key while CSRF is pending', async (t) => {
     const csrf = deferred<undefined>()
     const harness = fixture({ csrf: () => csrf.promise })

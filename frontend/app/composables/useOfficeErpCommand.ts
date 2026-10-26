@@ -168,7 +168,7 @@ export function useOfficeErpCommand() {
     return { status: 'failed', failure: { code: 'office_erp_invalid_command', message, http_status: 422 } }
   }
 
-  async function execute<T>(action: string, path: string, body: Record<string, unknown>, method: 'POST' | 'PATCH' = 'POST'): Promise<OfficeErpCommandResult<T>> {
+  async function execute<T>(action: string, path: string, body: Record<string, unknown>, method: 'POST' | 'PATCH' | 'PUT' = 'POST'): Promise<OfficeErpCommandResult<T>> {
     if (operation.value) return unknown(operation.value.key)
     if (inFlight.value && reservation.value) return unknown(reservation.value)
     if (!action.trim() || !path.startsWith('/erp-commercial/') || path.includes('?') || path.includes('#'))
