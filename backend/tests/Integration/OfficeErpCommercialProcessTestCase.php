@@ -862,6 +862,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     private static function workerFailureFingerprint(Process $process): string
     {
         $stderr = $process->getErrorOutput();
+        $stdout = $process->getOutput();
         $type = preg_match('/^([A-Za-z_\\\\][A-Za-z0-9_\\\\]*(?:Exception|Error)):/m', $stderr, $matches) === 1
             ? $matches[1]
             : 'unknown';
@@ -873,8 +874,19 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
 
             return substr($location, 0, 200);
         }, $locations);
+        $output = json_decode($stdout, true);
+        $result = [];
+        if (is_array($output)) {
+            if (is_int($output['status'] ?? null)) {
+                $result['status'] = $output['status'];
+            }
+            if (is_string($output['code'] ?? null) && preg_match('/\\A[a-z][a-z0-9_]{2,80}\\z/', $output['code']) === 1) {
+                $result['code'] = $output['code'];
+            }
+        }
 
-        return 'Worker diagnostic: '.$type.'; stderr bytes='.strlen($stderr).'; frames='.json_encode($locations, JSON_THROW_ON_ERROR);
+        return 'Worker diagnostic: exit='.$process->getExitCode().'; '.$type.'; stdout bytes='.strlen($stdout).'; stderr bytes='.strlen($stderr)
+            .'; result='.json_encode($result, JSON_THROW_ON_ERROR).'; frames='.json_encode($locations, JSON_THROW_ON_ERROR);
     }
 
     /** @return array{pid: int, database_pid: int, checkout: string, source_hashes: array<string, string>} */

@@ -128,7 +128,7 @@ final class OfficeErpCommercialConcurrencyWorker
                 Carbon::setTestNow($frozenNow);
             }
             $contract = null;
-            if (! in_array($input['action'], ['owner_accept', 'owner_setup_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire'], true)) {
+            if (! in_array($input['action'], ['owner_accept', 'owner_setup_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'erp_register', 'customer_enroll'], true)) {
                 $contract = OfficeErpRecords::query($context, OfficeErpContract::class)
                     ->whereKey($input['contract_id'])
                     ->firstOrFail();
