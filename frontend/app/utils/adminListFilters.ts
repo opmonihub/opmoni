@@ -81,3 +81,18 @@ export function createLatestRequestRunner() {
   }
   return runLatest
 }
+
+/** Local Admin lists do not add query parameters; only these criteria are remembered. */
+export function adminListNavigationOptions(filters: readonly string[] = ['all']) {
+  return {
+    defaults: () => ({ q: '', page: 1, filter: 'all' }),
+    normalize(value: unknown) {
+      const input = value as Record<string, unknown> | null | undefined
+      return {
+        q: typeof input?.q === 'string' ? input.q : '',
+        page: Number.isSafeInteger(input?.page) && Number(input?.page) > 0 ? Number(input?.page) : 1,
+        filter: typeof input?.filter === 'string' && filters.includes(input.filter) ? input.filter : 'all'
+      }
+    }
+  }
+}

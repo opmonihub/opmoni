@@ -15,7 +15,11 @@ const { $api } = useNuxtApp()
 const toast = useToast()
 const plans = ref<Plan[]>([])
 const loading = ref(true)
-const q = ref('')
+const navigation = useListNavigationState('admin:planos', {
+  defaults: () => ({ q: '' }),
+  normalize: value => ({ q: typeof (value as { q?: unknown })?.q === 'string' ? (value as { q: string }).q : '' })
+})
+const q = listNavigationField(navigation, 'q')
 const columns: TableColumn<Plan>[] = [
   { accessorKey: 'name', header: 'Plano' },
   { id: 'users', header: 'Usuários' },
@@ -54,7 +58,7 @@ onBeforeUnmount(runLatestLoad.invalidate)
 function load() {
   loading.value = true
   loadError.value = null
-  return runLatestLoad(() => $api<Plan[]>('/admin/plans'), {
+  return runLatestLoad(signal => $api<Plan[]>('/admin/plans', { signal }), {
     onSuccess: (data) => {
       plans.value = data
       hasLoaded.value = true
@@ -138,6 +142,17 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
     saving.value = false
   }
 }
+useAdminReadAuthority(() => {
+  runLatestLoad.invalidate()
+  plans.value = []
+  hasLoaded.value = false
+  loadError.value = null
+  loading.value = false
+  editOpen.value = false
+  Object.assign(editState, { name: '', users: null, clients: null, monitorings: null, erp_commercial: defaultOfficeErpAllowance() })
+  fieldErrors.value = {}
+  active = false
+})
 </script>
 
 <template>

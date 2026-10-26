@@ -71,3 +71,26 @@ it('reads canonical platform account pagination without changing Laravel resourc
     current_page: 2, last_page: 3, per_page: 15, total: 31
   })
 })
+
+it('normalizes supported Admin list criteria without retaining records or unsupported filter values', async () => {
+  const { adminListNavigationOptions } = await import('../app/utils/adminListFilters.ts')
+  const options = adminListNavigationOptions(['all', 'active', 'canceled'])
+  assert.deepEqual(options.normalize({ q: 'Needle', page: 3, filter: 'active', records: [{ id: 1 }] }), { q: 'Needle', page: 3, filter: 'active' })
+  assert.deepEqual(options.normalize({ q: null, page: 0, filter: 'unsupported' }), { q: '', page: 1, filter: 'all' })
+})
+
+it('invalidates an active read signal without settling the departed view', async () => {
+  const pending = deferred<string>()
+  const events: string[] = []
+  let signal!: AbortSignal
+  const runner = createLatestRequestRunner()
+  const read = runner((value) => {
+    signal = value
+    return pending.promise
+  }, { onSuccess: value => events.push(value), onError: () => events.push('error'), onSettled: () => events.push('settled') })
+  runner.invalidate()
+  assert.equal(signal.aborted, true)
+  pending.resolve('obsolete')
+  await read
+  assert.deepEqual(events, [])
+})

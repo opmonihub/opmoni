@@ -24,7 +24,17 @@ const flush = async () => {
   await Vue.nextTick()
   await Promise.resolve()
 }
-async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>, routePath = '/admin/contas', props: Record<string, Runtime> = {}) {
+function session() {
+  const values = new Map<string, Vue.Ref>()
+  const useState = (key: string, initial: () => unknown) => {
+    if (!values.has(key)) values.set(key, Vue.ref(initial()))
+    return values.get(key)!
+  }
+  return { values, useState }
+}
+async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>, routePath = '/admin/contas', props: Record<string, Runtime> = {}, app = session()) {
+  const navigation = require('../app/composables/useListNavigationState.ts')
+  Object.assign(globalThis, { useState: app.useState, useListNavigationState: navigation.useListNavigationState, listNavigationField: navigation.listNavigationField })
   const path = name === 'commercial' ? 'components/platform/AccountCommercialModal.vue' : name === 'shell' ? 'pages/admin.vue' : name === 'layout' ? 'layouts/default.vue' : `pages/admin/${name}.vue`
   const { descriptor } = parse(readFileSync(new URL(`../app/${path}`, import.meta.url), 'utf8'), { filename: path })
   const script = compileScript(descriptor, { id: name })
@@ -34,12 +44,13 @@ async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>,
   const unmounted: (() => unknown)[] = []
   const globals = {
     useRoute: () => ({ path: routePath }),
+    useListNavigationState: navigation.useListNavigationState, listNavigationField: navigation.listNavigationField, useListNavigationRegistry: navigation.useListNavigationRegistry, useAdminReadAuthority: undefined as Runtime,
     ref: Vue.ref, computed: Vue.computed, reactive: Vue.reactive, watch: Vue.watch, definePageMeta() {
     }, useNuxtApp: () => ({ $api: api }), useAccessApi: () => ({ api }),
     useAuth: () => ({ user: Vue.ref({ is_super_admin: true }), currentAccount: Vue.ref({ id: 1, status: 'active', role: 'user' }), canManageMembers: Vue.ref(true), accounts: Vue.ref([{ id: 1, status: 'active', role: 'user' }]), switchAccount: api }),
     useToast: () => ({ add() {
     } }), refDebounced: (value: unknown) => value,
-    useAccountFilters: require('../app/composables/useAccountFilters.ts').useAccountFilters,
+    useAccountFilters: undefined as Runtime,
     useRetryableLoad: (options: Runtime) => ({ showError: Vue.computed(() => !!options.error.value), isLoading: options.loading, retry: options.refresh }),
     onMounted: (fn: () => unknown) => mounted.push(fn), onBeforeUnmount: (fn: () => unknown) => unmounted.push(fn)
   }
@@ -59,6 +70,8 @@ async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>,
     }, exports, ...Object.values(globals))
     return exports
   }
+  globals.useAdminReadAuthority = evaluate(readFileSync(new URL('../app/composables/useAdminReadAuthority.ts', import.meta.url), 'utf8')).useAdminReadAuthority
+  globals.useAccountFilters = evaluate(readFileSync(new URL('../app/composables/useAccountFilters.ts', import.meta.url), 'utf8')).useAccountFilters
   const scope = Vue.effectScope()
   const state = scope.run(() => evaluate(script.content).default.setup(props, { emit: (name: string) => emitted.push(name), expose() {
   } })) as Runtime
@@ -546,3 +559,131 @@ it('commercial editor clears/reloads on reopen, rejects stale details and preser
   assert.equal(props.open, false)
   view.stop()
 })
+
+for (const name of ['usuarios', 'assinaturas', 'contas', 'planos'])
+  it(`${name} restores only navigation criteria on same-session return`, async () => {
+    const app = session()
+    const calls: Runtime[] = []
+    const api = async (path: string, options: Runtime) => {
+      calls.push([path, options])
+      return name === 'planos' ? [{ id: 1, name: 'Basic', slug: 'basic' }] : resource([{ id: 1 }], 61, 5)
+    }
+    const first = await page(name, api, '/admin/' + name, {}, app)
+    await first.start()
+    first.state.q.value = 'remembered'
+    await flush()
+    if (first.state.page) first.state.page.value = 3
+    await flush()
+    first.stop()
+    calls.length = 0
+    const second = await page(name, api, '/admin/' + name, {}, app)
+    assert.equal(second.state.q.value, 'remembered')
+    if (second.state.page) assert.equal(second.state.page.value, 3)
+    await second.start()
+    assert.equal(calls.length, 1)
+    if (name !== 'planos') assert.equal((calls[0][1].params ?? calls[0][1].query).page, 3)
+    assert.ok(!JSON.stringify(app.values.get('list-navigation-state')!.value).includes('Basic'))
+    second.stop()
+  })
+for (const name of ['usuarios', 'assinaturas'])
+  it(`${name} normalizes a changed filter before the only admitted page-one read`, async () => {
+    const calls: Runtime[] = []
+    const view = await page(name, async (_path, options) => {
+      calls.push({ ...options.params })
+      return resource([], 61, 5)
+    })
+    await view.start()
+    view.state.page.value = 3
+    await flush()
+    calls.length = 0
+    view.state.page.value = 4
+    view.state.q.value = 'changed'
+    await flush()
+    await flush()
+    assert.deepEqual(calls, [{ page: 1, q: 'changed' }])
+    view.stop()
+  })
+
+for (const name of ['usuarios', 'assinaturas', 'contas', 'planos', 'index'])
+  it(`${name} aborts active safe reads when its page leaves`, async () => {
+    const pending = deferred()
+    let signal: AbortSignal | undefined
+    const view = await page(name, async (_path, options) => {
+      signal = options?.signal
+      return await pending.promise
+    })
+    const loading = view.start()
+    await flush()
+    assert.ok(signal instanceof AbortSignal)
+    view.stop()
+    assert.equal(signal.aborted, true)
+    pending.resolve(name === 'planos' ? [] : name === 'index' ? { data: { totals: {}, recent_support_logs: [] } } : resource([]))
+    await loading
+  })
+
+it('subscription plans stay lazy and obsolete queued catalog never dispatches before current Users read', async () => {
+  const { createAccessApiAdmissionQueue } = await import('../app/utils/accessApiAdmissionQueue.ts')
+  const queue = createAccessApiAdmissionQueue()
+  const blocker = deferred()
+  const active = queue.run(async () => await blocker.promise)
+  await flush()
+  const dispatched: string[] = []
+  const api = (path: string, options: Runtime) => queue.run(async () => {
+    dispatched.push(path)
+    return path === '/admin/plans' ? [] : resource([])
+  }, { signal: options?.signal })
+  const subscriptions = await page('assinaturas', api)
+  const initial = subscriptions.start()
+  await flush()
+  assert.equal(subscriptions.state.catalogLoading.value, false)
+  subscriptions.state.openEdit({ id: 1, status: 'active', plan: { id: 2 } })
+  await flush()
+  subscriptions.stop()
+  const users = await page('usuarios', api)
+  const current = users.start()
+  blocker.resolve(null)
+  await Promise.all([active, initial, current])
+  assert.deepEqual(dispatched, ['/admin/users'])
+  users.stop()
+})
+
+it('support restores search/audit criteria and bounded pages, without retaining result records', async () => {
+  const app = session()
+  const requests: Runtime[] = []
+  const api = async (path: string, options: Runtime) => {
+    requests.push([path, options])
+    return resource([{ id: 1, name: 'private-record' }], 61, 5)
+  }
+  const first = await page('suporte', api, '/admin/suporte', {}, app)
+  await first.start()
+  first.state.query.value = 'Needle'
+  await first.state.search()
+  first.state.searchPage.value = 3
+  first.state.accountQuery.value = '27'
+  await flush()
+  first.state.logsPage.value = 2
+  await flush()
+  first.stop()
+  requests.length = 0
+  const returned = await page('suporte', api, '/admin/suporte', {}, app)
+  assert.equal(returned.state.query.value, 'Needle')
+  assert.equal(returned.state.searchPage.value, 3)
+  assert.equal(returned.state.accountQuery.value, '27')
+  assert.equal(returned.state.logsPage.value, 2)
+  await returned.start()
+  assert.equal(requests.length, 2)
+  assert.ok(!JSON.stringify(app.values.get('list-navigation-state')!.value).includes('private-record'))
+  returned.stop()
+})
+
+for (const name of ['usuarios', 'assinaturas', 'contas', 'planos', 'suporte'])
+  it(`${name} clears private rows synchronously on a session authority transition`, async () => {
+    const app = session()
+    const view = await page(name, async () => name === 'planos' ? [{ id: 1, name: 'Private', slug: 'private' }] : resource([{ id: 1, name: 'Private' }]), '/admin/' + name, {}, app)
+    await view.start()
+    const rows = name === 'usuarios' ? view.state.users : name === 'assinaturas' ? view.state.subscriptions : name === 'contas' ? view.state.result : name === 'planos' ? view.state.plans : view.state.logs
+    assert.equal(name === 'contas' ? rows.value.data.length : rows.value.length, 1)
+    app.values.get('access-session-generation')!.value++
+    assert.equal(name === 'contas' ? rows.value : rows.value.length, name === 'contas' ? null : 0)
+    view.stop()
+  })

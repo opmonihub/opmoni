@@ -58,7 +58,7 @@ const { isLoading, showError, retry } = useRetryableLoad({
 function load() {
   loading.value = true
   loadError.value = null
-  return runLatestLoad(() => $api<DetailResponse<AdminSummary>>('/admin/summary'), {
+  return runLatestLoad(signal => $api<DetailResponse<AdminSummary>>('/admin/summary', { signal }), {
     onSuccess: ({ data }) => {
       totals.value = data.totals
       recentLogs.value = data.recent_support_logs
@@ -73,6 +73,14 @@ function load() {
   })
 }
 onMounted(load)
+useAdminReadAuthority(() => {
+  runLatestLoad.invalidate()
+  totals.value = { accounts: 0, users: 0, subscriptions: 0, plans: 0 }
+  recentLogs.value = []
+  loadError.value = null
+  hasLoaded.value = false
+  loading.value = false
+})
 </script>
 
 <template>

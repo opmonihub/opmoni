@@ -3,7 +3,7 @@ import type { PlatformUser, ResourceListResponse } from '#shared/types/admin'
 import type { TableColumn } from '@nuxt/ui'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelSelectUi, panelTableUi } from '~/components/data-table/panel'
-import { adminListParams, createLatestRequestRunner, pageWithinLastPage, readPaginatedMeta } from '~/utils/adminListFilters'
+import { adminListNavigationOptions, adminListParams, createLatestRequestRunner, pageWithinLastPage, readPaginatedMeta } from '~/utils/adminListFilters'
 
 definePageMeta({
   middleware: ['auth', 'super-admin']
@@ -11,12 +11,13 @@ definePageMeta({
 const { $api } = useNuxtApp()
 const users = ref<PlatformUser[]>([])
 const total = ref(0)
-const page = ref(1)
+const navigation = useListNavigationState('admin:usuarios', adminListNavigationOptions(['all', 'super', 'user']))
+const page = listNavigationField(navigation, 'page')
 const perPage = 15
 const loading = ref(true)
-const q = ref('')
+const q = listNavigationField(navigation, 'q')
 const debouncedQ = refDebounced(q, 300)
-const typeFilter = ref<'all' | 'super' | 'user'>('all')
+const typeFilter = listNavigationField(navigation, 'filter')
 const runLatestLoad = createLatestRequestRunner()
 const columns: TableColumn<PlatformUser>[] = [
   { accessorKey: 'id', header: 'ID' },
@@ -52,7 +53,7 @@ const { isLoading, showError, retry } = useRetryableLoad({
 function load() {
   loading.value = true
   loadError.value = null
-  return runLatestLoad(() => $api<ResourceListResponse<PlatformUser>>('/admin/users', { params: listParams.value }), {
+  return runLatestLoad(signal => $api<ResourceListResponse<PlatformUser>>('/admin/users', { params: listParams.value, signal }), {
     onSuccess: (res) => {
       const meta = readPaginatedMeta(res)
       const recovered = pageWithinLastPage(page.value, meta.last_page)
@@ -75,13 +76,17 @@ function load() {
 }
 onMounted(load)
 onBeforeUnmount(runLatestLoad.invalidate)
-watch(page, load)
 watch([debouncedQ, typeFilter], () => {
-  if (page.value !== 1) {
-    page.value = 1
-    return
-  }
-  void load()
+  page.value = 1
+}, { flush: 'sync' })
+watch(listParams, load)
+useAdminReadAuthority(() => {
+  runLatestLoad.invalidate()
+  users.value = []
+  total.value = 0
+  hasLoaded.value = false
+  loadError.value = null
+  loading.value = false
 })
 </script>
 
@@ -130,8 +135,8 @@ watch([debouncedQ, typeFilter], () => {
 
       <template v-if="!showError || hasLoaded">
         <UTable
-          aria-label="Usuários"
           v-model:column-visibility="columnVisibility"
+          aria-label="Usuários"
           :data="users"
           :columns="columns"
           :loading="loading"

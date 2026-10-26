@@ -5,7 +5,7 @@ import { apiFailure } from '#shared/utils/access'
 import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelSelectUi, panelTableUi } from '~/components/data-table/panel'
-import { adminListParams, createLatestRequestRunner, pageWithinLastPage, readPaginatedMeta } from '~/utils/adminListFilters'
+import { adminListNavigationOptions, adminListParams, createLatestRequestRunner, pageWithinLastPage, readPaginatedMeta } from '~/utils/adminListFilters'
 
 definePageMeta({
   middleware: ['auth', 'super-admin']
@@ -45,12 +45,13 @@ function loadCatalog() {
   })
 }
 const total = ref(0)
-const page = ref(1)
+const navigation = useListNavigationState('admin:assinaturas', adminListNavigationOptions(['all', 'active', 'past_due', 'canceled']))
+const page = listNavigationField(navigation, 'page')
 const perPage = 15
 const loading = ref(true)
-const q = ref('')
+const q = listNavigationField(navigation, 'q')
 const debouncedQ = refDebounced(q, 300)
-const statusFilter = ref<'all' | Subscription['status']>('all')
+const statusFilter = listNavigationField(navigation, 'filter')
 const runLatestLoad = createLatestRequestRunner()
 const columns: TableColumn<Subscription>[] = [
   { accessorKey: 'id', header: 'ID' },
@@ -107,15 +108,17 @@ onBeforeUnmount(() => {
   runLatestLoad.invalidate()
   runCatalog.invalidate()
 })
-watch(page, load)
 watch([debouncedQ, statusFilter], () => {
-  if (page.value !== 1) {
-    page.value = 1
-    return
-  }
-  void load()
-})
+  page.value = 1
+}, { flush: 'sync' })
+watch(listParams, load)
 const editOpen = ref(false)
+watch(editOpen, (open) => {
+  if (open) return
+  runCatalog.invalidate()
+  catalogLoading.value = false
+  catalogError.value = null
+}, { flush: 'sync' })
 const editSchema = z.object({
   plan_id: z.number({ error: 'Escolha um plano' }),
   status: z.enum(['active', 'past_due', 'canceled'])
@@ -173,6 +176,24 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
     saving.value = false
   }
 }
+useAdminReadAuthority(() => {
+  runLatestLoad.invalidate()
+  runCatalog.invalidate()
+  subscriptions.value = []
+  plans.value = []
+  total.value = 0
+  hasLoaded.value = false
+  catalogLoaded.value = false
+  loadError.value = null
+  catalogError.value = null
+  loading.value = false
+  catalogLoading.value = false
+  editOpen.value = false
+  editTarget.value = null
+  Object.assign(editState, { plan_id: undefined, status: undefined })
+  fieldErrors.value = {}
+  active = false
+})
 </script>
 
 <template>
