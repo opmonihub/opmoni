@@ -60,6 +60,7 @@ final class OfficeErpOperationController extends Controller
                 }
                 if ($action === 'owner.setup.issue') {
                     $ownerSetup->authorizeOperation($ctx, $action, $payload, $validatedKey);
+
                     return;
                 }
                 if (in_array($action, ['trial.link.configure', 'trial.link.rotate'], true)) {
