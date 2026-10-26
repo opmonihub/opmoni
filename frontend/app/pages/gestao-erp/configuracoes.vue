@@ -40,6 +40,7 @@ const settings = reactive<OfficeErpSettings>({ mode: 'manual', grace_days: 0, bi
 const loaded = ref(false)
 const loading = ref(false)
 const loadError = ref('')
+const loadDenied = ref('')
 const fieldErrors = ref<Record<string, string>>({})
 const draftError = ref('')
 const preview = ref<PolicyPreview | null>(null)
@@ -64,6 +65,21 @@ const identityStamp = computed(() => JSON.stringify([
 ]))
 const recoveryKey = computed(() => command.recoveryKey.value)
 const canConfigure = computed(() => capabilities.value?.can_configure === true)
+const configureRestriction = computed(() => {
+  if (canConfigure.value) return ''
+  const capabilityReasons = (capabilities.value as (typeof capabilities.value & { capability_reasons?: Record<string, string[]> }) | null)?.capability_reasons
+  const reasons = capabilityReasons?.can_configure ?? []
+  const messages = reasons.map((reason) => {
+    switch (reason) {
+      case 'account_suspended': return 'O escritório selecionado está suspenso.'
+      case 'account_inactive': return 'O escritório selecionado está inativo.'
+      case 'office_admin_required':
+      case 'membership_role_not_allowed': return 'Somente administradores do escritório podem alterar esta configuração.'
+      default: return ''
+    }
+  }).filter(Boolean)
+  return [...new Set(messages)].join(' ') || 'O acesso do escritório não permite alterar esta configuração.'
+})
 const saveDisabled = computed(() => !loaded.value || !canConfigure.value || loading.value || commandBusy.value || command.pending.value || !isValidDraft())
 const previewRows = computed(() => preview.value?.data ?? [])
 const totalAffected = computed(() => preview.value?.affected_count ?? null)
@@ -101,6 +117,7 @@ function clearProtectedState() {
   preview.value = null
   previewError.value = ''
   loadError.value = ''
+  loadDenied.value = ''
   fieldErrors.value = {}
   draftError.value = ''
   recoveryMessage.value = ''
@@ -127,13 +144,28 @@ async function loadSettings() {
   let token = context.capture()
   loading.value = true
   loadError.value = ''
+  loadDenied.value = ''
   try {
+    if (currentAccount.value?.status !== 'active') {
+      loadDenied.value = currentAccount.value?.status === 'suspended'
+        ? 'O escritório selecionado está suspenso. Selecione um escritório ativo para continuar.'
+        : 'O escritório selecionado está inativo. Selecione um escritório ativo para continuar.'
+      return
+    }
+    if (currentAccount.value.role !== 'admin') {
+      loadDenied.value = 'Somente administradores do escritório podem acessar estas configurações.'
+      return
+    }
     await context.refresh()
     if (request !== readGeneration || !isCurrent(scope, token)) return
-    if (!capabilities.value?.can_read || !capabilities.value.can_configure) {
-      throw new Error(capabilities.value
-        ? 'O escritório selecionado não tem permissão para configurar a política comercial.'
-        : 'Não foi possível confirmar o acesso comercial do escritório.')
+    if (!capabilities.value) {
+      throw new Error('Não foi possível confirmar o acesso comercial do escritório.')
+    }
+    if (!capabilities.value.can_read) {
+      loadDenied.value = currentAccount.value?.status === 'suspended'
+        ? 'O escritório selecionado está suspenso. Selecione um escritório ativo para continuar.'
+        : 'O contexto comercial atual não permite consultar estas configurações.'
+      return
     }
     token = context.capture()
     const response = await api<{ data: OfficeErpSettings }>('/erp-commercial/settings')
@@ -299,10 +331,16 @@ onMounted(loadSettings)
     </header>
 
     <UAlert
-      v-if="!canConfigure && !loadError"
+      v-if="!canConfigure && !loadError && !loadDenied"
       color="warning"
       title="Configuração indisponível"
-      description="O contexto comercial do escritório ainda não permite alterar a política."
+      :description="configureRestriction"
+    />
+    <UAlert
+      v-if="loadDenied"
+      color="warning"
+      title="Acesso às configurações indisponível"
+      :description="loadDenied"
     />
     <UAlert
       v-if="loadError"

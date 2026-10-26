@@ -7,7 +7,7 @@ type Node = { tag?: string, text?: string, props: Record<string, unknown>, child
 const testAccount = Vue.ref({ id: 8, status: 'active', role: 'admin' })
 const testUser = Vue.ref({ id: 5 })
 const sessionGeneration = Vue.ref(2)
-const capability = Vue.ref({ capability_key: 'office-capability-1', can_read: true, can_configure: true })
+const capability = Vue.ref({ capability_key: 'office-capability-1', can_read: true, can_configure: true, can_manage_trial_link: true, reasons: {} as Record<string, string[]> })
 
 function renderText(node: Node): string {
   return `${node.text ?? ''}${node.children.map(renderText).join('')}`
@@ -70,11 +70,11 @@ function flush() {
   return Vue.nextTick().then(() => new Promise<void>(resolve => setImmediate(resolve))).then(() => Vue.nextTick())
 }
 
-function fixture(options: { read?: () => Promise<unknown>, preview?: (body: Record<string, unknown>) => Promise<unknown>, execute?: (...args: unknown[]) => Promise<unknown>, recover?: (key: string) => Promise<unknown> } = {}) {
-  testAccount.value = { id: 8, status: 'active', role: 'admin' }
+function fixture(options: { account?: { id: number, status: string, role: string }, read?: () => Promise<unknown>, preview?: (body: Record<string, unknown>) => Promise<unknown>, execute?: (...args: unknown[]) => Promise<unknown>, recover?: (key: string) => Promise<unknown> } = {}) {
+  testAccount.value = options.account ?? { id: 8, status: 'active', role: 'admin' }
   testUser.value = { id: 5 }
   sessionGeneration.value = 2
-  capability.value = { capability_key: 'office-capability-1', can_read: true, can_configure: true }
+  capability.value = { capability_key: 'office-capability-1', can_read: true, can_configure: true, can_manage_trial_link: true, reasons: {} }
   const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
   const executeCalls: unknown[][] = []
   const recoverCalls: string[] = []
@@ -354,12 +354,52 @@ describe('Company ERP contract page', () => {
 })
 
 describe('Office ERP policy settings page', () => {
+  it('loads existing settings when commercial resale is disabled', async () => {
+    capability.value = {
+      capability_key: 'office-capability-1',
+      can_read: true,
+      can_configure: true,
+      can_manage_trial_link: true,
+      can_provision: true,
+      can_sell_new: false,
+      capability_reasons: { can_sell_new: ['commercial_resale_disabled'] },
+      reasons: { commercial_resale_disabled: ['commercial_resale_disabled'] }
+    }
+    const view = fixture()
+    await flush()
+    assert.equal(view.calls.filter(call => call.path === '/erp-commercial/settings').length, 1)
+    assert.match(renderText(view.root), /Automatizar suspensão por atraso/)
+    assert.doesNotMatch(renderText(view.root), /Tentar novamente/)
+    assert.equal(find(view.root, node => node.tag === 'button' && renderText(node).includes('Salvar configuração'))[0]?.props.disabled, false)
+    view.app.unmount()
+  })
+
+  it('shows a definitive role or status denial without offering a retry', async () => {
+    capability.value = { capability_key: 'office-capability-1', can_read: false, can_configure: false, can_manage_trial_link: false, reasons: { account_suspended: ['account_suspended'] } }
+    const view = fixture({ account: { id: 8, status: 'suspended', role: 'admin' } })
+    await flush()
+    assert.equal(view.calls.filter(call => call.path === '/erp-commercial/settings').length, 0)
+    assert.match(renderText(view.root), /escritório selecionado está suspenso/)
+    assert.doesNotMatch(renderText(view.root), /Tentar novamente/)
+    assert.doesNotMatch(renderText(view.root), /Política de inadimplência/)
+    view.app.unmount()
+
+    capability.value = { capability_key: 'office-capability-1', can_read: false, can_configure: false, can_manage_trial_link: false, reasons: { office_admin_required: ['office_admin_required'] } }
+    const roleView = fixture({ account: { id: 8, status: 'active', role: 'operator' } })
+    await flush()
+    assert.equal(roleView.calls.filter(call => call.path === '/erp-commercial/settings').length, 0)
+    assert.match(renderText(roleView.root), /Somente administradores do escritório/)
+    assert.doesNotMatch(renderText(roleView.root), /Tentar novamente/)
+    roleView.app.unmount()
+  })
+
   it('does not invent zero impact when the initial settings request fails', async () => {
     const view = fixture({ read: async () => {
       throw new Error('Leitura indisponível')
     } })
     await flush()
     assert.match(renderText(view.root), /Leitura indisponível/)
+    assert.match(renderText(view.root), /Tentar novamente/)
     assert.doesNotMatch(renderText(view.root), /0 contratos afetados/)
     view.app.unmount()
   })

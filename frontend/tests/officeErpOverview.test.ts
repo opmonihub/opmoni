@@ -63,12 +63,13 @@ test('invoice print route stays outside the commercial navigation shell', async 
   assert.doesNotMatch(html, /data-dashboard-panel/)
 })
 
-test('commercial shell tabs include all shipped pages and keep invoice descendants active', () => {
+test('commercial shell has six primary destinations, no duplicate Account name, and exact active routes', async () => {
+  const html = await renderCommercialShell('/gestao-erp')
+  assert.doesNotMatch(html, /Escritório exemplo/)
   const tabsAt = (path: string) => evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { route: { path } }).pageTabs as Array<Array<{ label: string, to: string, active: boolean }>>
   const expectedDestinations = [
     ['Visão geral', '/gestao-erp'],
-    ['Ofertas', '/gestao-erp/planos'],
-    ['Clientes da carteira', '/gestao-erp/clientes'],
+    ['Clientes ERP', '/gestao-erp/clientes'],
     ['Assinaturas', '/gestao-erp/assinaturas'],
     ['Faturas', '/gestao-erp/faturas'],
     ['Recebimentos', '/gestao-erp/recebimentos'],
@@ -76,6 +77,7 @@ test('commercial shell tabs include all shipped pages and keep invoice descendan
   ]
   const overview = tabsAt('/gestao-erp').flat()
   assert.deepEqual(overview.map(({ label, to }) => [label, to]), expectedDestinations)
+  assert.equal(overview.some(item => item.to === '/gestao-erp/planos'), false)
   assert.deepEqual(overview.filter(item => item.active).map(item => item.label), ['Visão geral'])
 
   for (const path of ['/gestao-erp/faturas', '/gestao-erp/faturas/123', '/gestao-erp/faturas/123/imprimir']) {
@@ -85,6 +87,12 @@ test('commercial shell tabs include all shipped pages and keep invoice descendan
   assert.deepEqual(tabsAt('/gestao-erp/faturas-antigas').flat().filter(item => item.active).map(item => item.label), [])
   assert.deepEqual(tabsAt('/gestao-erp/recebimentos').flat().filter(item => item.active).map(item => item.label), ['Recebimentos'])
   assert.deepEqual(tabsAt('/gestao-erp/configuracoes').flat().filter(item => item.active).map(item => item.label), ['Configurações'])
+  assert.deepEqual(tabsAt('/gestao-erp/clientes').flat().filter(item => item.active).map(item => item.label), ['Clientes ERP'])
+})
+
+test('legacy offers page remains directly routable', () => {
+  const source = vueSource('pages/gestao-erp/planos.vue')
+  assert.match(source, /definePageMeta/)
 })
 
 function mountOverview(api: () => Promise<unknown>) {
