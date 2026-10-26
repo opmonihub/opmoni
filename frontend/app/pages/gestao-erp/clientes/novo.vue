@@ -92,6 +92,16 @@ const identityStamp = computed(() => JSON.stringify([
   currentAccount.value?.role ?? null,
   context.capabilities.value?.capability_key ?? null
 ]))
+const authorityStamp = computed(() => JSON.stringify([
+  user.value?.id ?? null,
+  sessionGeneration.value,
+  currentAccount.value?.id ?? null,
+  currentAccount.value?.status ?? null,
+  currentAccount.value?.role ?? null
+]))
+let lastAuthorityStamp = authorityStamp.value
+let lastCapabilityKey = context.capabilities.value?.capability_key ?? null
+let mayApplyRoutePreselection = true
 const recoveryKey = computed(() => command.recoveryKey.value)
 const commandPending = computed(() => command.pending.value)
 const canManage = computed(() => context.capabilities.value?.can_configure === true)
@@ -189,7 +199,7 @@ async function loadClients() {
     clientLastPage.value = Math.max(1, response.meta.last_page)
     clientPage.value = response.meta.current_page
     const requestedId = Number(route.query.cliente)
-    if (!selectedClient.value && Number.isSafeInteger(requestedId) && requestedId > 0)
+    if (mayApplyRoutePreselection && !selectedClient.value && Number.isSafeInteger(requestedId) && requestedId > 0)
       selectedClient.value = clientOptions.value.find(client => client.id === requestedId) ?? null
   } catch (error) {
     if (request === clientRequest && identity === identityStamp.value)
@@ -476,6 +486,14 @@ watch([clientPage, clientSearch, identityStamp], () => {
   if (source.value === 'portfolio') void loadClients()
 }, { immediate: true, flush: 'post' })
 watch(identityStamp, () => {
+  const currentAuthority = authorityStamp.value
+  const currentCapabilityKey = context.capabilities.value?.capability_key ?? null
+  const authorityChanged = currentAuthority !== lastAuthorityStamp
+  const rightsChanged = lastCapabilityKey !== null && currentCapabilityKey !== lastCapabilityKey
+  lastAuthorityStamp = currentAuthority
+  lastCapabilityKey = currentCapabilityKey
+  if (!authorityChanged && !rightsChanged) return
+  mayApplyRoutePreselection = false
   authorityGeneration++
   clientRequest++
   plansRequest++

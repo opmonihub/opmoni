@@ -254,6 +254,12 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
   origin?: string
   lookupCnpj?: () => Promise<unknown>
   clipboardWrite?: (value: string) => Promise<void>
+  officeContext?: {
+    capabilities: Vue.ComputedRef<unknown>
+    capture: () => { key: string, generation: number }
+    isCurrent: (token: { key: string, generation: number }) => boolean
+    refresh: () => Promise<void>
+  }
 } = {}) {
   const user = Vue.ref(identity(office(8)))
   const currentAccount = Vue.computed(() => user.value.current_account)
@@ -262,7 +268,7 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
   const stateKeys: string[] = []
   const command = options.command ?? createCommand()
   if (options.initialRecovery !== undefined) command.recoveryResult = options.initialRecovery
-  const context = {
+  const context = options.officeContext ?? {
     capabilities: testCapabilities,
     capture: () => ({ key: JSON.stringify([user.value.id, session.value, currentAccount.value?.id, testCapabilities.value.capability_key]), generation: session.value }),
     isCurrent: (token: { key: string, generation: number }) => token.key === JSON.stringify([user.value.id, session.value, currentAccount.value?.id, testCapabilities.value.capability_key]) && token.generation === session.value,
@@ -345,7 +351,12 @@ function realCommandFixture(storage = new Map<string, string>(), api: (path: str
     useOfficeErpContext: contextModule.useOfficeErpContext
   })
   const scope = Vue.effectScope()
-  const context = scope.run(() => (contextModule.useOfficeErpContext as () => { refresh(): Promise<void> })())!
+  const context = scope.run(() => (contextModule.useOfficeErpContext as () => {
+    capabilities: Vue.ComputedRef<unknown>
+    capture: () => { key: string, generation: number }
+    isCurrent: (token: { key: string, generation: number }) => boolean
+    refresh: () => Promise<void>
+  })())!
   const command = scope.run(() => (commandModule.useOfficeErpCommand as () => InvitationCommand)())!
   return { command, context, capabilities, calls, storage, stop: () => scope.stop() }
 }
@@ -562,6 +573,51 @@ describe('Office ERP seller onboarding SFC', () => {
     assert.equal(controlFor(form.root, 'client_id')?.props.value, 77, textOf(form.root))
     page.app.unmount()
     form.app.unmount()
+  })
+
+  it('keeps the direct portfolio preselection while the same authority resolves its initial ERP capabilities', async () => {
+    const actual = realCommandFixture(new Map(), async (path) => {
+      if (path === '/erp-commercial/context') return { data: actual.capabilities }
+      return { data: {} }
+    })
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      command: actual.command,
+      officeContext: actual.context,
+      routeQuery: { cliente: 18 },
+      api: async path => path === '/erp-commercial/clients'
+        ? testClients()
+        : {
+            data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }],
+            eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] }
+          }
+    })
+    try {
+      assert.equal(actual.context.capabilities.value, null)
+      await flush()
+      assert.equal(controlFor(page.root, 'client_id')?.props.value, 18, textOf(page.root))
+      assert.notEqual(actual.context.capabilities.value, null)
+    } finally {
+      page.app.unmount()
+      actual.stop()
+    }
+  })
+
+  it('does not reapply a route-selected client after the Account changes', async () => {
+    const page = harness('pages/gestao-erp/clientes/novo.vue', {
+      routeQuery: { cliente: 18 },
+      api: async path => path === '/erp-commercial/enrollment-plans'
+        ? { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: 10, used_licences: 1, available_module_keys: ['purchases'] } }
+        : testClients()
+    })
+    await flush()
+    assert.equal(controlFor(page.root, 'client_id')?.props.value, 18)
+    page.user.value = identity(office(9))
+    await flush()
+    assert.equal(controlFor(page.root, 'client_id'), undefined)
+    ;(findButton(page.root, 'Selecionar da carteira')?.props.onClick as () => void)()
+    await flush()
+    assert.equal(controlFor(page.root, 'client_id')?.props.value, '', 'the old deep-link client must not be selected under a new Account')
+    page.app.unmount()
   })
 
   it('keeps the page and selected office blank of stale results after authority changes', async () => {
