@@ -46,10 +46,24 @@ final class OfficeErpExecutionContext
     public static function owner(Account $account, ?User $actor, string $purpose, string $verifiedInvitationIdentity): self
     {
         abort_unless($account->status === 'active', 403);
+        abort_unless($purpose !== 'trial.register', 403);
         abort_unless(trim($verifiedInvitationIdentity) !== '' && strlen($verifiedInvitationIdentity) <= 255, 403);
 
         $context = new self($account, $actor, 'owner', $purpose);
         $context->verifiedActorIdentity = 'owner-invitation:'.hash('sha256', $verifiedInvitationIdentity);
+        $context->verified = true;
+
+        return $context;
+    }
+
+    public static function trialRegistration(Account $account, User $actor, string $verifiedRegistrationIdentity): self
+    {
+        abort_unless($account->status === 'active', 403);
+        abort_unless($actor->exists, 403);
+        abort_unless(trim($verifiedRegistrationIdentity) !== '' && strlen($verifiedRegistrationIdentity) <= 255, 403);
+
+        $context = new self($account, $actor, 'owner', 'trial.register');
+        $context->verifiedActorIdentity = 'trial-registration:'.hash('sha256', $verifiedRegistrationIdentity);
         $context->verified = true;
 
         return $context;
