@@ -6,6 +6,11 @@ use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Models\Account;
 use App\Models\AccountMembership;
+use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
+use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpSubscription;
+use App\Models\Erp\ErpSubscriptionTrial;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Tenant\CurrentTenant;
@@ -191,6 +196,69 @@ class CommercialAdmissionTest extends OfficeErpCommercialTestCase
         }
     }
 
+    public function test_trial_registration_purpose_cannot_accept_reject_or_release_owner_reservations(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $contract = $this->acceptedContract($ctx);
+        $contract->forceFill(['agreement_status' => 'awaiting_owner'])->save();
+        $allocation = OfficeErpLicenceAllocation::factory()->create([
+            'account_id' => $ctx->accountId,
+            'contract_id' => $contract->id,
+            'state' => 'reserved',
+        ]);
+        $trialContext = OfficeErpExecutionContext::trialRegistration(
+            $ctx->account,
+            User::factory()->create(),
+            'verified-link-revision:'.$ctx->accountId.':1:owner:456',
+        );
+        $admission = app(OfficeErpAdmission::class);
+
+        foreach (['owner.accept', 'owner.reject'] as $action) {
+            try {
+                $trialContext->run(fn () => $admission->assertCommand($trialContext, $action, $contract, ['purchases'], $allocation));
+                self::fail("A trial registration context cannot perform {$action}.");
+            } catch (HttpException $exception) {
+                self::assertSame(403, $exception->getStatusCode());
+            }
+        }
+
+        try {
+            $admission->assertReleaseAuthority($trialContext, 'owner_rejected', $contract, $allocation);
+            self::fail('A trial registration context cannot release an owner reservation.');
+        } catch (HttpException $exception) {
+            self::assertSame(403, $exception->getStatusCode());
+        }
+    }
+
+    public function test_unexpired_trial_conversion_keeps_its_occupied_seat_after_quota_downgrade_to_zero(): void
+    {
+        $ctx = $this->officeContext(['enabled' => false, 'licence_limit' => 0, 'module_keys' => ['purchases']]);
+        [$contract] = $this->createOccupiedTrial($ctx);
+        $admission = app(OfficeErpAdmission::class);
+
+        $this->withOfficeAccount($ctx, fn () => $ctx->run(
+            fn () => $admission->assertCommand($ctx, 'trial.convert', $contract, ['purchases']),
+        ));
+
+        self::assertSame('trialing', ErpSubscription::query()->where('office_erp_contract_id', $contract->id)->value('status'));
+        self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $contract->id)->value('state'));
+    }
+
+    public function test_unexpired_trial_conversion_keeps_its_seat_when_quota_is_below_current_usage(): void
+    {
+        $ctx = $this->officeContext(['enabled' => false, 'licence_limit' => 1, 'module_keys' => ['purchases']]);
+        [$contract] = $this->createOccupiedTrial($ctx);
+        $this->createOccupiedTrial($ctx);
+        $admission = app(OfficeErpAdmission::class);
+
+        $this->withOfficeAccount($ctx, fn () => $ctx->run(
+            fn () => $admission->assertCommand($ctx, 'trial.convert', $contract, ['purchases']),
+        ));
+
+        self::assertSame('trialing', ErpSubscription::query()->where('office_erp_contract_id', $contract->id)->value('status'));
+        self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $contract->id)->value('state'));
+    }
+
     public function test_right_loss_preserves_only_accepted_maintenance(): void
     {
         $allowance = ['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']];
@@ -285,5 +353,35 @@ class CommercialAdmissionTest extends OfficeErpCommercialTestCase
         }
 
         self::assertSame($beforeTenant, app(CurrentTenant::class)->accountId);
+    }
+
+    /** @return array{OfficeErpContract, OfficeErpLicenceAllocation} */
+    private function createOccupiedTrial(OfficeErpExecutionContext $ctx): array
+    {
+        $contract = $this->acceptedContract($ctx);
+        $company = ErpCompany::factory()->create();
+        $contract->forceFill(['erp_company_id' => $company->id])->save();
+        $subscription = ErpSubscription::factory()->create([
+            'erp_company_id' => $company->id,
+            'office_erp_contract_id' => $contract->id,
+            'status' => 'trialing',
+        ]);
+        ErpSubscriptionTrial::query()->create([
+            'erp_subscription_id' => $subscription->id,
+            'erp_company_id' => $company->id,
+            'account_id' => $ctx->accountId,
+            'cnpj' => $company->cnpj,
+            'started_at' => now()->subHours(1),
+            'ends_at' => now()->addDays(7),
+            'link_revision' => 1,
+        ]);
+        $allocation = OfficeErpLicenceAllocation::factory()->create([
+            'account_id' => $ctx->accountId,
+            'contract_id' => $contract->id,
+            'erp_company_id' => $company->id,
+            'state' => 'occupied',
+        ]);
+
+        return [$contract->fresh(), $allocation];
     }
 }

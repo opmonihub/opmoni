@@ -248,7 +248,9 @@ final class OfficeErpAdmission
         }
 
         $ownerAcceptance = $ctx->actorKind === 'owner' && $action === 'owner.accept';
-        $convertingCurrentTrial = $action === 'trial.convert' && $this->hasCurrentUnconvertedTrial($contract);
+        $convertingCurrentTrial = $action === 'trial.convert'
+            && $allocation?->state === 'occupied'
+            && $this->hasCurrentUnconvertedTrial($contract);
         if (in_array($action, ['customer.enroll', 'trial.convert'], true) && ! $convertingCurrentTrial) {
             $this->assertCanProvision($subscription, $allowance);
         } elseif ($convertingCurrentTrial) {
@@ -270,15 +272,15 @@ final class OfficeErpAdmission
         $ownUnexpiredReservation = $allocation?->state === 'reserved'
             && $allocation->expires_at !== null
             && $allocation->expires_at->isFuture();
-        $ownTrialAllocation = $convertingCurrentTrial && $allocation?->state === 'occupied';
         $capacityRequired = in_array($action, [
             'contract.create', 'contract.send', 'invitation.issue', 'subscription.adopt', 'licence.add', 'owner.accept',
             'offer.create', 'offer.publish', 'customer.enroll', 'trial.convert',
         ], true);
         abort_if(
             $capacityRequired
+                && ! $convertingCurrentTrial
                 && $limit !== null
-                && $limit <= $counts['reserved'] + $counts['occupied'] - ($ownUnexpiredReservation ? 1 : 0) - ($ownTrialAllocation ? 1 : 0),
+                && $limit <= $counts['reserved'] + $counts['occupied'] - ($ownUnexpiredReservation ? 1 : 0),
             409,
             'licence_capacity_reached',
         );
@@ -570,6 +572,7 @@ final class OfficeErpAdmission
 
                 return;
             }
+            abort_unless($ctx->purpose !== 'trial.register', 403);
             abort_unless(in_array($action, self::ACTION_CLASSIFICATION['owner_only'], true), 403);
 
             return;
@@ -593,6 +596,7 @@ final class OfficeErpAdmission
             return;
         }
         if ($ctx->actorKind === 'owner') {
+            abort_unless($ctx->purpose !== 'trial.register', 403);
             abort_unless($reason === 'owner_rejected' && $contract->agreement_status === 'awaiting_owner', 403);
 
             return;
