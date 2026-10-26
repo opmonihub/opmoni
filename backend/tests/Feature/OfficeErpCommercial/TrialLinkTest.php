@@ -2,9 +2,10 @@
 
 namespace Tests\Feature\OfficeErpCommercial;
 
-use App\Erp\ErpCommercialCatalog;
 use App\Models\AccountMembership;
 use App\Models\Erp\Commercial\OfficeErpTrialLink;
+use App\Models\Erp\ErpPlan;
+use App\Models\Erp\ErpPlanModule;
 use App\Models\User;
 use Tests\OfficeErpCommercialTestCase;
 
@@ -14,18 +15,22 @@ final class TrialLinkTest extends OfficeErpCommercialTestCase
     {
         config(['erp.office_trial_enabled' => true]);
         $ctx = $this->officeContext(['enabled' => false, 'licence_limit' => 3, 'module_keys' => ['purchases']]);
-        $technicalPlan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        $technicalPlan = $this->technicalPlan();
         $this->selectBusinessAccount($ctx->actor, $ctx->accountId);
         $this->actingAs($ctx->actor);
 
-        $this->getJson('/api/v1/erp-commercial/trial-link')->assertOk()->assertJsonPath('data.configured', false);
+        $this->getJson('/api/v1/erp-commercial/trial-link')
+            ->assertOk()
+            ->assertJsonPath('data.configured', false)
+            ->assertJsonPath('data.plans.0.id', $technicalPlan->id)
+            ->assertJsonPath('data.plans.0.module_keys', ['purchases']);
         $this->putJson('/api/v1/erp-commercial/trial-link', [
             'erp_plan_id' => $technicalPlan->id,
             'enabled' => true,
         ], ['Idempotency-Key' => '11111111-1111-4111-8111-111111111111'])
             ->assertOk()
             ->assertJsonPath('data.enabled', true)
-            ->assertJsonPath('data.plan.name', 'Básico ERP');
+            ->assertJsonPath('data.plan.name', 'ERP Básico Teste');
 
         $link = OfficeErpTrialLink::query()->where('account_id', $ctx->accountId)->firstOrFail();
         $code = (string) $link->public_code;
@@ -55,7 +60,7 @@ final class TrialLinkTest extends OfficeErpCommercialTestCase
     {
         config(['erp.office_trial_enabled' => true]);
         $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
-        $technicalPlan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        $technicalPlan = $this->technicalPlan();
         $other = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
         $this->selectBusinessAccount($ctx->actor, $ctx->accountId);
         $this->actingAs($ctx->actor);
@@ -86,7 +91,7 @@ final class TrialLinkTest extends OfficeErpCommercialTestCase
     {
         config(['erp.office_trial_enabled' => false]);
         $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 0, 'module_keys' => ['purchases']]);
-        $technicalPlan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        $technicalPlan = $this->technicalPlan();
         $this->selectBusinessAccount($ctx->actor, $ctx->accountId);
         $this->actingAs($ctx->actor);
         $this->putJson('/api/v1/erp-commercial/trial-link', [
@@ -104,5 +109,13 @@ final class TrialLinkTest extends OfficeErpCommercialTestCase
 
         config(['erp.office_trial_enabled' => false]);
         $this->getJson('/api/v1/erp/trials/'.$code)->assertNotFound();
+    }
+
+    private function technicalPlan(): ErpPlan
+    {
+        $plan = ErpPlan::factory()->create(['name' => 'ERP Básico Teste']);
+        ErpPlanModule::factory()->create(['erp_plan_id' => $plan->id, 'module_key' => 'purchases']);
+
+        return $plan->load('modules');
     }
 }

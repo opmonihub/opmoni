@@ -19,7 +19,7 @@ final class OfficeErpTrialLinks
     /** @return array<string, mixed> */
     public function read(OfficeErpExecutionContext $ctx): array
     {
-        $this->assertCanManage($ctx);
+        $capabilities = $this->assertCanManage($ctx);
 
         $link = OfficeErpRecords::query($ctx, OfficeErpTrialLink::class)
             ->with('plan.modules')
@@ -32,6 +32,7 @@ final class OfficeErpTrialLinks
             'url' => $link === null ? null : $this->url((string) $link->public_code),
             'erp_plan_id' => $link?->erp_plan_id,
             'plan' => $link === null ? null : $this->planSummary($link->plan),
+            'plans' => $this->eligiblePlans($capabilities['allowance']['module_keys'] ?? []),
         ];
     }
 
@@ -179,13 +180,15 @@ final class OfficeErpTrialLinks
         $admission->assertCommand($ctx, $action, modules: $modules);
     }
 
-    private function assertCanManage(OfficeErpExecutionContext $ctx, array $modules = []): void
+    private function assertCanManage(OfficeErpExecutionContext $ctx, array $modules = []): array
     {
         $capabilities = $this->admission->capabilities($ctx);
         abort_unless($capabilities['can_manage_trial_link'] ?? false, 403);
         if ($modules !== []) {
             $this->assertPlanAllowed($ctx, $modules);
         }
+
+        return $capabilities;
     }
 
     /** @param list<string> $modules */
@@ -222,6 +225,27 @@ final class OfficeErpTrialLinks
     private function planSummary(ErpPlan $plan): array
     {
         return ['name' => (string) $plan->name, 'module_keys' => array_values($plan->modules->pluck('module_key')->all())];
+    }
+
+    /** @param list<string> $allowedModules @return list<array{id: int, name: string, module_keys: list<string>}> */
+    private function eligiblePlans(array $allowedModules): array
+    {
+        return ErpPlan::query()
+            ->with('modules')
+            ->orderBy('name')
+            ->get()
+            ->filter(function (ErpPlan $plan) use ($allowedModules): bool {
+                $modules = $plan->modules->pluck('module_key')->all();
+
+                return $modules !== [] && array_diff($modules, $allowedModules) === [];
+            })
+            ->map(fn (ErpPlan $plan): array => [
+                'id' => (int) $plan->getKey(),
+                'name' => (string) $plan->name,
+                'module_keys' => array_values($plan->modules->pluck('module_key')->all()),
+            ])
+            ->values()
+            ->all();
     }
 
     private function url(string $code): string
