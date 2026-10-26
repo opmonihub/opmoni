@@ -26,9 +26,17 @@ function ownerIdentity(): TestIdentity {
   }
 }
 
-function mountAdministration(kind: 'members' | 'establishments', identityValue: TestIdentity, handler: (path: string, options?: Record<string, unknown>) => Promise<unknown> | unknown) {
+function mountAdministration(kind: 'members' | 'establishments', identityValue: TestIdentity, handler: (path: string, options?: Record<string, unknown>) => Promise<unknown> | unknown, navigationCache = new Map<string, Vue.Ref>()) {
   const identity = Vue.ref(identityValue)
   const session = Vue.ref(0)
+  const navigation = loadAppComposable('composables/useListNavigationState.ts', {
+    useState: (key: string, initial: () => unknown) => {
+      if (key === 'access-user') return identity
+      if (key === 'access-session-generation') return session
+      if (!navigationCache.has(key)) navigationCache.set(key, Vue.ref(initial()))
+      return navigationCache.get(key)
+    }
+  })
   const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
   const api = async (path: string, options?: Record<string, unknown>) => {
     calls.push({ path, options })
@@ -51,10 +59,12 @@ function mountAdministration(kind: 'members' | 'establishments', identityValue: 
     }
   }).useErpAdministrationContext as () => Record<string, unknown>
   const globals = {
+    ...navigation,
     computed: Vue.computed,
     ref: Vue.ref,
     reactive: Vue.reactive,
     watch: Vue.watch,
+    onScopeDispose: Vue.onScopeDispose,
     nextTick: Vue.nextTick,
     useId: () => 'company-administration-test',
     useAuth,
@@ -84,7 +94,7 @@ function mountAdministration(kind: 'members' | 'establishments', identityValue: 
       }
     })
   })
-  return { identity, calls, exposed, bindings, stop: () => scope.stop() }
+  return { identity, session, calls, exposed, bindings, stop: () => scope.stop() }
 }
 
 async function flushVue() {
@@ -94,6 +104,120 @@ async function flushVue() {
 }
 
 describe('ERP company administration editor', () => {
+  for (const kind of ['establishments', 'members'] as const) {
+    it(`retains ${kind} navigation criteria across reentry without storing editor state`, async () => {
+      const cache = new Map<string, Vue.Ref>()
+      const handler = (path: string) => ({ data: [], meta: { current_page: Number(new URL(path, 'http://local').searchParams.get('page') ?? 1), last_page: 5, all_establishments: true } })
+      const first = mountAdministration(kind, ownerIdentity(), handler, cache)
+      await flushVue()
+      ;(first.bindings.searchText as Vue.Ref<string>).value = '  Filial  '
+      first.exposed.applySearch()
+      await flushVue()
+      ;(first.exposed.currentPage as Vue.Ref<number>).value = 3
+      await flushVue()
+      first.exposed.beginCreate()
+      first.stop()
+      const second = mountAdministration(kind, ownerIdentity(), (path) => {
+        const page = Number(new URL(path, 'http://local').searchParams.get('page') ?? 1)
+        return { data: [], meta: { current_page: page, last_page: 5, all_establishments: true } }
+      }, cache)
+      try {
+        await flushVue()
+        const main = second.calls.filter(call => call.path.startsWith(`/erp/${kind}?`))
+        assert.equal(main.length, 1)
+        assert.match(main[0]!.path, /page=3/)
+        assert.match(main[0]!.path, /search=Filial/)
+        assert.equal((second.bindings.searchText as Vue.Ref<string>).value, 'Filial')
+        assert.equal((second.exposed.formOpen as Vue.Ref<boolean>).value, false)
+        assert.equal((second.exposed.establishmentPage as Vue.Ref<number>).value, 1)
+        assert.doesNotMatch(JSON.stringify(cache.get('list-navigation-state')?.value), /establishmentIds|permissionsMode|cnpj|formOpen/)
+      } finally { second.stop() }
+    })
+  }
+
+  it('aborts obsolete navigation reads on replacement and disposal', async () => {
+    const signals: AbortSignal[] = []
+    const mounted = mountAdministration('establishments', ownerIdentity(), (_path, options) => {
+      signals.push(options?.signal as AbortSignal)
+      return new Promise(() => {})
+    })
+    await flushVue()
+    void mounted.exposed.load()
+    assert.equal(signals[0]?.aborted, true)
+    assert.equal(signals[1]?.aborted, false)
+    mounted.stop()
+    assert.equal(signals[1]?.aborted, true)
+  })
+
+  it('submits one normalized page-one navigation read after changing a search on a later page', async () => {
+    const mounted = mountAdministration('establishments', ownerIdentity(), path => ({ data: [], meta: { current_page: Number(new URL(path, 'http://local').searchParams.get('page')), last_page: 5, all_establishments: true } }))
+    try {
+      await flushVue()
+      ;(mounted.exposed.currentPage as Vue.Ref<number>).value = 3
+      await flushVue()
+      const before = mounted.calls.length
+      ;(mounted.bindings.searchText as Vue.Ref<string>).value = '  Atualizada  '
+      mounted.exposed.applySearch()
+      await flushVue()
+      assert.equal(mounted.calls.length, before + 1)
+      assert.match(mounted.calls.at(-1)!.path, /page=1.*search=Atualizada/)
+    } finally { mounted.stop() }
+  })
+
+  it('bounds remembered navigation pages using confirmed server totals', async () => {
+    const cache = new Map<string, Vue.Ref>()
+    const first = mountAdministration('establishments', ownerIdentity(), path => ({ data: [], meta: { current_page: Number(new URL(path, 'http://local').searchParams.get('page')), last_page: 5, all_establishments: true } }), cache)
+    await flushVue()
+    ;(first.exposed.currentPage as Vue.Ref<number>).value = 5
+    await flushVue()
+    first.stop()
+    const second = mountAdministration('establishments', ownerIdentity(), path => ({ data: [], meta: { current_page: Number(new URL(path, 'http://local').searchParams.get('page')), last_page: 2, all_establishments: true } }), cache)
+    try {
+      await flushVue()
+      assert.deepEqual(second.calls.map(call => new URL(call.path, 'http://local').searchParams.get('page')), ['5', '2'])
+      assert.equal((second.exposed.currentPage as Vue.Ref<number>).value, 2)
+    } finally { second.stop() }
+  })
+
+  for (const boundary of ['company', 'session', 'grants']) {
+    it(`clears private navigation criteria synchronously on ${boundary} changes`, async () => {
+      const mounted = mountAdministration('establishments', ownerIdentity(), path => ({ data: [], meta: { current_page: Number(new URL(path, 'http://local').searchParams.get('page')), last_page: 5, all_establishments: true } }))
+      try {
+        await flushVue()
+        ;(mounted.bindings.searchText as Vue.Ref<string>).value = 'Private search'
+        mounted.exposed.applySearch()
+        await flushVue()
+        if (boundary === 'company') mounted.identity.value.current_company!.id++
+        else if (boundary === 'session') mounted.session.value++
+        else mounted.identity.value.current_company!.permissions = ['erp.establishments.index']
+        assert.equal((mounted.bindings.searchText as Vue.Ref<string>).value, '')
+        assert.equal((mounted.exposed.currentPage as Vue.Ref<number>).value, 1)
+        const before = mounted.calls.length
+        await flushVue()
+        assert.equal(mounted.calls.length, before + 1, 'an authority change has one final criteria read owner')
+      } finally { mounted.stop() }
+    })
+  }
+
+  it('clears navigation and private search input after a definitive same-context refusal', async () => {
+    let denied = false
+    const cache = new Map<string, Vue.Ref>()
+    const mounted = mountAdministration('establishments', ownerIdentity(), () => {
+      if (denied) throw { statusCode: 403 }
+      return { data: [], meta: { current_page: 1, last_page: 1, all_establishments: true } }
+    }, cache)
+    try {
+      await flushVue()
+      ;(mounted.bindings.searchText as Vue.Ref<string>).value = 'Private filter'
+      mounted.exposed.applySearch()
+      await flushVue()
+      denied = true
+      await mounted.exposed.load()
+      assert.equal((mounted.bindings.searchText as Vue.Ref<string>).value, '')
+      assert.equal((mounted.exposed.canView as Vue.Ref<boolean>).value, false)
+      assert.doesNotMatch(JSON.stringify(cache.get('list-navigation-state')?.value), /Private filter/)
+    } finally { mounted.stop() }
+  })
   it('uses the native form and field components for administration controls', () => {
     const template = descriptor.template?.content ?? ''
 

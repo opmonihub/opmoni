@@ -76,6 +76,26 @@ const selectedClient = computed(() => !clientResultsStale.value && clientResults
 let ownerReadGeneration = 0
 let officeReadGeneration = 0
 let clientSearchGeneration = 0
+let ownerReadController: AbortController | undefined
+let officeReadController: AbortController | undefined
+let clientSearchController: AbortController | undefined
+
+function invalidateReads() {
+  ownerReadGeneration++
+  officeReadGeneration++
+  clientSearchGeneration++
+  ownerReadController?.abort()
+  officeReadController?.abort()
+  clientSearchController?.abort()
+}
+
+onScopeDispose(invalidateReads)
+watch(authorityBlocked, (blocked) => {
+  if (!blocked) return
+  invalidateReads()
+  loading.value = false
+  searchingClients.value = false
+}, { flush: 'sync' })
 
 function api<T>(path: string, options?: Record<string, unknown>): Promise<T> {
   return $api<T>(path, options as never)
@@ -185,12 +205,15 @@ async function loadOwner() {
   if (!canManageOwnerDelegation.value || !currentCompany.value?.id) return
   const token = capture()
   const request = ++ownerReadGeneration
+  ownerReadController?.abort()
+  const controller = new AbortController()
+  ownerReadController = controller
   loading.value = true
   listError.value = ''
   try {
     const [state, permissions] = await Promise.all([
-      api<{ data: OwnerMappingState }>('/erp/accounting-mappings'),
-      api<{ data: PermissionChoice[] }>('/erp/member-permissions')
+      api<{ data: OwnerMappingState }>('/erp/accounting-mappings', { signal: controller.signal }),
+      api<{ data: PermissionChoice[] }>('/erp/member-permissions', { signal: controller.signal })
     ])
     if (!isCurrent(token) || request !== ownerReadGeneration) return
     ownerState.value = state.data
@@ -203,12 +226,15 @@ async function loadOwner() {
       ownerPermissions.value = ['erp.read']
     }
   } catch (error) {
+    if (controller.signal.aborted) return
     if (isCurrent(token) && request === ownerReadGeneration) {
+      controller.abort()
       handleOwnerAuthorityError(error)
       listError.value = apiErrorMessage(error) ?? 'Não foi possível carregar a delegação atual.'
     }
   } finally {
     if (isCurrent(token) && request === ownerReadGeneration) loading.value = false
+    if (ownerReadController === controller) ownerReadController = undefined
   }
 }
 
@@ -216,12 +242,15 @@ async function loadOfficeContext(companyId: number, page = 1, append = false) {
   if (!canApproveForOffice.value || !officeCompanies.value.some(company => company.id === companyId)) return
   const token = capture()
   const request = ++officeReadGeneration
+  officeReadController?.abort()
+  const controller = new AbortController()
+  officeReadController = controller
   loading.value = true
   listError.value = ''
   try {
     const query = new URLSearchParams({ company_id: String(companyId), page: String(page), per_page: '100' })
-    const contextPromise = api<OfficeContextPage>(`/account/erp-accounting-mappings/context?${query}`)
-    const mappingPromise = append ? Promise.resolve(null) : api<{ data: Mapping[] }>(`/account/erp-accounting-mappings?company_id=${companyId}`)
+    const contextPromise = api<OfficeContextPage>(`/account/erp-accounting-mappings/context?${query}`, { signal: controller.signal })
+    const mappingPromise = append ? Promise.resolve(null) : api<{ data: Mapping[] }>(`/account/erp-accounting-mappings?company_id=${companyId}`, { signal: controller.signal })
     const [context, approved] = await Promise.all([
       contextPromise,
       mappingPromise
@@ -236,12 +265,15 @@ async function loadOfficeContext(companyId: number, page = 1, append = false) {
     if (approved) mappings.value = approved.data
     if (!append && !selectedEstablishmentId.value) selectedEstablishmentId.value = context.data.establishments[0]?.id ?? null
   } catch (error) {
+    if (controller.signal.aborted) return
     if (isCurrent(token) && request === officeReadGeneration) {
+      controller.abort()
       handleOfficeAuthorityError(error)
       listError.value = apiErrorMessage(error) ?? 'Não foi possível carregar o contexto da empresa.'
     }
   } finally {
     if (isCurrent(token) && request === officeReadGeneration) loading.value = false
+    if (officeReadController === controller) officeReadController = undefined
   }
 }
 
@@ -271,6 +303,9 @@ async function searchClients(page = 1, append = false) {
   if (page > 1 && (!submittedClientQuery.value || page !== clientPage.value + 1 || page > clientLastPage.value)) return
   const token = capture()
   const request = ++clientSearchGeneration
+  clientSearchController?.abort()
+  const controller = new AbortController()
+  clientSearchController = controller
   if (!append) {
     submittedClientQuery.value = query
     clientResultsStale.value = clients.value.length > 0 && clientResultsQuery.value !== query
@@ -280,7 +315,7 @@ async function searchClients(page = 1, append = false) {
   fieldErrors.value = { ...fieldErrors.value, client_query: '' }
   try {
     const params = new URLSearchParams({ q: query, status: 'active', per_page: '25', page: String(page) })
-    const response = await api<ClientSearchPage>(`/clients?${params}`)
+    const response = await api<ClientSearchPage>(`/clients?${params}`, { signal: controller.signal })
     if (!isCurrent(token) || request !== clientSearchGeneration) return
     const activeClients = response.data.filter(client => client.status === 'active')
     clients.value = append
@@ -293,6 +328,7 @@ async function searchClients(page = 1, append = false) {
     if (!append && !clients.value.some(client => client.id === selectedClientId.value)) selectedClientId.value = null
     if (clients.value.length === 0) fieldErrors.value = { ...fieldErrors.value, client_query: 'Nenhum cliente ativo deste escritório corresponde à busca.' }
   } catch (error) {
+    if (controller.signal.aborted) return
     if (!isCurrent(token) || request !== clientSearchGeneration) return
     const status = apiStatus(error)
     if (isAuthorizationLoss(error) || [404, 409].includes(status ?? 0)) {
@@ -306,6 +342,7 @@ async function searchClients(page = 1, append = false) {
     errorMessage.value = apiErrorMessage(error) ?? 'Não foi possível pesquisar clientes.'
   } finally {
     if (isCurrent(token) && request === clientSearchGeneration) searchingClients.value = false
+    if (clientSearchController === controller) clientSearchController = undefined
   }
 }
 
@@ -456,9 +493,7 @@ async function revokeDelegation() {
 }
 
 watch(contextKey, () => {
-  ownerReadGeneration++
-  officeReadGeneration++
-  clientSearchGeneration++
+  invalidateReads()
   loading.value = false
   busyAction.value = ''
   searchingClients.value = false
@@ -475,6 +510,7 @@ watch(contextKey, () => {
 watch(clientQuery, (query) => {
   if (searchingClients.value && query.trim() !== submittedClientQuery.value) {
     clientSearchGeneration++
+    clientSearchController?.abort()
     searchingClients.value = false
   }
   const matchesLastSearch = query.trim() === clientResultsQuery.value

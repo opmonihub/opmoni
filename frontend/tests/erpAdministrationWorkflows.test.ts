@@ -231,12 +231,22 @@ function compileAndMount(file: URL, props: Record<string, unknown>, identityValu
   })
   const identity = Vue.ref(identityValue)
   const session = Vue.ref(0)
+  const navigationCache = new Map<string, Vue.Ref>()
+  const navigation = loadAppComposable('composables/useListNavigationState.ts', {
+    useState: (key: string, initial: () => unknown) => {
+      if (key === 'access-user') return identity
+      if (key === 'access-session-generation') return session
+      if (!navigationCache.has(key)) navigationCache.set(key, Vue.ref(initial()))
+      return navigationCache.get(key)
+    }
+  })
   const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
   const api = async (path: string, options?: Record<string, unknown>) => {
     calls.push({ path, options })
     return await apiHandler(path, options)
   }
   const globals: Record<string, unknown> = {
+    ...navigation,
     computed: Vue.computed,
     ref: Vue.ref,
     reactive: Vue.reactive,
@@ -620,6 +630,31 @@ function assertFieldErrorAssociation(root: HostNode, control: HostNode, message:
 }
 
 describe('ERP administration rendered SFC interactions', () => {
+  for (const mode of ['owner', 'office']) {
+    it(`aborts ${mode} mapping safe reads on replacement and disposal`, async () => {
+      const identity = defaultOwnerIdentity()
+      identity.current_account = { id: 55, name: 'Escritório', status: 'active', role: 'admin' }
+      const signals: AbortSignal[] = []
+      const responses: Array<(value: unknown) => void> = []
+      const mount = compileAndMount(mappingApprovalFile, { mode }, identity, (_path, options) => {
+        signals.push(options?.signal as AbortSignal)
+        return new Promise((resolve) => {
+          responses.push(resolve)
+        })
+      })
+      if (mode === 'office') mount.instance.selectOfficeCompany('10')
+      await flushVue()
+      assert.equal(signals.length, 2)
+      const latest = mode === 'owner' ? mount.instance.loadOwner() : mount.instance.loadOfficeContext(10)
+      assert.ok(signals.slice(0, 2).every(signal => signal.aborted))
+      assert.ok(signals.slice(2).every(signal => !signal.aborted))
+      mount.unmount()
+      assert.ok(signals.every(signal => signal.aborted))
+      responses.forEach(resolve => resolve({ data: [], meta: { current_page: 1, last_page: 1 } }))
+      await latest
+    })
+  }
+
   it('retains establishment fields and server validation feedback after a 422 submit', async (t) => {
     let submissions = 0
     const mount = compileAndMount(companyAdministrationFile, { kind: 'establishments' }, defaultOwnerIdentity(), async (path, options) => {
@@ -1152,10 +1187,14 @@ describe('ERP administration rendered SFC interactions', () => {
       const identity = defaultOwnerIdentity()
       identity.current_account = { id: 55, name: 'Escritório', status: 'active', role: 'admin' }
       const pending: Array<{ resolve: (value: unknown) => void, reject: (error: unknown) => void }> = []
-      const mount = compileAndMount(mappingApprovalFile, { mode: 'office' }, identity, async (path) => {
+      const signals: AbortSignal[] = []
+      const mount = compileAndMount(mappingApprovalFile, { mode: 'office' }, identity, async (path, options) => {
         if (path.startsWith('/account/erp-accounting-mappings/context?')) return { data: { delegation_id: 31, status: 'active', establishments: [{ id: 42, name: 'Matriz' }] }, meta: { current_page: 1, last_page: 1, per_page: 100, total: 1 } }
         if (path.startsWith('/account/erp-accounting-mappings?company_id=')) return { data: [] }
-        if (path.startsWith('/clients?')) return await new Promise((resolve, reject) => pending.push({ resolve, reject }))
+        if (path.startsWith('/clients?')) {
+          signals.push(options?.signal as AbortSignal)
+          return await new Promise((resolve, reject) => pending.push({ resolve, reject }))
+        }
         throw new Error(`Unexpected ERP request: ${path}`)
       })
       t.after(mount.unmount)
@@ -1167,6 +1206,7 @@ describe('ERP administration rendered SFC interactions', () => {
       await flushVue()
       assert.equal(pending.length, 1)
       changeInput(mount.root, node => node.props.placeholder === 'Nome ou documento', 'Atual')
+      assert.equal(signals[0]?.aborted, true, 'changing the editor query aborts its obsolete safe read')
       await Vue.nextTick()
       const button = findHostNodes(mount.root, node => node.tag === 'button' && hostText(node).includes('Pesquisar clientes'))[0]!
       assert.equal(button.props.disabled, false, 'a changed query must be searchable without waiting for the obsolete request')
@@ -1412,6 +1452,40 @@ describe('ERP administration rendered SFC interactions', () => {
     assert.deepEqual(mount.instance.mappings, [])
     assert.equal(mount.instance.canApproveForOffice, false)
     assert.equal(hostText(mount.root as never).includes('Cliente protegido'), false)
+  })
+
+  it('aborts a concurrent owner read after a definitive command refusal and ignores its late response', async (t) => {
+    const response = { data: { delegation_id: null, status: 'not_delegated', delegation: null, mappings: [] } }
+    let waitForRead = false
+    let finish!: (value: unknown) => void
+    let signal: AbortSignal | undefined
+    const mount = compileAndMount(mappingApprovalFile, { mode: 'owner' }, defaultOwnerIdentity(), (path, options) => {
+      if (path === '/erp/member-permissions') return { data: [] }
+      if (path === '/erp/accounting-mappings') {
+        if (!waitForRead) return response
+        signal = options?.signal as AbortSignal
+        return new Promise((resolve) => {
+          finish = resolve
+        })
+      }
+      if (path === '/erp/delegations' && options?.method === 'POST') {
+        assert.equal(options.signal, undefined, 'explicit commands keep their established lifecycle')
+        throw { statusCode: 403 }
+      }
+      throw new Error(`Unexpected ERP request: ${path}`)
+    })
+    t.after(mount.unmount)
+    await flushVue()
+    waitForRead = true
+    const read = mount.instance.loadOwner()
+    mount.instance.accountId = '55'
+    mount.instance.requestDelegationGrant()
+    await mount.instance.grantDelegation()
+    assert.equal(signal?.aborted, true)
+    assert.equal(mount.instance.ownerState, null)
+    finish(response)
+    await read
+    assert.equal(mount.instance.ownerState, null, 'the old protected read cannot restore a refused authority')
   })
 
   it('clears owner delegation state after a forbidden grant response', async (t) => {

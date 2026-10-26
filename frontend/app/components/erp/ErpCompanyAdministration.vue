@@ -27,14 +27,12 @@ const rows = ref<Array<Establishment | CompanyMember>>([])
 const establishments = ref<Establishment[]>([])
 const permissionChoices = ref<PermissionChoice[]>([])
 const roleDefaults = ref<Record<string, string[]>>({})
-const currentPage = ref(1)
 const lastPage = ref(1)
 const hasAllEstablishments = ref(false)
 const establishmentPage = ref(1)
 const establishmentLastPage = ref(1)
 const searchText = ref('')
 const searchState = computed(() => ({ search: searchText.value }))
-const submittedSearch = ref('')
 const establishmentSearchText = ref('')
 const submittedEstablishmentSearch = ref('')
 const loading = ref(false)
@@ -80,8 +78,28 @@ const canView = computed(() => !authorityBlocked.value && (isEstablishmentKind.v
 const canCreate = computed(() => !authorityBlocked.value && !listStale.value && (isEstablishmentKind.value ? canCreateEstablishments.value : isCompanyOwner.value))
 const canUpdate = computed(() => !authorityBlocked.value && !listStale.value && (isEstablishmentKind.value ? canUpdateEstablishments.value : isCompanyOwner.value))
 const canWrite = computed(() => canCreate.value || canUpdate.value)
+const navigation = useListNavigationState(`erp.settings.${props.kind}`, {
+  defaults: () => ({ search: '', page: 1 }),
+  normalize: (value) => {
+    const criteria = value as { search?: unknown, page?: unknown } | null
+    return {
+      search: typeof criteria?.search === 'string' ? criteria.search.trim() : '',
+      page: typeof criteria?.page === 'number' && Number.isSafeInteger(criteria.page) && criteria.page > 0 ? criteria.page : 1
+    }
+  },
+  authority: () => authorityBlocked.value ? 'denied' : contextKey.value
+})
+const currentPage = listNavigationField(navigation, 'page')
+const submittedSearch = listNavigationField(navigation, 'search')
+searchText.value = submittedSearch.value
 
 let listRequestGeneration = 0
+let listReadController: AbortController | undefined
+
+onScopeDispose(() => {
+  listRequestGeneration++
+  listReadController?.abort()
+})
 
 function api<T>(path: string, options?: Record<string, unknown>): Promise<T> {
   return $api<T>(path, options as never)
@@ -112,12 +130,12 @@ function resetForm() {
   confirmTarget.value = null
 }
 
-function clearProtectedRows() {
+function clearProtectedRows(resetPage = true) {
   rows.value = []
   establishments.value = []
   permissionChoices.value = []
   roleDefaults.value = {}
-  currentPage.value = 1
+  if (resetPage) currentPage.value = 1
   lastPage.value = 1
   hasAllEstablishments.value = false
   establishmentPage.value = 1
@@ -129,6 +147,7 @@ function handleAuthorityError(error: unknown) {
   const contextChanged = status === 409 && (error as { data?: { code?: string } }).data?.code === 'company_context_changed'
   if ([401, 403].includes(status ?? 0) || contextChanged) {
     listRequestGeneration++
+    listReadController?.abort()
     loading.value = false
     clearProtectedRows()
     resetForm()
@@ -136,6 +155,9 @@ function handleAuthorityError(error: unknown) {
     editorReturnFocus.value = null
     confirmTarget.value = null
     authorityBlocked.value = true
+    searchText.value = ''
+    establishmentSearchText.value = ''
+    submittedEstablishmentSearch.value = ''
     listStale.value = false
     return
   }
@@ -151,16 +173,25 @@ async function load() {
   if (!canView.value) return
   const token = capture()
   const request = ++listRequestGeneration
+  listReadController?.abort()
+  const controller = new AbortController()
+  listReadController = controller
+  const options = { signal: controller.signal }
   loading.value = true
   listError.value = ''
   try {
     if (props.kind === 'establishments') {
       const query = new URLSearchParams({ page: String(currentPage.value), per_page: '100', status: 'all' })
       if (submittedSearch.value) query.set('search', submittedSearch.value)
-      const response = await api<{ data: Establishment[], meta: { current_page: number, last_page: number, all_establishments: boolean } }>(`/erp/establishments?${query}`)
+      const response = await api<{ data: Establishment[], meta: { current_page: number, last_page: number, all_establishments: boolean } }>(`/erp/establishments?${query}`, options)
       if (!isCurrent(token) || request !== listRequestGeneration) return
-      rows.value = response.data
       lastPage.value = response.meta.last_page
+      const page = Math.max(1, Math.min(response.meta.current_page, lastPage.value))
+      if (currentPage.value !== page) {
+        currentPage.value = page
+        return
+      }
+      rows.value = response.data
       hasAllEstablishments.value = response.meta.all_establishments
       listStale.value = false
       return
@@ -171,25 +202,35 @@ async function load() {
     const establishmentQuery = new URLSearchParams({ page: String(establishmentPage.value), per_page: '100', status: 'all' })
     if (submittedEstablishmentSearch.value) establishmentQuery.set('search', submittedEstablishmentSearch.value)
     const [members, establishmentResults, permissions] = await Promise.all([
-      api<{ data: CompanyMember[], meta: { current_page: number, last_page: number } }>(`/erp/members?${memberQuery}`),
-      api<{ data: Establishment[], meta: { current_page: number, last_page: number } }>(`/erp/establishments?${establishmentQuery}`),
-      api<{ data: PermissionChoice[], meta?: { roles?: Array<{ role: string, default_permissions: string[] }> } }>('/erp/member-permissions')
+      api<{ data: CompanyMember[], meta: { current_page: number, last_page: number } }>(`/erp/members?${memberQuery}`, options),
+      api<{ data: Establishment[], meta: { current_page: number, last_page: number } }>(`/erp/establishments?${establishmentQuery}`, options),
+      api<{ data: PermissionChoice[], meta?: { roles?: Array<{ role: string, default_permissions: string[] }> } }>('/erp/member-permissions', options)
     ])
     if (!isCurrent(token) || request !== listRequestGeneration) return
-    rows.value = members.data
     lastPage.value = members.meta.last_page
     establishmentLastPage.value = establishmentResults.meta.last_page
+    const page = Math.max(1, Math.min(members.meta.current_page, lastPage.value))
+    const referencePage = Math.max(1, Math.min(establishmentResults.meta.current_page, establishmentLastPage.value))
+    if (currentPage.value !== page || establishmentPage.value !== referencePage) {
+      currentPage.value = page
+      establishmentPage.value = referencePage
+      return
+    }
+    rows.value = members.data
     establishments.value = establishmentResults.data
     permissionChoices.value = permissions.data
     roleDefaults.value = Object.fromEntries((permissions.meta?.roles ?? []).map(item => [item.role, item.default_permissions]))
     listStale.value = false
   } catch (error) {
+    if (controller.signal.aborted) return
     if (isCurrent(token) && request === listRequestGeneration) {
+      controller.abort()
       handleAuthorityError(error)
       listError.value = apiErrorMessage(error) ?? 'Não foi possível carregar a lista de administração.'
     }
   } finally {
     if (isCurrent(token) && request === listRequestGeneration) loading.value = false
+    if (listReadController === controller) listReadController = undefined
   }
 }
 
@@ -396,11 +437,12 @@ function setEstablishment(id: number, checked: boolean) {
   form.establishmentIds = [...next].sort((left, right) => left - right)
 }
 
-watch(contextKey, () => {
+watch(contextKey, (_key, previousKey) => {
   listRequestGeneration++
-  clearProtectedRows()
-  searchText.value = ''
-  submittedSearch.value = ''
+  listReadController?.abort()
+  clearProtectedRows(previousKey !== undefined)
+  if (previousKey !== undefined) navigation.value = { search: '', page: 1 }
+  searchText.value = submittedSearch.value
   establishmentSearchText.value = ''
   submittedEstablishmentSearch.value = ''
   loading.value = false
@@ -411,12 +453,11 @@ watch(contextKey, () => {
   formOpen.value = false
   editorReturnFocus.value = null
   resetForm()
-  if (canView.value) void load()
 }, { immediate: true, flush: 'sync' })
 
-watch([currentPage, establishmentPage], () => {
+watch([contextKey, currentPage, establishmentPage], () => {
   void load()
-})
+}, { immediate: true })
 
 defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, formOpen, busyAction, fieldErrors, errorMessage,
   canReadEstablishments, canCreateEstablishments, canUpdateEstablishments, canView, canCreate, canUpdate, canWrite, listStale, authorityBlocked, currentPage, establishmentPage, lastPage, establishmentLastPage,
