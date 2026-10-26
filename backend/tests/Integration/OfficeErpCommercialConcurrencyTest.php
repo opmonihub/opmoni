@@ -445,7 +445,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
     {
         $trialOffice = $this->commercialFixture(2);
         $enrollmentOffice = $this->commercialFixture(2);
-        $technicalPlan = ErpPlan::factory()->create();
+        $technicalPlan = ErpPlan::factory()->create(['slug' => $this->uniqueErpPlanSlug()]);
         $technicalPlan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
         $trialLink = $this->trialLinkFixture($trialOffice, $technicalPlan);
         $trialCnpj = $this->uniqueCnpj();

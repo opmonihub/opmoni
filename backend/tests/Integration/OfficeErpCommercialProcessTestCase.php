@@ -241,7 +241,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
     /** @return array{link: OfficeErpTrialLink, code: string, plan_id: int} */
     protected function trialLinkFixture(array $office, ?ErpPlan $selectedPlan = null): array
     {
-        $plan = $selectedPlan ?? ErpPlan::factory()->create();
+        $plan = $selectedPlan ?? ErpPlan::factory()->create(['slug' => $this->uniqueErpPlanSlug()]);
         if (! $plan->modules()->where('module_key', 'purchases')->exists()) {
             $plan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
         }
@@ -275,7 +275,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
                 'cnpj' => $contract->client->tax_id,
                 'owner_setup_status' => 'unclaimed',
             ]);
-            $plan = ErpPlan::factory()->create();
+            $plan = ErpPlan::factory()->create(['slug' => $this->uniqueErpPlanSlug()]);
             $plan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
             $contract->forceFill([
                 'erp_company_id' => $company->id,
@@ -435,7 +435,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
                     ])->save();
                     ErpSubscription::factory()->active()->create([
                         'erp_company_id' => $company->id,
-                        'erp_plan_id' => ErpPlan::factory()->create()->id,
+                        'erp_plan_id' => ErpPlan::factory()->create(['slug' => $this->uniqueErpPlanSlug()])->id,
                         'office_erp_contract_id' => $contract->id,
                     ]);
                     OfficeErpLicenceAllocation::factory()->create([
@@ -1038,6 +1038,11 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         }
 
         throw new RuntimeException('Unable to generate an unused CNPJ for the retained commercial race fixture.');
+    }
+
+    protected function uniqueErpPlanSlug(): string
+    {
+        return 'race-'.bin2hex(random_bytes(12));
     }
 
     private function signal(Process $process, string $name): string
