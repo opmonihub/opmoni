@@ -6,13 +6,18 @@ use App\Models\Account;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpTrialLink;
+use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpPlan;
 use App\Models\Erp\ErpPlanModule;
+use App\Models\Erp\ErpSubscription;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\Repository;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Tests\OfficeErpCommercialTestCase;
 
@@ -265,6 +270,219 @@ class TrialRegistrationTest extends OfficeErpCommercialTestCase
         $this->assertDatabaseHas('users', ['id' => $owner->id]);
         $this->assertDatabaseCount('erp_companies', 0);
         $this->assertDatabaseCount('erp_subscription_trials', 0);
+    }
+
+    public function test_cannot_attach_a_company_already_owned_outside_the_linked_office(): void
+    {
+        config(['erp.office_trial_enabled' => true]);
+        $code = $this->enabledTrialLink();
+        $foreignOwner = User::factory()->create();
+        $foreignCompany = ErpCompany::factory()->create(['cnpj' => '27865757000102']);
+        ErpCompanyMembership::query()->create([
+            'erp_company_id' => $foreignCompany->id,
+            'user_id' => $foreignOwner->id,
+            'role' => 'owner',
+        ]);
+        Http::fake(['publica.cnpj.ws/cnpj/27865757000102' => Http::response($this->providerPayload())]);
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+
+        $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', [
+                'name' => 'Novo responsável',
+                'email' => 'foreign-company-owner@example.test',
+                'password' => 'never-store-this-password',
+                'company_name' => 'Empresa existente',
+                'cnpj' => '27865757000102',
+                'tax_regime' => 'presumed_profit',
+            ], ['Idempotency-Key' => 'trial-foreign-company-operation'])
+            ->assertConflict();
+
+        $this->assertDatabaseMissing('users', ['email' => 'foreign-company-owner@example.test']);
+        $this->assertDatabaseHas('erp_companies', ['id' => $foreignCompany->id, 'cnpj' => '27865757000102']);
+        $this->assertDatabaseCount('erp_subscription_trials', 0);
+        $this->assertDatabaseCount('office_erp_contracts', 0);
+    }
+
+    public function test_committed_trial_recovers_from_session_failure_by_login_and_current_without_resubmitting_signup(): void
+    {
+        config(['erp.office_trial_enabled' => true]);
+        $code = $this->enabledTrialLink();
+        $password = 'private-trial-password';
+        Http::fake(['publica.cnpj.ws/cnpj/27865757000102' => Http::response($this->providerPayload())]);
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+        $key = 'trial-session-recovery-operation';
+        $originalCache = Cache::getFacadeRoot();
+        $originalStore = Cache::store()->getStore();
+        Cache::swap(new class($originalStore) extends Repository
+        {
+            public function put($key, $value, $ttl = null): bool
+            {
+                if (str_starts_with((string) $key, 'revoked:')) {
+                    throw new \RuntimeException('session cache unavailable');
+                }
+
+                return parent::put($key, $value, $ttl);
+            }
+        });
+
+        try {
+            $this->withHeader('X-CSRF-Token', $csrf)
+                ->postJson('/api/v1/erp/trials/'.$code.'/register', [
+                    'name' => 'Pessoa responsável',
+                    'email' => 'session-recovery-owner@example.test',
+                    'password' => $password,
+                    'company_name' => 'Globo Comunicação',
+                    'cnpj' => '27.865.757/0001-02',
+                    'tax_regime' => 'presumed_profit',
+                ], ['Idempotency-Key' => $key])
+                ->assertStatus(503)
+                ->assertJsonPath('message', 'Serviço temporariamente indisponível. Tente novamente.');
+        } finally {
+            Cache::swap($originalCache);
+        }
+
+        $owner = User::query()->where('email', 'session-recovery-owner@example.test')->firstOrFail();
+        self::assertTrue(Hash::check($password, $owner->password));
+        $this->assertDatabaseCount('erp_subscription_trials', 1);
+        $this->assertDatabaseCount('office_erp_commercial_operations', 1);
+        $operation = OfficeErpCommercialOperation::query()->where('idempotency_key', $key)->firstOrFail();
+        self::assertStringNotContainsString($password, json_encode($operation->payload, JSON_THROW_ON_ERROR));
+        self::assertStringNotContainsString($password, json_encode($operation->outcome, JSON_THROW_ON_ERROR));
+
+        $loginCsrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+        $this->withHeader('X-CSRF-Token', $loginCsrf)
+            ->postJson('/api/v1/login', ['email' => $owner->email, 'password' => $password])
+            ->assertOk();
+        $this->getJson('/api/v1/erp/trials/current', ['Idempotency-Key' => $key])
+            ->assertOk()
+            ->assertJsonPath('data.trial_id', $operation->outcome['data']['trial_id']);
+
+        $this->assertDatabaseCount('erp_subscription_trials', 1);
+        $this->assertDatabaseCount('office_erp_commercial_operations', 1);
+        Http::assertSentCount(1);
+    }
+
+    public function test_capacity_and_client_limits_are_rechecked_before_trial_writes(): void
+    {
+        config(['erp.office_trial_enabled' => true]);
+        $code = $this->enabledTrialLink();
+        $accountId = (int) OfficeErpTrialLink::query()->where('public_code', $code)->value('account_id');
+        $account = Account::query()->findOrFail($accountId);
+        $plan = Plan::query()->findOrFail($account->subscription->plan_id);
+        $plan->forceFill(['erp_commercial' => ['enabled' => true, 'licence_limit' => 0, 'module_keys' => ['purchases']]])->save();
+        Http::fake(['publica.cnpj.ws/cnpj/27865757000102' => Http::response([], 404)]);
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+        $payload = [
+            'name' => 'Pessoa responsável',
+            'email' => 'capacity-trial-owner@example.test',
+            'password' => 'never-store-this-password',
+            'company_name' => 'Empresa de teste',
+            'cnpj' => '27865757000102',
+            'tax_regime' => 'presumed_profit',
+        ];
+
+        $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', $payload, ['Idempotency-Key' => 'trial-capacity-rejected-operation'])
+            ->assertForbidden();
+
+        self::assertDatabaseMissing('users', ['email' => 'capacity-trial-owner@example.test']);
+        $this->assertDatabaseCount('erp_subscription_trials', 0);
+        $this->assertDatabaseCount('office_erp_commercial_operations', 0);
+
+        $plan->forceFill(['erp_commercial' => ['enabled' => true, 'licence_limit' => 5, 'module_keys' => ['purchases']]])->save();
+        $plan->forceFill(['limits' => ['clients' => 0]])->save();
+        $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', [...$payload, 'email' => 'client-limit-trial-owner@example.test'], ['Idempotency-Key' => 'trial-client-limit-rejected-operation'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('limit');
+
+        self::assertDatabaseMissing('users', ['email' => 'client-limit-trial-owner@example.test']);
+        $this->assertDatabaseCount('clients', 0);
+        $this->assertDatabaseCount('erp_subscription_trials', 0);
+        $this->assertDatabaseCount('office_erp_commercial_operations', 0);
+    }
+
+    public function test_public_trial_rejects_client_id_and_rechecks_exact_trial_link_revision_after_provider_preflight(): void
+    {
+        config(['erp.office_trial_enabled' => true]);
+        $code = $this->enabledTrialLink();
+        $accountId = (int) OfficeErpTrialLink::query()->where('public_code', $code)->value('account_id');
+        $foreignAccount = Account::factory()->create(['status' => 'active']);
+        $foreignClient = Client::factory()->company()->create(['account_id' => $foreignAccount->id]);
+        $archivedClient = Client::factory()->company()->create(['account_id' => $accountId]);
+        $archivedClient->delete();
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+        $payload = [
+            'name' => 'Pessoa responsável',
+            'email' => 'revision-trial-owner@example.test',
+            'password' => 'never-store-this-password',
+            'company_name' => 'Empresa de teste',
+            'cnpj' => '27865757000102',
+            'tax_regime' => 'presumed_profit',
+        ];
+        foreach ([$foreignClient, $archivedClient] as $index => $client) {
+            $this->withHeader('X-CSRF-Token', $csrf)
+                ->postJson('/api/v1/erp/trials/'.$code.'/register', [...$payload, 'client_id' => $client->id], [
+                    'Idempotency-Key' => 'trial-client-id-rejected-'.$index.'-operation',
+                ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('client_id');
+        }
+
+        $link = OfficeErpTrialLink::query()->where('public_code', $code)->firstOrFail();
+        Http::fake(function () use ($link) {
+            $link->increment('revision');
+
+            return Http::response($this->providerPayload());
+        });
+        unset($payload['client_id']);
+        $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', $payload, ['Idempotency-Key' => 'trial-revision-changed-operation'])
+            ->assertConflict();
+        self::assertSame(2, (int) $link->fresh()->revision);
+
+        $this->assertDatabaseMissing('users', ['email' => 'revision-trial-owner@example.test']);
+        $this->assertDatabaseCount('erp_subscription_trials', 0);
+        $this->assertDatabaseCount('office_erp_contracts', 0);
+        $this->assertDatabaseCount('office_erp_commercial_operations', 0);
+    }
+
+    public function test_authenticated_owner_can_register_trial_for_company_already_owned_by_them(): void
+    {
+        config(['erp.office_trial_enabled' => true]);
+        $code = $this->enabledTrialLink();
+        $accountId = (int) OfficeErpTrialLink::query()->where('public_code', $code)->value('account_id');
+        $client = Client::factory()->company()->create([
+            'account_id' => $accountId,
+            'tax_id' => '27865757000102',
+            'status' => 'active',
+            'tax_regime' => 'presumed_profit',
+        ]);
+        $owner = User::factory()->create(['email' => 'existing-company-trial-owner@example.test']);
+        $company = ErpCompany::factory()->create(['cnpj' => '27865757000102']);
+        ErpCompanyMembership::query()->create(['erp_company_id' => $company->id, 'user_id' => $owner->id, 'role' => 'owner']);
+        $subscription = ErpSubscription::factory()->create(['erp_company_id' => $company->id]);
+        $this->actingAs($owner)->withSession(['access_deadline' => time() + 1800, 'access_authenticated' => true]);
+        Http::fake(['publica.cnpj.ws/cnpj/27865757000102' => Http::response([], 404)]);
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+
+        $response = $this->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp/trials/'.$code.'/register', [
+                'name' => $owner->name,
+                'email' => $owner->email,
+                'company_name' => $company->name,
+                'cnpj' => '27865757000102',
+                'tax_regime' => 'presumed_profit',
+                'confirm_existing_association' => true,
+            ], ['Idempotency-Key' => 'trial-existing-company-owner-operation'])
+            ->assertCreated();
+
+        self::assertSame((int) $client->id, (int) $response->json('data.client_id'));
+        self::assertSame((int) $company->id, (int) $response->json('data.company_id'));
+        self::assertSame((int) $subscription->id, (int) $response->json('data.subscription_id'));
+        $this->assertDatabaseHas('erp_subscription_trials', ['erp_company_id' => $company->id, 'account_id' => $accountId]);
+        $this->assertDatabaseCount('erp_companies', 1);
+        $this->assertDatabaseCount('erp_subscription_trials', 1);
     }
 
     private function enabledTrialLink(): string
