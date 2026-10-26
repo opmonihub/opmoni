@@ -36,6 +36,8 @@ import { pageScrollClass } from '~/utils/pageShell'
  */
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const { summary } = useFiscal()
 
 /** O resumo que o painel tem antes de a chamada responder. Só para o template. */
@@ -89,15 +91,16 @@ const referenceNow = useState('fiscal-panel-now', () => new Date().toISOString()
  * reancora da primeira renderização no cliente e qualquer outro caminho que
  * reexecute a busca.
  */
-const { data, status, error, refresh: reload } = await useAsyncData<FiscalSummary>(
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData<FiscalSummary>(
   'fiscal-summary',
-  async () => {
-    const fresh = await summary()
+  async (_nuxtApp, { signal }) => {
+    const fresh = await summary({ signal })
     referenceNow.value = new Date().toISOString()
     return fresh
   },
   { getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined }
 )
+readLifecycle.own({ clear: clearOffice0, refresh: reload })
 
 const { isLoading, showError, refresh, retry } = useRetryableLoad({
   refresh: reload,

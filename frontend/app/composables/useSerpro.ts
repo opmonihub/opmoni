@@ -35,8 +35,8 @@ export interface ObligationListParams {
 export function useSerpro() {
   const { $api } = useNuxtApp()
 
-  async function overview() {
-    const res = await $api<{ data: MonitoringOverview }>('/serpro/monitoring/overview')
+  async function overview(options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: MonitoringOverview }>('/serpro/monitoring/overview', { signal: options.signal })
     return res.data
   }
 
@@ -45,10 +45,10 @@ export function useSerpro() {
    * `attention_reasons` from the summary and the rows from `data_rows`; a page
    * that issued two calls to render one list could disagree with itself.
    */
-  async function listObligation(obligation: string, params: ObligationListParams = {}) {
+  async function listObligation(obligation: string, params: ObligationListParams = {}, options: { signal?: AbortSignal } = {}) {
     return $api<{ data: MonitoringObligationResponse, data_rows: MonitoringClient[] }>(
       `/serpro/monitoring/obligations/${obligation}`,
-      { query: queryOf(params) }
+      { signal: options.signal, query: queryOf(params) }
     )
   }
 
@@ -197,8 +197,8 @@ export function useSerpro() {
     return scheduleMapFromRows(res.data)
   }
 
-  async function connection() {
-    const res = await $api<{ data: SerproConnectionMetadata }>('/serpro/connection')
+  async function connection(options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: SerproConnectionMetadata }>('/serpro/connection', { signal: options.signal })
     return res.data
   }
 
@@ -224,8 +224,8 @@ export function useSerpro() {
     return res.data
   }
 
-  async function contractingCertificate(accountId: number) {
-    const res = await $api<{ data: SerproContractingCertificateMetadata }>(`/admin/accounts/${accountId}/contracting-certificate`)
+  async function contractingCertificate(accountId: number, options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: SerproContractingCertificateMetadata }>(`/admin/accounts/${accountId}/contracting-certificate`, { signal: options.signal })
     return res.data
   }
 

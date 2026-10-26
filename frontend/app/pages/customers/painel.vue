@@ -4,9 +4,11 @@ import PortfolioKpis from '~/components/customers/dashboard/PortfolioKpis.vue'
 import DeadlineAlertPanels from '~/components/customers/dashboard/DeadlineAlertPanels.vue'
 import PortfolioDistribution from '~/components/customers/dashboard/PortfolioDistribution.vue'
 import { pageScrollClass } from '~/utils/pageShell'
+import { createLatestRequestRunner } from '~/utils/adminListFilters'
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
 const { portfolioSummary, portfolioAnalytics } = useClients()
 const loadError = ref<unknown>(null)
 
@@ -22,22 +24,35 @@ const { showError, retry } = useRetryableLoad({
   sticky: true
 })
 
+const runLatest = createLatestRequestRunner()
+onBeforeUnmount(() => runLatest.invalidate())
+
 async function load() {
   loading.value = true
   loadError.value = null
-  try {
-    const [summaryData, analyticsData] = await Promise.all([
-      portfolioSummary({}),
-      portfolioAnalytics({})
-    ])
-    summary.value = summaryData
-    analytics.value = analyticsData
-  } catch (error) {
-    loadError.value = error
-  } finally {
-    loading.value = false
-  }
+  await runLatest(signal => Promise.all([
+    portfolioSummary({}, { signal }),
+    portfolioAnalytics({}, { signal })
+  ]), {
+    onSuccess([summaryData, analyticsData]) {
+      summary.value = summaryData
+      analytics.value = analyticsData
+    },
+    onError(error) { loadError.value = error },
+    onSettled() { loading.value = false }
+  })
 }
+
+readLifecycle.own({
+  clear() {
+    runLatest.invalidate()
+    summary.value = null
+    analytics.value = null
+    loadError.value = null
+    loading.value = false
+  },
+  refresh: load
+})
 
 onMounted(() => {
   void load()

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { h } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
-import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import DataTableSortButton from '~/components/data-table/SortButton.vue'
 import { sheetTableUi } from '~/components/data-table/sheet'
@@ -32,6 +31,8 @@ import { pageTableClass } from '~/utils/pageShell'
 import { formatTaxId } from '~/utils/taxId'
 
 type ClientSortKey = 'cliente' | 'certificado' | 'total' | 'saidas' | 'entradas' | 'ultima_emissao_at'
+
+const readLifecycle = useOfficeReadLifecycle()
 
 const certificateStatuses: FiscalClientCertificateStatus[] = [
   'missing',
@@ -92,9 +93,10 @@ definePageMeta({ middleware: 'auth' })
 
 const { clients } = useFiscal()
 
-const search = ref('')
+const navigation = useOfficeTableNavigation('fiscal-clients', ['certificado_status', 'modelo', 'issued'], ['cliente', 'certificado', 'total', 'saidas', 'entradas', 'ultima_emissao_at'], { page: true, pageSize: true })
+const search = navigation.search
 const debouncedSearch = refDebounced(search, 300)
-const filterModels = ref<DataTableFilterModel[]>([])
+const filterModels = navigation.filterModels
 const modelFilter = computed(() => filterModels.value.find(filter => filter.columnId === 'modelo'))
 const selectedModels = computed<FiscalModel[]>(() => {
   const filter = modelFilter.value
@@ -119,10 +121,10 @@ const panelColumns = computed<FilterPanelColumn[]>(() => [
 ])
 const columnVisibility = ref<Record<string, boolean>>({})
 const rowSelection = ref<Record<string, boolean>>({})
-const sort = ref<ClientSortKey>('cliente')
-const direction = ref<'asc' | 'desc'>('asc')
-const currentPage = ref(1)
-const pageSize = ref(25)
+const sort = computed<ClientSortKey>(() => navigation.sorting.value[0]?.id as ClientSortKey ?? 'cliente')
+const direction = computed<'asc' | 'desc'>(() => navigation.sorting.value[0]?.desc ? 'desc' : 'asc')
+const currentPage = navigation.page
+const pageSize = navigation.pageSize
 const desktopTable = useClientMediaQuery('(min-width: 768px)')
 
 const requestFilters = computed<FiscalClientsFilters>(() => ({
@@ -133,14 +135,17 @@ const requestFilters = computed<FiscalClientsFilters>(() => ({
 
 const listKey = computed(() => `fiscal-clients-${JSON.stringify(requestFilters.value)}`)
 
-const { data, status, error, refresh: reload } = await useAsyncData<FiscalClientSummary[]>(
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData<FiscalClientSummary[]>(
   listKey,
-  () => clients(requestFilters.value),
+  (_nuxtApp, { signal }) => clients(requestFilters.value, { signal }),
   {
     // Reutiliza o SSR na hidratação e busca dados novos nas próximas entradas.
     getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined
   }
 )
+readLifecycle.own({ clear: clearOffice0, refresh: reload }, () => {
+  rowSelection.value = {}
+})
 
 const { isLoading, showError, retry } = useRetryableLoad({
   refresh: reload,
@@ -286,7 +291,7 @@ watch(pageSize, () => {
 
 watch(pageCount, (count) => {
   if (currentPage.value > count) currentPage.value = count
-})
+}, { immediate: true })
 
 function normalizeSearch(value: string): string {
   return value
@@ -349,13 +354,7 @@ function sortableHeader(label: string, key: ClientSortKey) {
 }
 
 function toggleSort(key: ClientSortKey) {
-  if (sort.value === key) {
-    direction.value = direction.value === 'asc' ? 'desc' : 'asc'
-    return
-  }
-
-  sort.value = key
-  direction.value = 'asc'
+  navigation.sorting.value = [{ id: key, desc: sort.value === key ? direction.value !== 'desc' : false }]
 }
 
 function toggleAllRows(value: boolean | 'indeterminate') {

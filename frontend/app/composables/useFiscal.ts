@@ -26,8 +26,8 @@ export function useFiscal() {
    * O resumo do painel: cobertura da carteira, o que precisa de alguém e o que
    * o último lote deixou.
    */
-  async function summary() {
-    const response = await $api<{ data: FiscalSummary }>('/fiscal/summary')
+  async function summary(options: { signal?: AbortSignal } = {}) {
+    const response = await $api<{ data: FiscalSummary }>('/fiscal/summary', { signal: options.signal })
     return response.data
   }
 
@@ -40,9 +40,9 @@ export function useFiscal() {
    * é "o backend ainda não subiu" — e quem chama trata, porque a página tem um
    * estado próprio para isso em vez de um alerta genérico.
    */
-  async function clients(filters: FiscalClientsFilters = {}) {
+  async function clients(filters: FiscalClientsFilters = {}, options: { signal?: AbortSignal } = {}) {
     const response = await $api<{ data: FiscalClientSummary[] }>('/fiscal/clients', {
-      query: queryOf(filters)
+      signal: options.signal, query: queryOf(filters)
     })
     return response.data
   }
@@ -54,8 +54,8 @@ export function useFiscal() {
    * chamadas para desenhar uma lista poderia discordar de si mesma. O filtro
    * esvaziado vai como `undefined`/`null` e `queryOf` o descarta.
    */
-  async function list(filters: FiscalListFilters) {
-    return $api<FiscalPage>('/fiscal/documents', { query: queryOf(filters) })
+  async function list(filters: FiscalListFilters, options: { signal?: AbortSignal } = {}) {
+    return $api<FiscalPage>('/fiscal/documents', { signal: options.signal, query: queryOf(filters) })
   }
 
   async function processingList(params: Record<string, unknown> = {}, options: { signal?: AbortSignal } = {}) {

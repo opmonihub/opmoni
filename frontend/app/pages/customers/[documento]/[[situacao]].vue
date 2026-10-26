@@ -13,6 +13,8 @@ import { deadlineStatusAppearance } from '~/utils/portfolioLabels'
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const { list, show, portfolioSummary, update, listTags, createSelection } = useClients()
 const { canManageClients } = useAuth()
 const toast = useToast()
@@ -35,10 +37,16 @@ const view = computed<ClientPortfolioView | 'all'>(() =>
   documentStatus.value === 'all' ? 'all' : `${documentTab.value}_${documentStatus.value}`
 )
 
-const sort = ref<ClientListParams['sort']>('name')
-const direction = ref<'asc' | 'desc'>('asc')
-
-const page = ref(1)
+const navigation = useOfficeTableNavigation('portfolio', ['tag', 'regime', 'status', 'certificate', 'poa'], ['name', 'tax_id', 'status', 'tax_regime', 'created_at', 'certificate', 'poa'], { page: true })
+const sort = computed<ClientListParams['sort']>({
+  get: () => navigation.sorting.value[0]?.id as ClientListParams['sort'] ?? 'name',
+  set: (value) => { navigation.sorting.value = [{ id: value ?? 'name', desc: direction.value === 'desc' }] }
+})
+const direction = computed<'asc' | 'desc'>({
+  get: () => navigation.sorting.value[0]?.desc ? 'desc' : 'asc',
+  set: (value) => { navigation.sorting.value = [{ id: sort.value ?? 'name', desc: value === 'desc' }] }
+})
+const page = navigation.page
 const rows = ref<ClientSheet[]>([])
 const matchingTotal = ref(0)
 const listMode = ref<'sheet' | 'paged'>('sheet')
@@ -46,7 +54,8 @@ const loadingMore = ref(false)
 let listGeneration = 0
 const listEpoch = ref(0)
 
-const { data: tagCatalog } = await useAsyncData('client-tag-catalog', () => listTags())
+const { data: tagCatalog, clear: clearOffice0, refresh: refreshOffice0 } = await useAsyncData('client-tag-catalog', (_nuxtApp, { signal }) => listTags({ signal }))
+readLifecycle.own({ clear: clearOffice0, refresh: refreshOffice0 })
 
 const listStatus = ref('idle')
 
@@ -62,6 +71,7 @@ const {
   clearAppliedFilters,
   clearSearch
 } = useClientListFilters({
+  navigation,
   listing,
   rows,
   matchingTotal,
@@ -86,16 +96,49 @@ const listKey = computed(() => JSON.stringify([
   params.value
 ]))
 
-const { data, status, error, refresh } = await useAsyncData(
+let moreController: AbortController | undefined
+watch(params, () => {
+  navigation.page.value = 1
+  listGeneration++
+  moreController?.abort()
+  loadingMore.value = false
+}, { flush: 'sync' })
+onBeforeUnmount(() => {
+  listGeneration++
+  moreController?.abort()
+})
+
+const { data, status, error, refresh, clear: clearOffice1 } = await useAsyncData(
   listKey,
-  () => list(params.value)
+  async (_nuxtApp, { signal }) => {
+    const targetPage = page.value
+    const query = { ...params.value }
+    const response = await list(query, { signal })
+    const seen = new Set(response.data.map(client => client.id))
+    for (let next = 2; response.meta?.mode === 'paged' && next <= targetPage && next <= (response.meta.last_page ?? 1); next++) {
+      const following = await list({ ...query, page: next }, { signal })
+      response.data.push(...following.data.filter(client => !seen.has(client.id)))
+      following.data.forEach(client => seen.add(client.id))
+      response.meta = following.meta
+      if (!following.data.length) break
+    }
+    return response
+  }
 )
+readLifecycle.own({ clear: clearOffice1, refresh: refresh }, () => {
+  rows.value = []
+  matchingTotal.value = 0
+  listGeneration++
+  moreController?.abort()
+})
 
 watch(status, (value) => {
   listStatus.value = value
 }, { immediate: true })
 
 watch(data, (value) => {
+  moreController?.abort()
+  loadingMore.value = false
   listGeneration += 1
   listEpoch.value = listGeneration
   rows.value = value?.data ?? []
@@ -109,11 +152,14 @@ async function loadMore() {
   if (rows.value.length >= matchingTotal.value) return
 
   const generation = listGeneration
+  moreController?.abort()
+  const attempt = new AbortController()
+  moreController = attempt
   const nextPage = page.value + 1
   loadingMore.value = true
   try {
-    const response = await list({ ...params.value, page: nextPage })
-    if (generation !== listGeneration) return
+    const response = await list({ ...params.value, page: nextPage }, { signal: attempt.signal })
+    if (attempt.signal.aborted || generation !== listGeneration) return
     if (!response.data.length) {
       matchingTotal.value = rows.value.length
       return
@@ -123,9 +169,10 @@ async function loadMore() {
     matchingTotal.value = response.meta?.total ?? matchingTotal.value
     page.value = nextPage
   } catch {
+    if (attempt.signal.aborted || generation !== listGeneration) return
     toast.add({ title: 'Não foi possível carregar mais clientes', color: 'error' })
   } finally {
-    loadingMore.value = false
+    if (generation === listGeneration) loadingMore.value = false
   }
 }
 
@@ -146,11 +193,12 @@ const summaryParams = computed(() => ({
   ...columnFilters.value
 }))
 
-const { data: summary, refresh: refreshSummary, status: summaryStatus, error: summaryError } = await useAsyncData(
+const { data: summary, refresh: refreshSummary, status: summaryStatus, error: summaryError, clear: clearOffice2 } = await useAsyncData(
   'client-portfolio-summary',
-  () => portfolioSummary(summaryParams.value),
+  (_nuxtApp, { signal }) => portfolioSummary(summaryParams.value, { signal }),
   { watch: [summaryParams] }
 )
+readLifecycle.own({ clear: clearOffice2, refresh: refreshSummary })
 
 async function refreshPortfolio() {
   await Promise.all([refresh(), refreshSummary()])
@@ -180,6 +228,7 @@ const {
   selectionParams,
   createSelection
 })
+watch(readLifecycle.authority, clearSelection, { flush: 'sync' })
 
 const { exportClients } = useClientListExport({
   rows,

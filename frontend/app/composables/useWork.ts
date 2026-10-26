@@ -3,20 +3,20 @@ import { queryOf } from './useApiQuery'
 
 export function useWork() {
   const { $api } = useNuxtApp()
-  async function listTemplates() {
-    const res = await $api<{ data: WorkTemplate[] }>('/process-templates')
+  async function listTemplates(options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: WorkTemplate[] }>('/process-templates', { signal: options.signal })
     return res.data
   }
-  async function previewTemplate(id: number) {
-    const res = await $api<{ data: WorkPreviewRow[] }>(`/process-templates/${id}/preview`)
+  async function previewTemplate(id: number, options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: WorkPreviewRow[] }>(`/process-templates/${id}/preview`, { signal: options.signal })
     return res.data
   }
   async function generateTemplate(id: number, referenceMonth: string) {
     const res = await $api<{ data: WorkGeneratedProcess[] }>(`/process-templates/${id}/generate`, { method: 'POST', body: { reference_month: referenceMonth } })
     return res.data
   }
-  async function showTemplate(id: number) {
-    const res = await $api<{ data: WorkTemplate }>(`/process-templates/${id}`)
+  async function showTemplate(id: number, options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: WorkTemplate }>(`/process-templates/${id}`, { signal: options.signal })
     return res.data
   }
   async function createTemplate(body: WorkTemplatePayload) {
@@ -27,12 +27,12 @@ export function useWork() {
     const res = await $api<{ data: WorkTemplate }>(`/process-templates/${id}`, { method: 'PATCH', body })
     return res.data
   }
-  async function listProcesses(params: { template_id?: number, reference_month?: string, client_id?: number, status?: string } = {}) {
-    const res = await $api<{ data: WorkProcess[] }>('/processes', { query: queryOf(params) })
+  async function listProcesses(params: { template_id?: number, reference_month?: string, client_id?: number, status?: string } = {}, options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: WorkProcess[] }>('/processes', { signal: options.signal, query: queryOf(params) })
     return res.data
   }
-  async function showProcess(id: number) {
-    const res = await $api<{ data: WorkProcessDetail }>(`/processes/${id}`)
+  async function showProcess(id: number, options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: WorkProcessDetail }>(`/processes/${id}`, { signal: options.signal })
     return res.data
   }
   async function listTasks(params: {
@@ -44,8 +44,8 @@ export function useWork() {
     priority?: string
     due_from?: string
     due_to?: string
-  } = {}) {
-    const res = await $api<{ data: WorkTask[] }>('/tasks', { query: queryOf(params) })
+  } = {}, options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: WorkTask[] }>('/tasks', { signal: options.signal, query: queryOf(params) })
     return res.data
   }
   async function updateTask(id: number, body: {
@@ -64,18 +64,18 @@ export function useWork() {
     assignee_member_id?: number
     department_id?: number
     priority?: string
-  } = {}) {
+  } = {}, options: { signal?: AbortSignal } = {}) {
     const res = await $api<{ data: WorkTask[] }>('/work/calendar', {
-      query: queryOf({ from, to, ...params })
+      signal: options.signal, query: queryOf({ from, to, ...params })
     })
     return res.data
   }
-  async function grouped(referenceMonth: string) {
-    const res = await $api<{ data: WorkGroupedClient[] }>('/work/grouped', { query: { reference_month: referenceMonth } })
+  async function grouped(referenceMonth: string, options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: WorkGroupedClient[] }>('/work/grouped', { signal: options.signal, query: { reference_month: referenceMonth } })
     return res.data
   }
-  async function unscopedTasks(referenceMonth: string) {
-    const res = await $api<{ data: WorkTask[] }>('/work/tasks/unscoped', { query: { reference_month: referenceMonth, include_undated: 1 } })
+  async function unscopedTasks(referenceMonth: string, options: { signal?: AbortSignal } = {}) {
+    const res = await $api<{ data: WorkTask[] }>('/work/tasks/unscoped', { signal: options.signal, query: { reference_month: referenceMonth, include_undated: 1 } })
     return res.data
   }
   return { listTemplates, showTemplate, createTemplate, updateTemplate, previewTemplate, generateTemplate, listProcesses, showProcess, listTasks, updateTask, calendar, grouped, unscopedTasks }

@@ -55,6 +55,8 @@ import DeclarationDetailModal from '~/components/monitoring/DeclarationDetailMod
 import ObligationActionMenu from '~/components/monitoring/ObligationActionMenu.vue'
 import ObligationCounters from '~/components/monitoring/ObligationCounters.vue'
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const props = defineProps<{
   obligation: MonitoringObligation
   situacao: MonitoringSituacao | null
@@ -89,11 +91,39 @@ function openSearch() {
   searchOpen.value = true
 }
 
-const search = ref('')
+const navigation = useListNavigationState(`monitoring-${props.obligation.slug}-${props.situacao ?? 'todas'}`, {
+  defaults: () => ({ search: '', tags: [] as number[], page: 1 }),
+  normalize: (value) => {
+    const input = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    return {
+      search: typeof input.search === 'string' ? input.search.slice(0, 1000) : '',
+      tags: Array.isArray(input.tags) ? input.tags.filter((id): id is number => Number.isSafeInteger(id) && id > 0) : [],
+      page: Number.isSafeInteger(input.page) && Number(input.page) > 0 ? Number(input.page) : 1
+    }
+  }
+})
+const search = listNavigationField(navigation, 'search')
 /** The house debounce is 350 ms — never a request per keystroke. */
 const debouncedSearch = refDebounced(search, 350)
-const tagFilter = ref<number[]>([])
-const page = ref(1)
+const tagFilter = computed<number[]>({
+  get: previous => JSON.stringify(previous) === JSON.stringify(navigation.value.tags) ? previous! : navigation.value.tags,
+  set: (tags) => { navigation.value = { ...navigation.value, tags } }
+})
+const page = listNavigationField(navigation, 'page')
+const loadingMore = ref(false)
+let moreController: AbortController | undefined
+let generation = 0
+watch([debouncedSearch, tagFilter], () => {
+  page.value = 1
+  generation++
+  moreController?.abort()
+  loadingMore.value = false
+  rowSelection.value = {}
+}, { flush: 'sync' })
+onBeforeUnmount(() => {
+  generation++
+  moreController?.abort()
+})
 
 function emptySummary(obligation: MonitoringObligation): MonitoringObligationSummary {
   return {
@@ -169,12 +199,26 @@ const category = computed(() => monitoringCategoryPresentation[props.obligation.
 /** What a `derived` obligation projects over; `null` for anything else. */
 const provenance = computed(() => monitoringProvenance(props.obligation))
 
-const { data, status, error, refresh: reload } = await useAsyncData(listKey, async () => {
+const rows = ref<MonitoringClient[]>([])
+const total = ref(0)
+
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData(listKey, async (_nuxtApp, { signal }) => {
   if (isUnserved.value) {
     return { data: emptySummary(props.obligation), data_rows: [] as MonitoringClient[] }
   }
   try {
-    return await listObligation(props.obligation.slug, params.value)
+    const targetPage = page.value
+    const query = { ...params.value }
+    const response = await listObligation(props.obligation.slug, query, { signal })
+    const known = new Set(response.data_rows.map(row => row.client_id))
+    for (let next = 2; next <= targetPage && response.data_rows.length < (response.data.total ?? 0); next++) {
+      const following = await listObligation(props.obligation.slug, { ...query, page: next }, { signal })
+      if (!following.data_rows.length) break
+      response.data_rows.push(...following.data_rows.filter(row => !known.has(row.client_id)))
+      following.data_rows.forEach(row => known.add(row.client_id))
+      response.data = following.data
+    }
+    return response
   } catch (error) {
     // The obligation slug comes from the registry and is never typed, so a 404
     // means "no data", never "wrong URL". Answering with an empty envelope is
@@ -183,6 +227,15 @@ const { data, status, error, refresh: reload } = await useAsyncData(listKey, asy
     throw error
   }
 }, { watch: [params], default: () => ({ data: emptySummary(props.obligation), data_rows: [] as MonitoringClient[] }) })
+readLifecycle.own({ clear: clearOffice0, refresh: reload }, () => {
+  moreController?.abort()
+  generation++
+  rows.value = []
+  total.value = 0
+  loadingMore.value = false
+  rowSelection.value = {}
+  searchPreselected.value = []
+})
 
 /**
  * The unserved variant arrives with every counter `null` — that is the API
@@ -198,12 +251,9 @@ const summary = computed<MonitoringObligationSummary>(() => {
     : loaded
 })
 
-const rows = ref<MonitoringClient[]>([])
-const total = ref(0)
-const loadingMore = ref(false)
-let generation = 0
-
 watch(data, (value) => {
+  moreController?.abort()
+  loadingMore.value = false
   generation += 1
   rows.value = value?.data_rows ?? []
   total.value = value?.data.total ?? 0
@@ -219,12 +269,15 @@ async function loadMore() {
   if (rows.value.length >= total.value) return
 
   const seen = generation
+  moreController?.abort()
+  const attempt = new AbortController()
+  moreController = attempt
   const nextPage = page.value + 1
   loadingMore.value = true
   try {
-    const response = await listObligation(props.obligation.slug, { ...params.value, page: nextPage })
+    const response = await listObligation(props.obligation.slug, { ...params.value, page: nextPage }, { signal: attempt.signal })
     // Two fast filter changes must not interleave and append a stale page.
-    if (seen !== generation) return
+    if (attempt.signal.aborted || seen !== generation) return
     const known = new Set(rows.value.map(row => row.client_id))
     const fresh = (response.data_rows ?? []).filter(row => !known.has(row.client_id))
     if (!fresh.length) {
@@ -234,9 +287,10 @@ async function loadMore() {
     rows.value = [...rows.value, ...fresh]
     page.value = nextPage
   } catch {
+    if (attempt.signal.aborted || seen !== generation) return
     toast.add({ title: 'Não foi possível carregar mais clientes', color: 'error' })
   } finally {
-    loadingMore.value = false
+    if (seen === generation) loadingMore.value = false
   }
 }
 
@@ -247,7 +301,8 @@ const canLoadMore = computed(() =>
   && rows.value.length < total.value
 )
 
-const { data: tagCatalog } = await useAsyncData('serpro-monitoring-tags', () => listTags())
+const { data: tagCatalog, clear: clearOffice1, refresh: refreshOffice1 } = await useAsyncData('serpro-monitoring-tags', (_nuxtApp, { signal }) => listTags({ signal }))
+readLifecycle.own({ clear: clearOffice1, refresh: refreshOffice1 })
 
 const filterColumns = computed<FilterPanelColumn[]>(() => [
   {

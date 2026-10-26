@@ -24,9 +24,9 @@ export interface AccountMemberUpdatePayload {
 export function useMembers() {
   const { $api } = useNuxtApp()
 
-  async function listDirectory(params: Record<string, unknown> = {}) {
+  async function listDirectory(params: Record<string, unknown> = {}, options: { signal?: AbortSignal } = {}) {
     const response = await $api<{ data?: MemberDirectoryEntry[] } | MemberDirectoryEntry[]>('/account/members/directory', {
-      query: queryOf(params)
+      signal: options.signal, query: queryOf(params)
     })
     return Array.isArray(response) ? response : (response.data ?? [])
   }

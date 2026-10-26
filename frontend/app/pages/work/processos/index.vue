@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Row, SortingState } from '@tanstack/table-core'
+import type { Row } from '@tanstack/table-core'
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { h, resolveComponent } from 'vue'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
@@ -54,29 +54,39 @@ import { workSortableHeader as sortableHeader } from '~/utils/workSortableHeader
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const { grouped, updateTask } = useWork()
 const { canManageWork } = useAuth()
 const { referenceMonth } = useWorkReferenceMonth()
 const { memberOptions } = useDirectory()
 const { list: listDepartments } = useDepartments()
 
+const navigation = useOfficeTableNavigation('work-processes', ['process', 'client', 'template', 'processStatus', 'status', 'cascade', 'department', 'due_on'], ['item', 'status', 'departmentName', 'due_on'])
+
 const UBadge = resolveComponent('UBadge')
 const UButton = resolveComponent('UButton')
 const UCheckbox = resolveComponent('UCheckbox')
 
-const { data, status, error, refresh: reload } = await useAsyncData<WorkGroupedClient[]>(
+const rowSelection = ref<Record<string, boolean>>({})
+
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData<WorkGroupedClient[]>(
   'work-processos-grouped',
-  () => grouped(referenceMonth.value),
+  (_nuxtApp, { signal }) => grouped(referenceMonth.value, { signal }),
   { watch: [referenceMonth] }
 )
+readLifecycle.own({ clear: clearOffice0, refresh: reload }, () => {
+  rowSelection.value = {}
+})
 
 const groups = computed<WorkGroupedClient[]>(() => data.value ?? [])
 
-const { data: departments } = await useAsyncData(
+const { data: departments, clear: clearOffice1, refresh: refreshOffice1 } = await useAsyncData(
   'work-processos-departments',
-  () => listDepartments(),
+  (_nuxtApp, { signal }) => listDepartments({}, { signal }),
   { default: () => [] }
 )
+readLifecycle.own({ clear: clearOffice1, refresh: refreshOffice1 })
 
 /**
  * The `refresh` below is the composable's, not `reload`'s: the toolbar button and
@@ -200,8 +210,8 @@ const allRows = computed<ProcessTaskLeaf[]>(() => {
   })
 })
 
-const search = ref('')
-const filterModels = ref<DataTableFilterModel[]>([])
+const search = navigation.search
+const filterModels = navigation.filterModels
 
 const rows = computed(() =>
   filterWorkProcessosLeaves(allRows.value, filterModels.value, search.value)
@@ -216,8 +226,7 @@ const filterColumns = computed(() =>
 )
 const panelColumns = computed(() => toPanelColumns(filterColumns.value, { operators: true }))
 
-const sorting = ref<SortingState>([])
-const rowSelection = ref<Record<string, boolean>>({})
+const sorting = navigation.sorting
 const expanded = ref<true | Record<string, boolean>>({})
 const groupingOptions = ref(workGroupedTableOptions())
 

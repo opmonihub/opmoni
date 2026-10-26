@@ -5,9 +5,10 @@ import type { ClientTag, TaxRegime } from '~/types/client'
 import type { WorkPreviewRow, WorkTaskPriority, WorkTemplate, WorkTemplatePayload } from '~/types/work'
 import { taxRegimeLabel } from '~/utils/portfolioLabels'
 import { pageScrollClass } from '~/utils/pageShell'
-import { currentReferenceMonth } from '~/utils/workReferenceMonth'
 
 definePageMeta({ middleware: 'auth' })
+
+const readLifecycle = useOfficeReadLifecycle()
 
 const route = useRoute()
 const router = useRouter()
@@ -15,6 +16,9 @@ const toast = useToast()
 const { canManageWork } = useAuth()
 const { $api } = useNuxtApp()
 const { showTemplate, createTemplate, updateTemplate, previewTemplate, generateTemplate } = useWork()
+
+const { memberOptions } = useDirectory()
+const { list: listDepartments } = useDepartments()
 
 function parseId(param: unknown): number | null {
   const raw = Array.isArray(param) ? param[0] : param
@@ -26,11 +30,9 @@ const routeId = computed(() => parseId(route.params.id))
 const isNew = computed(() => routeId.value === null)
 const templateId = computed(() => routeId.value)
 
-const loading = ref(!isNew.value)
-const loadError = ref(false)
 const saving = ref(false)
 const generating = ref(false)
-const referenceMonth = ref(useState('work-reference-month', currentReferenceMonth).value)
+const referenceMonth = ref(useWorkReferenceMonth().referenceMonth.value)
 
 interface StepDraft {
   key: number
@@ -100,31 +102,26 @@ function syncFromTemplate(template: WorkTemplate) {
   }))
 }
 
-async function load() {
-  if (isNew.value) {
-    form.steps = [blankStep(1), blankStep(2)]
-    return
-  }
-  loading.value = true
-  loadError.value = false
-  try {
-    syncFromTemplate(await showTemplate(templateId.value as number))
-  } catch {
-    // No toast here: the composable below watches `loadError` and owns it.
-    loadError.value = true
-  } finally {
-    loading.value = false
-  }
-}
-
-await load()
-
-watch(templateId, () => void load())
+const { registry: navigationRegistry } = useListNavigationRegistry()
+const readAuthority = computed(() => navigationRegistry.value?.authority ?? '')
+watch(readAuthority, () => {
+  Object.assign(form, { name: '', description: '', cascade: false, is_active: true, generate_day: 1, due_day: 20, regimes: [], tag_ids: [], exceptions: [], steps: [] })
+}, { flush: 'sync' })
+const templateReadKey = computed(() => `work-template-${readAuthority.value}-${templateId.value ?? 'new'}`)
+const { data: templateData, status: templateStatus, error: loadError, refresh: load, clear: clearOffice0 } = await useAsyncData<WorkTemplate | null>(
+  templateReadKey,
+  (_nuxtApp, { signal }) => isNew.value ? Promise.resolve(null) : showTemplate(templateId.value as number, { signal }),
+  { default: () => null, getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined }
+)
+readLifecycle.own({ clear: clearOffice0, refresh: load })
+const loading = computed(() => templateStatus.value === 'pending')
+watch(templateData, (template) => {
+  if (template) syncFromTemplate(template)
+  else if (isNew.value) form.steps = [blankStep(1), blankStep(2)]
+}, { immediate: true })
 
 /**
- * `load` is this page's own loader — it resolves (or fails) through
- * `loadError`/`loading` instead of a `useAsyncData` ref, so the composable is
- * pointed at those two. `refresh` is the composable's, and the alert's retry
+ * The payload-aware detail read owns loading and errors on entry and retry. `refresh` is the composable's, and the alert's retry
  * answers through `retry` so a failed retry clears the failure first.
  */
 const { showError, retry } = useRetryableLoad({
@@ -134,23 +131,22 @@ const { showError, retry } = useRetryableLoad({
   loadErrorTitle: 'Não foi possível carregar o modelo'
 })
 
-const { data: tagCatalog } = await useAsyncData<ClientTag[]>(
+const { data: tagCatalog, clear: clearOffice1, refresh: refreshOffice1 } = await useAsyncData<ClientTag[]>(
   'work-model-tags',
-  async () => {
-    const res = await $api<{ data?: ClientTag[] } | ClientTag[]>('/tags')
+  async (_nuxtApp, { signal }) => {
+    const res = await $api<{ data?: ClientTag[] } | ClientTag[]>('/tags', { signal })
     return Array.isArray(res) ? res : (res.data ?? [])
   },
   { default: () => [] as ClientTag[] }
 )
+readLifecycle.own({ clear: clearOffice1, refresh: refreshOffice1 })
 
-const { memberOptions } = useDirectory()
-const { list: listDepartments } = useDepartments()
-
-const { data: departmentCatalog } = await useAsyncData(
+const { data: departmentCatalog, clear: clearOffice2, refresh: refreshOffice2 } = await useAsyncData(
   'work-model-departments',
-  () => listDepartments(),
+  (_nuxtApp, { signal }) => listDepartments({}, { signal }),
   { default: () => [] }
 )
+readLifecycle.own({ clear: clearOffice2, refresh: refreshOffice2 })
 
 const departmentItems = computed(() => [
   { label: 'Sem departamento', value: null },
@@ -160,11 +156,12 @@ const departmentItems = computed(() => [
 const previewKey = computed(() => (isNew.value ? 'new' : String(templateId.value)))
 const previewEnabled = computed(() => !isNew.value)
 
-const { data: previewData, status: previewStatus, error: previewError, refresh: refreshPreview } = await useAsyncData<WorkPreviewRow[]>(
+const { data: previewData, status: previewStatus, error: previewError, refresh: refreshPreview, clear: clearOffice3 } = await useAsyncData<WorkPreviewRow[]>(
   'work-model-preview',
-  () => previewTemplate(templateId.value as number),
+  (_nuxtApp, { signal }) => previewTemplate(templateId.value as number, { signal }),
   { watch: [previewKey], immediate: previewEnabled.value }
 )
+readLifecycle.own({ clear: clearOffice3, refresh: refreshPreview })
 
 watch(previewEnabled, (enabled) => {
   if (enabled) void refreshPreview()

@@ -3,13 +3,14 @@ import { useMembers } from './useMembers'
 export function useDirectory() {
   const nuxtApp = useNuxtApp()
   const { listDirectory } = useMembers()
-  const { currentAccount } = useAuth()
+  const { registry } = useListNavigationRegistry()
+  const authority = computed(() => registry.value?.authority ?? '')
 
-  const key = computed(() => `directory-${currentAccount.value?.id ?? 'none'}`)
+  const key = computed(() => `directory-${authority.value}`)
 
   const { data, error, refresh } = useAsyncData(
     key,
-    () => listDirectory(),
+    (_nuxtApp, { signal }) => listDirectory({}, { signal }),
     {
       default: () => [],
       getCachedData(cacheKey) {
@@ -17,6 +18,10 @@ export function useDirectory() {
       }
     }
   )
+
+  watch(authority, () => {
+    data.value = []
+  }, { flush: 'sync' })
 
   const memberOptions = computed(() => (data.value ?? []).map(member => ({ label: member.name, value: member.id })))
 

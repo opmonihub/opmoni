@@ -6,13 +6,22 @@ import { useMembers } from '~/composables/useMembers'
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const { list } = useDepartments()
 const { listDirectory, create, update, remove } = useMembers()
 const toast = useToast()
 const { canManageMembers } = useAuth()
 
-const search = ref('')
-const departmentFilter = ref<number | null>(null)
+const navigation = useListNavigationState('team-members', {
+  defaults: () => ({ search: '', departmentId: null as number | null }),
+  normalize: (value) => {
+    const input = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    return { search: typeof input.search === 'string' ? input.search.slice(0, 1000) : '', departmentId: Number.isSafeInteger(input.departmentId) && Number(input.departmentId) > 0 ? Number(input.departmentId) : null }
+  }
+})
+const search = listNavigationField(navigation, 'search')
+const departmentFilter = listNavigationField(navigation, 'departmentId')
 
 const inviteOpen = ref(false)
 const inviting = ref(false)
@@ -31,10 +40,11 @@ const roleItems: { label: string, value: AccountMemberRole }[] = [
   { label: 'Usuário', value: 'user' }
 ]
 
-const { data, status, error, refresh: reload } = await useAsyncData('equipe-directory', async () => {
-  const [members, departments] = await Promise.all([listDirectory(), list()])
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData('equipe-directory', async (_nuxtApp, { signal }) => {
+  const [members, departments] = await Promise.all([listDirectory({}, { signal }), list({}, { signal })])
   return { members, departments }
 })
+readLifecycle.own({ clear: clearOffice0, refresh: reload })
 
 /**
  * `sticky`: the alert is fatal to this page — it is `v-else-if` of the list — so a

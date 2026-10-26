@@ -30,13 +30,17 @@ async function setupPage<T>(path: string, bindings: Record<string, unknown>, pro
     computed: Vue.computed,
     watch: Vue.watch,
     definePageMeta() {},
+    useOfficeReadLifecycle: () => ({ own() {} }),
+    useListNavigationRegistry: () => ({ registry: Vue.ref({ authority: 'office' }) }),
+    useWorkReferenceMonth: () => ({ referenceMonth: Vue.ref('2027-02') }),
     useToast: () => ({ add() {} }),
     useRetryableLoad: () => ({ isLoading: Vue.ref(false), showError: Vue.ref(false), retry() {} }),
-    useAsyncData: async (_key: unknown, load: () => Promise<unknown>, options?: { immediate?: boolean, default?: () => unknown }) => ({
-      data: Vue.ref(options?.immediate === false ? options.default?.() : await load()),
+    useAsyncData: async (_key: unknown, load: (app: unknown, options: { signal: AbortSignal }) => Promise<unknown>, options?: { immediate?: boolean, default?: () => unknown }) => ({
+      data: Vue.ref(options?.immediate === false ? options.default?.() : await load({}, { signal: new AbortController().signal })),
       status: Vue.ref('success'),
       error: Vue.ref(null),
-      refresh: async () => {}
+      refresh: async () => {},
+      clear() {}
     }),
     ...bindings
   }

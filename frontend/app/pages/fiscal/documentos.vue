@@ -44,7 +44,8 @@ import { formatTaxId } from '~/utils/taxId'
  */
 definePageMeta({ middleware: 'auth' })
 
-const route = useRoute()
+const readLifecycle = useOfficeReadLifecycle()
+
 const { list, download } = useFiscal()
 const toast = useToast()
 
@@ -57,7 +58,7 @@ const toast = useToast()
  * filtro passa por `updateFilters`, que navega — inclusive a volta para a
  * primeira página, que é o que faz o filtro parecer aplicado.
  */
-const filters = computed(() => parseFiscalFilters(route.query))
+const { filters, update: updateNavigation } = useFiscalDocumentNavigation()
 
 const listKey = computed(() => `fiscal-documents-${JSON.stringify(filters.value)}`)
 
@@ -68,7 +69,8 @@ const listKey = computed(() => `fiscal-documents-${JSON.stringify(filters.value)
  * está lendo. Sem isso, `?model=nfe` voltando depois de `?model=cte` trocaria a
  * lista de baixo para cima na tela de quem já mudou o filtro.
  */
-const { data, status, error, refresh: reload } = await useAsyncData(listKey, () => list(filters.value))
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData(listKey, (_nuxtApp, { signal }) => list(filters.value, { signal }))
+readLifecycle.own({ clear: clearOffice0, refresh: reload })
 
 /**
  * `sticky`: uma falha de carga é fatal e o operador sai dela recarregando.
@@ -93,16 +95,22 @@ const total = computed(() => pageMeta.value?.total ?? rows.value.length)
 
 /** A página e a ordenação também moram na URL, e a primeira é a resposta. */
 function updateFilters(next: FiscalListFilters) {
-  return navigateTo({ query: fiscalQuery({ ...next, page: 1 }) })
+  return updateNavigation({ ...next, page: 1 })
 }
 
 const currentPage = computed({
   get: () => filters.value.page ?? 1,
-  set: (value: number) => navigateTo({ query: fiscalQuery({ ...filters.value, page: value }) })
+  set: (value: number) => updateNavigation({ ...filters.value, page: value })
 })
 
+watch([status, pageMeta], ([currentStatus, meta]) => {
+  if (currentStatus !== 'success' || !meta) return
+  const last = Math.max(1, meta.last_page)
+  if ((filters.value.page ?? 1) > last) void updateNavigation({ ...filters.value, page: last })
+}, { immediate: true })
+
 function setPerPage(value: FiscalPerPage) {
-  return navigateTo({ query: fiscalQuery({ ...filters.value, per_page: value, page: 1 }) })
+  return updateNavigation({ ...filters.value, per_page: value, page: 1 })
 }
 
 /**
@@ -117,7 +125,7 @@ const hasActiveFilters = computed(() => Object.keys(fiscalQuery(filters.value)).
 const hasActiveSearch = computed(() => Boolean(filters.value.q))
 
 function clearFilters() {
-  return navigateTo({ query: {} })
+  return updateNavigation(parseFiscalFilters({}))
 }
 
 /* ------------------------------------------------------------------ *

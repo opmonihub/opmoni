@@ -9,13 +9,16 @@ import type { TaxRegime } from '~/types/client'
 
 definePageMeta({ middleware: 'auth' })
 
+const readLifecycle = useOfficeReadLifecycle()
+
 const { canManageWork } = useAuth()
 const { listTemplates } = useWork()
 
-const { data, status, error, refresh: reload } = await useAsyncData<WorkTemplate[]>(
+const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData<WorkTemplate[]>(
   'work-modelos',
-  () => listTemplates()
+  (_nuxtApp, { signal }) => listTemplates({ signal })
 )
+readLifecycle.own({ clear: clearOffice0, refresh: reload })
 
 const templates = computed<WorkTemplate[]>(() => data.value ?? [])
 
