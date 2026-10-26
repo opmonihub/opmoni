@@ -629,7 +629,7 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
             'duplicate-'.$tag,
             frozenNow: $conversionNow->toISOString(),
         ));
-        $this->assertWaitingOnTableLock($second, 'accounts');
+        $this->assertWaitingOnAdvisoryLock($second);
 
         $this->release($first);
         $results = [$this->workerResult($first), $this->workerResult($second)];
