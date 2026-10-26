@@ -7,6 +7,7 @@ use App\Actions\ErpCommercialRegistration;
 use App\Enums\ClientPersonType;
 use App\Enums\ClientStatus;
 use App\Erp\ErpCompanyProvisioning;
+use App\Erp\ErpCoreModules;
 use App\Http\Resources\IdentityResource;
 use App\Models\Account;
 use App\Models\Client;
@@ -15,6 +16,7 @@ use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpTrialLink;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpPlan;
 use App\Models\Erp\ErpSubscription;
 use App\Models\Erp\ErpSubscriptionTrial;
 use App\Models\User;
@@ -58,8 +60,8 @@ final class OfficeErpTrialRegistration
         $owner = $request->user();
         $wasAuthenticated = $owner instanceof User;
 
-        if ($owner === null && User::query()->where('email', $email)->exists()) {
-            $this->loginRequired();
+        if ($owner === null) {
+            $this->registration->assertTrialOwnerEmailAvailable($email);
         }
 
         if ($owner !== null) {
@@ -98,7 +100,8 @@ final class OfficeErpTrialRegistration
             'owner_was_authenticated' => $wasAuthenticated,
         ];
 
-        $journal = DB::transaction(function () use ($owner, $input, $email, $cnpj, $key, $link, $payload, $prepared, $account): array {
+        $lockedPlanModuleKeys = [];
+        $journal = DB::transaction(function () use ($owner, $input, $email, $cnpj, $key, $link, $payload, $prepared, $account, &$lockedPlanModuleKeys): array {
             $this->identities->advisory('email:'.$email);
             $this->identities->advisory('erp-company:'.$cnpj);
             $owner ??= $this->registration->createTrialOwner([
@@ -114,8 +117,12 @@ final class OfficeErpTrialRegistration
                 $key,
                 'trial.register',
                 $payload,
-                fn (string $action, array $operationPayload): mixed => $this->authorize($context, $link, $action, $operationPayload),
-                fn (): array => ['data' => $this->createTrial($context, $link, $owner, $payload, $prepared)],
+                function (string $action, array $operationPayload) use ($context, $link, &$lockedPlanModuleKeys): void {
+                    $lockedPlanModuleKeys = $this->authorize($context, $link, $action, $operationPayload);
+                },
+                function () use ($context, $link, $owner, $payload, $prepared, &$lockedPlanModuleKeys): array {
+                    return ['data' => $this->createTrial($context, $link, $owner, $payload, $prepared, $lockedPlanModuleKeys)];
+                },
             ));
         }, 3);
 
@@ -159,19 +166,59 @@ final class OfficeErpTrialRegistration
             ->where('action', 'trial.register')
             ->where('idempotency_key', $key)
             ->where('outcome->data->owner_user_id', (int) $owner->getKey())
-            ->get(['outcome']);
+            ->get();
 
         abort_unless($matches->count() === 1, 404);
-        $outcome = $matches->first()->outcome;
+        $operation = $matches->first();
+        $outcome = $operation->outcome;
         abort_unless(is_array($outcome) && is_array($outcome['data'] ?? null), 404);
         $data = $outcome['data'];
+        $ids = [];
+        foreach (['client_id', 'company_id', 'subscription_id', 'contract_id', 'trial_id'] as $id) {
+            abort_unless(is_int($data[$id] ?? null) && $data[$id] > 0, 404);
+            $ids[$id] = $data[$id];
+        }
+
+        $company = ErpCompany::query()->whereKey($ids['company_id'])->first();
+        $client = Client::withoutGlobalScopes()->withTrashed()->whereKey($ids['client_id'])->first();
+        $subscription = ErpSubscription::query()
+            ->whereKey($ids['subscription_id'])
+            ->where('erp_company_id', $ids['company_id'])
+            ->where('office_erp_contract_id', $ids['contract_id'])
+            ->first();
+        $contract = OfficeErpContract::query()
+            ->whereKey($ids['contract_id'])
+            ->where('account_id', $operation->account_id)
+            ->where('client_id', $ids['client_id'])
+            ->where('erp_company_id', $ids['company_id'])
+            ->where('provisioning_source', 'office_trial')
+            ->first();
+        $trial = ErpSubscriptionTrial::query()
+            ->whereKey($ids['trial_id'])
+            ->where('erp_subscription_id', $ids['subscription_id'])
+            ->where('erp_company_id', $ids['company_id'])
+            ->where('account_id', $operation->account_id)
+            ->first();
+        $hasCurrentOwnerMembership = ErpCompanyMembership::query()
+            ->where('erp_company_id', $ids['company_id'])
+            ->where('user_id', $owner->getKey())
+            ->where('role', 'owner')
+            ->exists();
+
+        abort_unless($company !== null && $client !== null && $subscription !== null
+            && $contract !== null && $trial !== null && $hasCurrentOwnerMembership, 404);
+        abort_unless((int) $client->account_id === (int) $operation->account_id
+            && (string) $client->tax_id === (string) $trial->cnpj
+            && (string) $company->cnpj === (string) $trial->cnpj
+            && (int) $subscription->erp_plan_id === (int) $contract->erp_plan_id, 404);
+
         unset($data['owner_user_id']);
 
         return $data;
     }
 
-    /** @param array<string, mixed> $payload */
-    private function authorize(OfficeErpExecutionContext $context, array $snapshot, string $action, array $payload): void
+    /** @param array<string, mixed> $payload @return list<string> */
+    private function authorize(OfficeErpExecutionContext $context, array $snapshot, string $action, array $payload): array
     {
         abort_unless($action === 'trial.register', 403);
         abort_unless((int) ($payload['link_id'] ?? 0) === (int) $snapshot['link_id']
@@ -184,7 +231,17 @@ final class OfficeErpTrialRegistration
         abort_unless((int) $link->account_id === $context->accountId
             && (int) $link->erp_plan_id === (int) $snapshot['erp_plan_id'], 409, 'trial_link_changed');
 
-        $this->admission->assertCommand($context, 'trial.register', modules: array_values($snapshot['plan_module_keys']));
+        $plan = ErpPlan::query()->whereKey((int) $snapshot['erp_plan_id'])->lockForUpdate()->firstOrFail();
+        $moduleKeys = $plan->modules()->orderBy('module_key')->pluck('module_key')->all();
+        $snapshotModuleKeys = array_values($snapshot['plan_module_keys']);
+        sort($snapshotModuleKeys, SORT_STRING);
+        abort_unless($moduleKeys !== []
+            && ErpCoreModules::validateKeys($moduleKeys) === []
+            && $moduleKeys === $snapshotModuleKeys, 409, 'trial_plan_modules_changed');
+
+        $this->admission->assertCommand($context, 'trial.register', modules: $moduleKeys);
+
+        return $moduleKeys;
     }
 
     /** @param array<string, mixed> $payload @param array<string, mixed> $prepared @return array<string, int|string> */
@@ -194,6 +251,7 @@ final class OfficeErpTrialRegistration
         User $owner,
         array $payload,
         array $prepared,
+        array $modules,
     ): array {
         [$account] = $this->admission->lockCommercialAggregate($context);
         abort_unless($account->status === 'active', 403, 'office_inactive');
@@ -227,7 +285,6 @@ final class OfficeErpTrialRegistration
             ]);
         }
 
-        $modules = array_values($snapshot['plan_module_keys']);
         $provisioned = $this->contracts->createProvisioned($context, $client, $company, (int) $snapshot['erp_plan_id'], [
             'price' => '0.00',
             'currency' => 'BRL',
@@ -303,13 +360,5 @@ final class OfficeErpTrialRegistration
         if (strlen($key) < 16 || strlen($key) > 128 || preg_match('/^[A-Za-z0-9._:-]+$/D', $key) !== 1) {
             throw ValidationException::withMessages(['idempotency_key' => 'A chave da operação é inválida.']);
         }
-    }
-
-    private function loginRequired(): never
-    {
-        abort(response()->json([
-            'code' => 'login_required',
-            'message' => 'Entre com sua conta para continuar o cadastro.',
-        ], 409));
     }
 }

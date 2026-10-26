@@ -84,18 +84,24 @@ class ErpCommercialRegistration
         return DB::transaction(function () use ($data, $email, $hash): User {
             AccessTransaction::boundLockWaits();
             $this->identities->advisory('email:'.$email);
-            if (User::query()->where('email', $email)->exists()) {
-                abort(response()->json([
-                    'code' => 'login_required',
-                    'message' => 'Entre com sua conta para continuar o cadastro.',
-                ], 409));
-            }
+            $this->assertTrialOwnerEmailAvailableLocked($email);
 
             return User::query()->create([
                 'name' => trim($data['name']),
                 'email' => $email,
                 'password' => $hash,
             ]);
+        });
+    }
+
+    public function assertTrialOwnerEmailAvailable(string $email): void
+    {
+        $email = mb_strtolower(trim($email));
+
+        DB::transaction(function () use ($email): void {
+            AccessTransaction::boundLockWaits();
+            $this->identities->advisory('email:'.$email);
+            $this->assertTrialOwnerEmailAvailableLocked($email);
         });
     }
 
@@ -145,6 +151,21 @@ class ErpCommercialRegistration
             throw ValidationException::withMessages([
                 $field => $field === 'cnpj' ? 'CNPJ já cadastrado' : 'Este email já possui cadastro. Faça login para continuar.',
             ]);
+        }
+    }
+
+    private function assertTrialOwnerEmailAvailableLocked(string $email): void
+    {
+        if (User::query()->where('email', $email)->exists()) {
+            abort(response()->json([
+                'code' => 'login_required',
+                'message' => 'Entre com sua conta para continuar o cadastro.',
+            ], 409));
+        }
+
+        if (OwnerActivation::query()->where('email', $email)
+            ->whereNull('consumed_at')->whereNull('revoked_at')->where('expires_at', '>', now())->exists()) {
+            throw ValidationException::withMessages(['email' => 'Este email já está em uso.']);
         }
     }
 
