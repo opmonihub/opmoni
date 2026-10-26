@@ -5,6 +5,7 @@ namespace Tests\Integration;
 use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpReceipts;
 use App\Erp\Commercial\OfficeErpRecords;
+use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpAuditEvent;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
@@ -438,6 +439,74 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame((int) $basicPlan->id, (int) DB::table('erp_subscriptions')
             ->where('erp_company_id', DB::table('erp_companies')->where('cnpj', $legacyCnpj)->value('id'))
             ->value('erp_plan_id'));
+    }
+
+    public function test_trial_catalog_lock_serializes_direct_enrollment_on_shared_plan_across_offices(): void
+    {
+        $trialOffice = $this->commercialFixture(2);
+        $enrollmentOffice = $this->commercialFixture(2);
+        $technicalPlan = ErpPlan::factory()->create();
+        $technicalPlan->modules()->create(['module_key' => 'purchases', 'quota' => null]);
+        $trialLink = $this->trialLinkFixture($trialOffice, $technicalPlan);
+        $trialCnpj = $this->uniqueCnpj();
+        $client = Client::withoutGlobalScopes()
+            ->where('account_id', $enrollmentOffice['account_id'])
+            ->findOrFail($enrollmentOffice['contracts'][0]->client_id);
+        $trialCountsBefore = [
+            'contracts' => DB::table('office_erp_contracts')->count(),
+            'allocations' => DB::table('office_erp_licence_allocations')->count(),
+            'invoices' => DB::table('office_erp_invoices')->count(),
+            'companies' => DB::table('erp_companies')->count(),
+            'subscriptions' => DB::table('erp_subscriptions')->count(),
+        ];
+
+        $trial = $this->worker('trial_register', $this->trialRegistrationPayload(
+            $trialOffice,
+            $trialLink,
+            $trialCnpj,
+            'shared-plan-trial-'.bin2hex(random_bytes(4)),
+            holdAdvisoryLock: 'erp-commercial-catalog',
+        ));
+        $this->waitFor($trial, 'held');
+        $this->assertWorkerHeldAdvisoryLock($trial);
+
+        $enrollment = $this->worker('customer_enroll', [
+            'account_id' => $enrollmentOffice['account_id'],
+            'actor_id' => $enrollmentOffice['actor_id'],
+            'membership_id' => $enrollmentOffice['membership_id'],
+            'idempotency_key' => 'shared-plan-enroll-'.bin2hex(random_bytes(8)),
+            'enrollment' => [
+                'client_id' => (int) $client->id,
+                'erp_plan_id' => (int) $technicalPlan->id,
+                'price' => '100.00',
+                'currency' => 'BRL',
+                'interval_months' => 1,
+                'due_in_days' => 10,
+                'start_on' => CarbonImmutable::now('America/Sao_Paulo')->toDateString(),
+                'billing_timezone' => 'America/Sao_Paulo',
+            ],
+        ]);
+        $this->assertWaitingOnAdvisoryLock($enrollment);
+
+        $this->release($trial);
+        $trialResult = $this->workerResult($trial);
+        $enrollmentResult = $this->workerResult($enrollment);
+
+        self::assertSame(201, $trialResult['status']);
+        self::assertSame(201, $enrollmentResult['status']);
+        self::assertSame((int) $technicalPlan->id, (int) DB::table('erp_subscriptions')
+            ->where('erp_company_id', DB::table('erp_companies')->where('cnpj', $trialCnpj)->value('id'))
+            ->value('erp_plan_id'));
+        self::assertSame((int) $technicalPlan->id, (int) DB::table('erp_subscriptions')
+            ->where('id', $enrollmentResult['subscription_id'])
+            ->value('erp_plan_id'));
+        self::assertSame(1, DB::table('erp_subscription_trials')->where('cnpj', $trialCnpj)->count());
+        self::assertSame(1, DB::table('erp_companies')->where('cnpj', $trialCnpj)->count());
+        self::assertSame($trialCountsBefore['contracts'] + 2, DB::table('office_erp_contracts')->count());
+        self::assertSame($trialCountsBefore['allocations'] + 2, DB::table('office_erp_licence_allocations')->count());
+        self::assertSame($trialCountsBefore['invoices'] + 1, DB::table('office_erp_invoices')->count());
+        self::assertSame($trialCountsBefore['companies'] + 2, DB::table('erp_companies')->count());
+        self::assertSame($trialCountsBefore['subscriptions'] + 2, DB::table('erp_subscriptions')->count());
     }
 
     public function test_same_cnpj_across_offices_has_one_trial(): void

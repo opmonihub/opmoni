@@ -62,7 +62,7 @@ final class OfficeErpCommercialConcurrencyWorker
 
         $request = Request::create('http://localhost:3000');
         app()->instance('request', $request);
-        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'owner_setup_accept', 'owner_setup_issue', 'remove_allowance', 'cancel_contract', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'trial_convert', 'erp_register'], true)) {
+        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'owner_setup_accept', 'owner_setup_issue', 'remove_allowance', 'cancel_contract', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'trial_convert', 'erp_register', 'customer_enroll'], true)) {
             throw new RuntimeException('Unsupported action in the accepted commercial race subset: '.$input['action']);
         }
         if (isset($input['hold_row_lock']) && (! is_string($input['hold_row_lock']) || preg_match('/\A[a-z_]+\z/', $input['hold_row_lock']) !== 1)) {
@@ -133,7 +133,14 @@ final class OfficeErpCommercialConcurrencyWorker
                     ->whereKey($input['contract_id'])
                     ->firstOrFail();
             }
-            if ($input['action'] === 'erp_register') {
+            if ($input['action'] === 'customer_enroll') {
+                $outcome = app(OfficeErpCustomerEnrollment::class)->enroll(
+                    $context,
+                    $input['enrollment'],
+                    (string) $input['idempotency_key'],
+                );
+                $result = ['status' => 201, ...$outcome];
+            } elseif ($input['action'] === 'erp_register') {
                 config(['erp.registration_enabled' => true]);
                 [$legacyOwner, $legacyCompany] = app(ErpCommercialRegistration::class)->registerNewOwner($input['registration']);
                 $legacySubscription = $legacyCompany->subscription;
