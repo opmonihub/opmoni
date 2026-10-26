@@ -3,6 +3,8 @@
 namespace Tests\Feature\OfficeErpCommercial;
 
 use App\Erp\Commercial\OfficeErpExecutionContext;
+use App\Erp\ErpCommercialCatalog;
+use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
@@ -19,6 +21,50 @@ use Tests\OfficeErpCommercialTestCase;
 
 class CustomerEnrollmentTest extends OfficeErpCommercialTestCase
 {
+    public function test_direct_enrollment_acquires_catalog_before_the_shared_technical_plan(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $plan = $this->technicalPlan();
+        $catalog = new class extends ErpCommercialCatalog
+        {
+            public array $events = [];
+
+            public bool $effectStarted = false;
+
+            public function advisory(): void
+            {
+                $this->events[] = 'catalog';
+                parent::advisory();
+            }
+        };
+        $this->app->instance(ErpCommercialCatalog::class, $catalog);
+        \Event::listen('eloquent.created: '.OfficeErpCommercialOperation::class, function () use ($catalog): void {
+            $catalog->effectStarted = true;
+        });
+        Http::fake(function () use ($catalog) {
+            $catalog->events[] = 'provider';
+
+            return Http::response([], 404);
+        });
+        DB::listen(function ($event) use ($catalog): void {
+            if ($catalog->effectStarted && str_contains($event->sql, 'from "erp_plans"')) {
+                $catalog->events[] = 'technical_plan';
+            }
+        });
+
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-catalog-before-plan')
+            ->postJson('/api/v1/erp-commercial/enrollments', $this->newClientPayload($plan->id))
+            ->assertCreated();
+
+        self::assertSame('provider', $catalog->events[0]);
+        $catalogPosition = array_search('catalog', $catalog->events, true);
+        $planPosition = array_search('technical_plan', $catalog->events, true);
+        self::assertNotFalse($catalogPosition);
+        self::assertNotFalse($planPosition);
+        self::assertLessThan($planPosition, $catalogPosition, 'All Company provisioning must acquire the catalog before a technical plan to avoid cross-office deadlocks.');
+        $this->assertDatabaseCount('office_erp_invoices', 1);
+    }
+
     public function test_existing_client_enrolls_without_offer_or_owner_acceptance(): void
     {
         CarbonImmutable::setTestNow('2026-10-25 15:00:00 UTC');
