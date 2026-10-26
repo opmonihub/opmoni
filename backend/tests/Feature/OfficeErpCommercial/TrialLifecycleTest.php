@@ -6,6 +6,7 @@ use App\Erp\Commercial\ErpTrialLifecycle;
 use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpContracts;
 use App\Erp\Commercial\OfficeErpCustomerEnrollment;
+use App\Erp\Commercial\OfficeErpDelinquency;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpQueries;
 use App\Erp\Commercial\OfficeErpRecurringBilling;
@@ -27,6 +28,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\OfficeErpCommercialTestCase;
 
@@ -36,6 +38,26 @@ class TrialLifecycleTest extends OfficeErpCommercialTestCase
     {
         $this->artisan('office-erp:expire-trials', ['--batch' => 0])->assertExitCode(Command::INVALID);
         $this->artisan('office-erp:expire-trials', ['--batch' => 101])->assertExitCode(Command::INVALID);
+    }
+
+    public function test_expiry_command_does_not_let_nontrialing_grants_starve_a_due_trial(): void
+    {
+        $now = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($now);
+        $nonTrialingTrialIds = [];
+        for ($index = 0; $index < 50; $index++) {
+            $company = $this->trialCompany($now->subDays(10), $now->subDays(3));
+            $nonTrialingTrialIds[] = $company->trial->id;
+            $company->subscription()->firstOrFail()->forceFill(['status' => 'canceled'])->save();
+        }
+        $processable = $this->trialCompany($now->subDays(8), $now->subDay());
+        $processableTrial = $processable->trial;
+
+        $this->artisan('office-erp:expire-trials', ['--batch' => 1])->assertExitCode(Command::SUCCESS);
+
+        self::assertNotNull($processableTrial->fresh()->expired_at);
+        self::assertSame('trial_expired', $processable->subscription()->firstOrFail()->fresh()->status);
+        self::assertSame(0, ErpSubscriptionTrial::query()->whereIn('id', $nonTrialingTrialIds)->whereNotNull('expired_at')->count());
     }
 
     public function test_expired_trial_denies_operating_writes_at_inclusive_end(): void
@@ -83,12 +105,14 @@ class TrialLifecycleTest extends OfficeErpCommercialTestCase
 
         self::assertSame('erp_subscription_inactive', $gate->operatingWriteDenialCode($company));
         self::assertFalse($gate->allowsOperatingWrites($company));
+        self::assertFalse($gate->moduleEnabledForRead($company, 'purchases'));
 
         $company = $this->trialCompany($now->subDays(6), $now->addHours(24));
         OfficeErpContract::query()->where('erp_company_id', $company->id)->update(['manual_hold' => true]);
 
         self::assertSame('erp_subscription_inactive', $gate->operatingWriteDenialCode($company));
         self::assertFalse($gate->allowsOperatingWrites($company));
+        self::assertFalse($gate->moduleEnabledForRead($company, 'purchases'));
 
         $company = $this->trialCompany($now->subDays(6), $now->addHours(24));
         $company->subscription()->firstOrFail()->forceFill(['status' => 'active'])->save();
@@ -137,12 +161,49 @@ class TrialLifecycleTest extends OfficeErpCommercialTestCase
             ->assertForbidden()
             ->assertJsonPath('code', 'erp_trial_expired');
 
+        $this->getJson('/api/v1/erp/purchases')
+            ->assertOk();
+        $this->getJson('/api/v1/erp/sales')
+            ->assertForbidden();
+
         $this->getJson('/api/v1/erp/subscription')
             ->assertOk()
             ->assertJsonPath('data.status', 'trialing')
             ->assertJsonPath('data.trial.situation', 'expired');
         self::assertSame($trial->started_at->toISOString(), $trial->fresh()->started_at->toISOString());
         self::assertSame($subscription->id, $company->subscription()->firstOrFail()->id);
+
+        app(ErpTrialLifecycle::class)->expire($trial, $now);
+        $this->getJson('/api/v1/erp/purchases')->assertOk();
+        $this->postJson('/api/v1/erp/purchases', [])->assertForbidden()->assertJsonPath('code', 'erp_trial_expired');
+        self::assertSame('released', OfficeErpLicenceAllocation::query()
+            ->where('contract_id', $subscription->office_erp_contract_id)->value('state'));
+    }
+
+    public function test_legacy_contract_activation_cannot_convert_an_office_trial(): void
+    {
+        $now = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($now);
+        $company = $this->trialCompany($now->subDays(6), $now->addDay());
+        $contract = OfficeErpContract::query()->where('erp_company_id', $company->id)->firstOrFail();
+        $ctx = $this->officeContextFor(Account::query()->findOrFail($company->trial->account_id));
+        $contracts = app(OfficeErpContracts::class);
+
+        try {
+            $this->withOfficeAccount($ctx, fn (): array => $contracts->activate($ctx, $contract, 'legacy-trial-activation-service'));
+            self::fail('Legacy activation must require explicit paid trial conversion.');
+        } catch (HttpException $exception) {
+            self::assertSame(409, $exception->getStatusCode(), $exception->getMessage());
+        }
+
+        $this->asOffice($ctx)
+            ->withHeader('Idempotency-Key', 'legacy-trial-activation-route')
+            ->postJson('/api/v1/erp-commercial/contracts/'.$contract->id.'/activate')
+            ->assertConflict();
+
+        self::assertSame('accepted', $contract->fresh()->agreement_status);
+        self::assertSame('trialing', $company->subscription()->firstOrFail()->fresh()->status);
+        self::assertSame(0, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
     }
 
     public function test_trial_does_not_generate_recurring_invoice(): void
@@ -155,8 +216,126 @@ class TrialLifecycleTest extends OfficeErpCommercialTestCase
         $result = app(OfficeErpRecurringBilling::class)->generate((int) $contract->id, $now);
 
         self::assertSame(['generated' => [], 'pending' => false], $result);
+        self::assertSame('trialing', $company->subscription()->firstOrFail()->fresh()->status);
         self::assertSame(0, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
         self::assertNull($contract->fresh()->service_anchor_on);
+    }
+
+    public function test_delinquency_policy_reconciliation_preserves_trial_subscription_state(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-25 12:00:00 UTC');
+        $company = $this->trialCompany(CarbonImmutable::now()->subDays(6), CarbonImmutable::now()->addDay());
+        $contract = OfficeErpContract::query()->where('erp_company_id', $company->id)->firstOrFail();
+        $ctx = $this->officeContextFor(Account::query()->findOrFail($company->trial->account_id));
+
+        $this->withOfficeAccount($ctx, fn (): array => app(OfficeErpDelinquency::class)->save($ctx, [
+            'mode' => 'automatic',
+            'grace_days' => 0,
+            'billing_timezone' => 'America/Sao_Paulo',
+        ], true, 'trial-policy-configure'));
+
+        self::assertSame('trialing', $company->subscription()->firstOrFail()->fresh()->status);
+
+        app(ErpTrialLifecycle::class)->expire($company->trial, CarbonImmutable::now()->addDays(2));
+        $this->withOfficeAccount($ctx, fn (): string => app(OfficeErpDelinquency::class)->reconcile($ctx, $contract, CarbonImmutable::now()));
+        self::assertSame('trial_expired', $company->subscription()->firstOrFail()->fresh()->status);
+    }
+
+    public function test_conversion_plan_eligibility_distinguishes_occupied_trial_from_expired_new_slot(): void
+    {
+        $now = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($now);
+        $company = $this->trialCompany($now->subDays(6), $now->addDay());
+        $contract = OfficeErpContract::query()->where('erp_company_id', $company->id)->firstOrFail();
+        $ctx = $this->officeContextFor(Account::query()->findOrFail($company->trial->account_id));
+
+        $paidPlan = ErpPlan::factory()->create(['name' => 'Paid purchases with no seat']);
+        ErpPlanModule::factory()->create(['erp_plan_id' => $paidPlan->id, 'module_key' => 'purchases']);
+        $plansResponse = $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/enrollment-plans?contract_id='.$contract->id);
+        self::assertSame(true, $plansResponse->json('eligibility.trial_conversion.eligible'), $plansResponse->getContent());
+        $plansResponse
+            ->assertOk()
+            ->assertJsonPath('eligibility.can_provision', false)
+            ->assertJsonPath('eligibility.trial_conversion.eligible', true)
+            ->assertJsonPath('eligibility.trial_conversion.capacity_mode', 'occupied_trial');
+
+        app(ErpTrialLifecycle::class)->expire($company->trial, $now->addDays(1));
+        $otherCompany = ErpCompany::factory()->create();
+        $otherContract = $this->acceptedContract($ctx, ['module_keys' => ['purchases']]);
+        $otherContract->forceFill(['erp_company_id' => $otherCompany->id, 'agreement_status' => 'effective'])->save();
+        $this->withOfficeAccount($ctx, fn (): OfficeErpLicenceAllocation => OfficeErpLicenceAllocation::query()->create([
+            'account_id' => $ctx->accountId,
+            'contract_id' => $otherContract->id,
+            'erp_company_id' => $otherCompany->id,
+            'state' => 'occupied',
+        ]));
+
+        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/enrollment-plans?contract_id='.$contract->id)
+            ->assertOk()
+            ->assertJsonPath('eligibility.can_provision', false)
+            ->assertJsonPath('eligibility.trial_conversion.eligible', false)
+            ->assertJsonPath('eligibility.trial_conversion.capacity_mode', null)
+            ->assertJsonPath('eligibility.trial_conversion.reason', 'licence_capacity_reached');
+
+        request()->attributes->remove('access.session_lock');
+        try {
+            $this->withOfficeAccount($ctx, fn (): array => app(OfficeErpCustomerEnrollment::class)
+                ->convertTrial($ctx, $contract, $this->conversionInput((int) $paidPlan->id), 'convert-expired-trial-no-capacity'));
+            self::fail('An expired trial cannot convert unless a new seat is available.');
+        } catch (HttpException $exception) {
+            self::assertSame(409, $exception->getStatusCode(), $exception->getMessage());
+        }
+        self::assertSame(0, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+    }
+
+    public function test_conversion_operation_replay_requires_current_office_authority(): void
+    {
+        $now = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($now);
+        $company = $this->trialCompany($now->subDays(6), $now->addDay());
+        $contract = OfficeErpContract::query()->where('erp_company_id', $company->id)->firstOrFail();
+        $plan = ErpPlan::factory()->create(['name' => 'Replay authority plan']);
+        ErpPlanModule::factory()->create(['erp_plan_id' => $plan->id, 'module_key' => 'purchases']);
+        $account = Account::query()->findOrFail($company->trial->account_id);
+        $ctx = $this->officeContextFor($account);
+        $input = $this->conversionInput((int) $plan->id);
+        $service = app(OfficeErpCustomerEnrollment::class);
+        $outcome = $this->withOfficeAccount($ctx, fn (): array => $service->convertTrial($ctx, $contract, $input, 'convert-replay-after-authority-loss'));
+        self::assertGreaterThan(0, $outcome['invoice_id']);
+
+        $account->forceFill(['status' => 'suspended'])->save();
+        try {
+            $this->withOfficeAccount($ctx, fn (): array => $service->convertTrial($ctx, $contract, $input, 'convert-replay-after-authority-loss'));
+            self::fail('A conversion replay must recheck current office authority.');
+        } catch (HttpException $exception) {
+            self::assertSame(403, $exception->getStatusCode());
+        }
+        self::assertSame(1, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+    }
+
+    public function test_paid_conversion_rejects_a_start_date_before_confirmation_day(): void
+    {
+        $now = CarbonImmutable::parse('2026-10-25T12:00:00Z');
+        CarbonImmutable::setTestNow($now);
+        $company = $this->trialCompany($now->subDays(6), $now->addDay());
+        $contract = OfficeErpContract::query()->where('erp_company_id', $company->id)->firstOrFail();
+        $plan = ErpPlan::factory()->create(['name' => 'No retroactive billing plan']);
+        ErpPlanModule::factory()->create(['erp_plan_id' => $plan->id, 'module_key' => 'purchases']);
+        $account = Account::query()->findOrFail($company->trial->account_id);
+        $ctx = $this->officeContextFor($account);
+        $input = $this->conversionInput((int) $plan->id);
+        $input['start_on'] = '2026-10-24';
+
+        try {
+            $this->withOfficeAccount($ctx, fn (): array => app(OfficeErpCustomerEnrollment::class)
+                ->convertTrial($ctx, $contract, $input, 'convert-no-retroactive-trial-days'));
+            self::fail('Paid conversion cannot begin before the confirmation day.');
+        } catch (ValidationException $exception) {
+            self::assertArrayHasKey('start_on', $exception->errors());
+        }
+
+        self::assertSame(0, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+        self::assertSame('trialing', $company->subscription()->firstOrFail()->fresh()->status);
     }
 
     public function test_expired_trial_conversion_reacquires_original_seat_and_replays_one_first_invoice(): void
@@ -307,6 +486,10 @@ class TrialLifecycleTest extends OfficeErpCommercialTestCase
         $paidData = $this->withOfficeAccount($ctx, fn (): array => $service->show($ctx, (int) $contract->id))['data'];
         self::assertSame('converted', $paidData['trial']['situation']);
         self::assertSame('2026-11-11', $paidData['next_billing_on']);
+
+        $this->withOfficeAccount($ctx, fn () => $service->amend($ctx, $contract->fresh(), ['due_in_days' => 20], 'reader-pending-next-period'));
+        $pendingData = $this->withOfficeAccount($ctx, fn (): array => $service->show($ctx, (int) $contract->id))['data'];
+        self::assertSame('2026-11-21', $pendingData['next_billing_on']);
 
         $contract->forceFill(['cancel_effective_on' => '2026-11-01'])->save();
         $cancelingData = $this->withOfficeAccount($ctx, fn (): array => $service->show($ctx, (int) $contract->id))['data'];

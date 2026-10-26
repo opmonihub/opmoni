@@ -123,8 +123,13 @@ class ResolveCompany
                     default => null,
                 };
                 $module ??= $this->fiscalModule($request, $companyId);
-                if ($module !== null && ! $this->commercialGate->moduleEnabled($company, $module)) {
-                    abort(response()->json(['code' => 'erp_module_disabled', 'message' => 'Módulo não habilitado no contrato'], 403));
+                if ($module !== null) {
+                    $moduleEnabled = $effectiveWrite
+                        ? $this->commercialGate->moduleEnabled($company, $module)
+                        : $this->commercialGate->moduleEnabledForRead($company, $module);
+                    if (! $moduleEnabled) {
+                        abort(response()->json(['code' => 'erp_module_disabled', 'message' => 'Módulo não habilitado no contrato'], 403));
+                    }
                 }
 
                 AccessSession::assertOwnership($request);

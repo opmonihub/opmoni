@@ -35,10 +35,17 @@ final class OfficeErpCustomerEnrollment
     ) {}
 
     /** @return array{data:list<array{id:int,slug:string,name:string,module_keys:list<string>}>,eligibility:array<string,mixed>} */
-    public function plans(OfficeErpExecutionContext $ctx): array
+    public function plans(OfficeErpExecutionContext $ctx, ?int $contractId = null): array
     {
         $capabilities = $this->admission->capabilities($ctx);
         $allowedModules = $capabilities['allowance']['module_keys'];
+        $trialContract = $contractId === null ? null : OfficeErpRecords::query($ctx, OfficeErpContract::class)
+            ->with('currentRevision')
+            ->whereKey($contractId)
+            ->first();
+        if ($contractId !== null) {
+            $allowedModules = array_values(array_intersect($allowedModules, $trialContract?->currentRevision?->module_keys ?? []));
+        }
         $plans = ErpPlan::query()->with('modules')->orderBy('name')->get()
             ->map(function (ErpPlan $plan) use ($allowedModules): ?array {
                 $modules = $plan->modules->pluck('module_key')->sort()->values()->all();
@@ -59,7 +66,7 @@ final class OfficeErpCustomerEnrollment
             $reasons[] = 'no_eligible_erp_plan';
         }
 
-        return [
+        $result = [
             'data' => $plans,
             'eligibility' => [
                 'can_provision' => $capabilities['can_provision'] && $plans !== [],
@@ -69,6 +76,60 @@ final class OfficeErpCustomerEnrollment
                 'available_module_keys' => $allowedModules,
             ],
         ];
+        if ($contractId !== null) {
+            $result['eligibility']['trial_conversion'] = $this->trialConversionEligibility($ctx, $trialContract, $capabilities, $plans);
+        }
+
+        return $result;
+    }
+
+    /** @param list<array{id:int,slug:string,name:string,module_keys:list<string>}> $plans @return array{eligible:bool,capacity_mode:?string,reason:?string} */
+    private function trialConversionEligibility(OfficeErpExecutionContext $ctx, ?OfficeErpContract $contract, array $capabilities, array $plans): array
+    {
+        $denied = static fn (string $reason): array => ['eligible' => false, 'capacity_mode' => null, 'reason' => $reason];
+        if (! $capabilities['can_read'] || in_array('subscription_inactive', $capabilities['capability_reasons']['can_provision'], true)) {
+            return $denied('subscription_inactive');
+        }
+        if ($contract === null || $contract->provisioning_source !== 'office_trial' || $contract->agreement_status !== 'accepted'
+            || $contract->manual_hold || $contract->erp_company_id === null || $contract->currentRevision === null) {
+            return $denied('trial_not_convertible');
+        }
+
+        $subscription = ErpSubscription::query()->where('erp_company_id', $contract->erp_company_id)
+            ->where('office_erp_contract_id', $contract->id)->first();
+        $trial = $subscription === null ? null : ErpSubscriptionTrial::query()
+            ->where('erp_subscription_id', $subscription->id)
+            ->where('erp_company_id', $contract->erp_company_id)
+            ->where('account_id', $ctx->accountId)
+            ->where('cnpj', $contract->company?->cnpj)
+            ->whereNull('converted_at')
+            ->first();
+        $allocation = OfficeErpRecords::query($ctx, OfficeErpLicenceAllocation::class)
+            ->where('contract_id', $contract->id)->first();
+        if ($trial === null || $allocation === null || ! in_array($allocation->state, ['occupied', 'released'], true)
+            || ($allocation->state === 'occupied' && (int) $allocation->erp_company_id !== (int) $contract->erp_company_id)
+            || ! in_array($subscription->status, ['trialing', 'trial_expired'], true)) {
+            return $denied('trial_not_convertible');
+        }
+        if ($capabilities['allowance']['module_keys'] === []) {
+            return $denied('commercial_module_not_allowed');
+        }
+        if ($plans === []) {
+            return $denied('no_eligible_erp_plan');
+        }
+
+        $expired = $trial->expired_at !== null || ! $trial->ends_at->isAfter(CarbonImmutable::now('UTC'))
+            || $subscription->status === 'trial_expired';
+        if (! $expired && $allocation->state !== 'occupied') {
+            return $denied('trial_not_convertible');
+        }
+        if ($expired && ! $capabilities['can_provision']) {
+            return $denied(in_array('licence_capacity_reached', $capabilities['capability_reasons']['can_provision'], true)
+                ? 'licence_capacity_reached'
+                : 'trial_not_convertible');
+        }
+
+        return ['eligible' => true, 'capacity_mode' => $expired ? 'new_slot' : 'occupied_trial', 'reason' => null];
     }
 
     /** @param array<string,mixed> $input @return array{client_id:int,company_id:int,subscription_id:int,contract_id:int,invoice_id:int,owner_setup_status:string} */
@@ -311,6 +372,7 @@ final class OfficeErpCustomerEnrollment
             && ($allocation->state === 'released' || (int) $allocation->erp_company_id === (int) $lockedContract->erp_company_id),
             409, 'trial_allocation_unavailable');
         abort_unless((int) $trial->erp_company_id === (int) $lockedContract->erp_company_id, 409);
+        $this->assertPaidStartDate($payload['terms']['start_on'], $payload['terms']['billing_timezone'], $trial->ends_at);
     }
 
     /** @return array<string, mixed> */
@@ -346,6 +408,7 @@ final class OfficeErpCustomerEnrollment
             && $allocation->state !== 'reserved'
             && ($allocation->state === 'released' || (int) $allocation->erp_company_id === (int) $company->id),
             409, 'trial_not_convertible');
+        $this->assertPaidStartDate($payload['terms']['start_on'], $payload['terms']['billing_timezone'], $trial->ends_at);
 
         $plan = ErpPlan::query()->with('modules')->whereKey($payload['erp_plan_id'])->lockForUpdate()->firstOrFail();
         $modules = $plan->modules->pluck('module_key')->sort()->values()->all();
@@ -400,7 +463,7 @@ final class OfficeErpCustomerEnrollment
         ])->save();
 
         $start = CarbonImmutable::parse($payload['terms']['start_on'], $timezone)->startOfDay();
-        $activation = $this->contracts->activateProvisioned(
+        $activation = $this->contracts->activateConvertedTrial(
             $ctx,
             $contract,
             $start,
@@ -456,6 +519,16 @@ final class OfficeErpCustomerEnrollment
                 'billing_timezone' => $timezone,
             ],
         ];
+    }
+
+    private function assertPaidStartDate(string $startOn, string $timezone, CarbonImmutable $trialEndsAt): void
+    {
+        $currentLocalDate = CarbonImmutable::now($timezone)->toDateString();
+        $trialEndLocalDate = $trialEndsAt->setTimezone($timezone)->toDateString();
+        $earliestAllowedDate = min($currentLocalDate, $trialEndLocalDate);
+        if ($startOn < $earliestAllowedDate) {
+            throw ValidationException::withMessages(['start_on' => ['A cobrança não pode incluir dias do período de teste.']]);
+        }
     }
 
     /** @param array<string,mixed> $payload */
