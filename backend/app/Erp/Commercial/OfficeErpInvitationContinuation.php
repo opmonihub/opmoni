@@ -132,6 +132,11 @@ final class OfficeErpInvitationContinuation
 
             return ['state' => 'invalid'];
         }
+        if ($invitation->purpose !== $continuation['purpose']) {
+            $this->clear($request);
+
+            return ['state' => 'invalid'];
+        }
 
         $account = Account::query()->find($invitation->account_id);
         if (! $account) {
@@ -150,6 +155,7 @@ final class OfficeErpInvitationContinuation
 
         return [
             'state' => $invitation->status === 'consumed' ? 'accepted' : ($authenticated ? 'ready' : 'valid'),
+            'purpose' => $invitation->purpose,
             'operation_key' => $continuation['operation_key'],
             'data' => $data,
         ];
@@ -169,6 +175,31 @@ final class OfficeErpInvitationContinuation
                 return [];
             }
 
+            if ($invitation->purpose === 'access_setup') {
+                $company = $contract->company;
+                if (! $company) {
+                    return [];
+                }
+
+                return [
+                    'purpose' => 'access_setup',
+                    'invitation' => [
+                        'id' => (int) $invitation->id,
+                        'owner_name' => $invitation->owner_name,
+                        'owner_email' => $invitation->owner_email,
+                        'expires_at' => $invitation->expires_at?->toIso8601String(),
+                    ],
+                    'seller' => $invitation->seller_snapshot,
+                    'client' => [
+                        'name' => $client->name,
+                        'trade_name' => $client->trade_name,
+                        'tax_id' => $client->tax_id,
+                    ],
+                    'company' => ['id' => (int) $company->id, 'name' => (string) $company->name],
+                    'owner_setup_status' => (string) $company->owner_setup_status,
+                ];
+            }
+
             $companyOptions = [];
             if ($user !== null) {
                 $companyOptions = ErpCompany::query()
@@ -186,6 +217,7 @@ final class OfficeErpInvitationContinuation
             }
 
             return [
+                'purpose' => 'commercial_acceptance',
                 'invitation' => [
                     'id' => (int) $invitation->id,
                     'owner_name' => $invitation->owner_name,
@@ -229,7 +261,8 @@ final class OfficeErpInvitationContinuation
             'owner_email' => $invitation->owner_email,
             'owner_name' => $invitation->owner_name,
             'owner_identity' => $identity,
-            'operation_key' => hash_hmac('sha256', 'office-erp-owner-acceptance:'.$invitation->id.':'.$identity, $this->applicationKey()),
+            'purpose' => (string) $invitation->purpose,
+            'operation_key' => hash_hmac('sha256', 'office-erp-owner-'.$invitation->purpose.':'.$invitation->id.':'.$identity, $this->applicationKey()),
             'expires_at' => now()->addSeconds(self::TTL_SECONDS)->timestamp,
         ];
         $payload['signature'] = self::sign($payload);
@@ -244,7 +277,8 @@ final class OfficeErpInvitationContinuation
         if (! is_array($payload) || ! self::signatureIsValid($payload)) {
             return null;
         }
-        foreach (['invitation_id', 'account_id', 'contract_id', 'owner_email', 'owner_name', 'owner_identity', 'operation_key', 'expires_at'] as $key) {
+        $payload['purpose'] ??= 'commercial_acceptance';
+        foreach (['invitation_id', 'account_id', 'contract_id', 'owner_email', 'owner_name', 'owner_identity', 'purpose', 'operation_key', 'expires_at'] as $key) {
             if (! array_key_exists($key, $payload)) {
                 return null;
             }
@@ -261,6 +295,11 @@ final class OfficeErpInvitationContinuation
             return false;
         }
         unset($payload['signature']);
+
+        if (hash_equals(self::sign($payload), $signature)) {
+            return true;
+        }
+        unset($payload['purpose']);
 
         return hash_equals(self::sign($payload), $signature);
     }

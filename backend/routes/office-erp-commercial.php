@@ -29,6 +29,7 @@ Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->
     Route::get('/contracts', [OfficeErpContractController::class, 'index'])->name('office-erp-commercial.contracts.index');
     Route::get('/contracts/{contract}', [OfficeErpContractController::class, 'show'])->whereNumber('contract')->name('office-erp-commercial.contracts.show');
     Route::post('/contracts/{contract}/activate', [OfficeErpContractController::class, 'activate'])->whereNumber('contract')->name('office-erp-commercial.contracts.activate');
+    Route::post('/contracts/{contract}/owner-setup', [OfficeErpInvitationController::class, 'setupOwner'])->whereNumber('contract')->name('office-erp-commercial.contracts.owner-setup');
     Route::patch('/contracts/{contract}/terms', [OfficeErpContractController::class, 'amend'])->whereNumber('contract')->name('office-erp-commercial.contracts.amend');
     Route::post('/contracts/{contract}/renew', [OfficeErpContractController::class, 'renew'])->whereNumber('contract')->name('office-erp-commercial.contracts.renew');
     Route::post('/contracts/{contract}/suspend', [OfficeErpContractController::class, 'suspend'])->whereNumber('contract')->name('office-erp-commercial.contracts.suspend');
