@@ -10,6 +10,7 @@ use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\Commercial\OfficeErpOwnerInvitation;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\OwnerActivation;
 use App\Models\User;
 use App\Support\AccessSession;
 use App\Support\ErpSession;
@@ -236,7 +237,16 @@ final class OfficeErpOwnerSetup
 
         [$account] = $this->admission->lockCommercialAggregate($ctx);
         abort_unless($account->status === 'active', 410, 'invitation_expired');
-
+        if ($owner === null) {
+            $pendingActivation = OwnerActivation::query()
+                ->where('email', $continuation['owner_email'])
+                ->whereNull('consumed_at')
+                ->whereNull('revoked_at')
+                ->where('expires_at', '>', now())
+                ->lockForUpdate()
+                ->first();
+            abort_if($pendingActivation !== null, 409, 'owner_activation_pending');
+        }
         $contractIdentity = OfficeErpRecords::query($ctx, OfficeErpContract::class)
             ->whereKey($continuation['contract_id'])
             ->firstOrFail();

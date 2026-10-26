@@ -13,6 +13,7 @@ use App\Models\Erp\Commercial\OfficeErpOwnerInvitation;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpSubscription;
+use App\Models\OwnerActivation;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Testing\TestResponse;
@@ -69,7 +70,8 @@ class OwnerSetupTest extends OfficeErpCommercialTestCase
         self::assertSame($subscriptionId, $company->fresh()->subscription->id);
         self::assertSame($invoiceCount, OfficeErpInvoice::query()->count());
         self::assertSame($allocationCount, OfficeErpLicenceAllocation::query()->count());
-        $subscription->forceFill(['status' => 'canceled'])->save();
+        $officeSubscription = $context->account->subscription()->firstOrFail();
+        $officeSubscription->forceFill(['status' => 'canceled'])->save();
         $before = [OfficeErpInvoice::query()->count(), OfficeErpLicenceAllocation::query()->count(), ErpCompanyMembership::query()->count()];
         $this->requestFromIsolatedIngress()->withHeaders(['X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => $operationKey])
             ->postJson('/api/v1/erp-invitations/accept', [])->assertOk()->assertJsonPath('data.owner_setup_status', 'claimed');
@@ -160,6 +162,49 @@ class OwnerSetupTest extends OfficeErpCommercialTestCase
         self::assertSame('suspended', Account::query()->findOrFail($context->accountId)->status);
         self::assertSame('unclaimed', $company->fresh()->owner_setup_status);
         self::assertSame(0, ErpCompanyMembership::query()->where('erp_company_id', $company->id)->count());
+    }
+
+    public function test_pending_account_activation_reservation_is_preserved_until_intended_owner_activates(): void
+    {
+        ['context' => $context, 'contract' => $contract, 'company' => $company] = $this->unclaimedCompany();
+        $issued = $this->issueSetup($context, $contract, 'owner.setup.pending-activation');
+        $activationToken = bin2hex(random_bytes(32));
+        $activation = OwnerActivation::query()->create([
+            'account_id' => $context->accountId,
+            'email' => 'owner@example.test',
+            'owner_name' => 'Maria da Silva',
+            'token_hash' => hash('sha256', $activationToken),
+            'expires_at' => now()->addDays(2),
+        ]);
+        $csrf = $this->csrf();
+        Auth::logout();
+        $resolved = $this->resolve($this->token($issued));
+        $operationKey = (string) $resolved->json('operation_key');
+
+        $this->requestFromIsolatedIngress()->withHeaders(['X-CSRF-Token' => $csrf, 'Idempotency-Key' => $operationKey])
+            ->postJson('/api/v1/erp-invitations/accept', ['password' => 'owner-password-123'])
+            ->assertConflict();
+
+        self::assertDatabaseMissing('users', ['email' => 'owner@example.test']);
+        self::assertSame('unclaimed', $company->fresh()->owner_setup_status);
+        self::assertSame('pending', OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id'])->status);
+        self::assertSame(0, OfficeErpCommercialOperation::query()->where('action', 'owner.accept')->count());
+        self::assertNull($activation->fresh()->consumed_at);
+
+        $this->requestFromIsolatedIngress()->withHeader('X-CSRF-Token', $this->csrf())
+            ->postJson('/api/v1/first-access', [
+                'token' => $activationToken,
+                'email' => 'owner@example.test',
+                'password' => 'owner-password-123',
+                'password_confirmation' => 'owner-password-123',
+            ])->assertCreated();
+        $resolvedAgain = $this->resolve($this->token($issued));
+        $this->requestFromIsolatedIngress()->withHeaders(['X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => (string) $resolvedAgain->json('operation_key')])
+            ->postJson('/api/v1/erp-invitations/accept', [])->assertCreated()->assertJsonPath('data.owner_setup_status', 'claimed');
+
+        self::assertNotNull($activation->fresh()->consumed_at);
+        self::assertSame('claimed', $company->fresh()->owner_setup_status);
+        self::assertSame(1, ErpCompanyMembership::query()->where('erp_company_id', $company->id)->where('role', 'owner')->count());
     }
 
     public function test_legacy_signature_without_purpose_cannot_be_relabelled_as_access_setup(): void
