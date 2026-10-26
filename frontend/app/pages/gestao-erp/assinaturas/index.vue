@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { listNavigationField } from '~/composables/useListNavigationState'
+import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type { TableColumn } from '@nuxt/ui'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
@@ -24,10 +28,11 @@ const { api } = useAccessApi()
 const { user, currentAccount } = useAuth()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const context = useOfficeErpContext()
-const query = ref('')
+const navigation = useOfficeErpListNavigation('contracts', { q: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context)
+const query = listNavigationField(navigation, 'q')
 const debouncedQuery = refDebounced(query, 300)
-const page = ref(1)
-const perPage = ref<25 | 50 | 100>(25)
+const page = listNavigationField(navigation, 'page')
+const perPage = listNavigationField(navigation, 'perPage')
 const contracts = ref<OfficeErpContractRow[]>([])
 const total = ref(0)
 const lastPage = ref(1)
@@ -36,14 +41,14 @@ const loadError = ref('')
 const confirmedEmpty = ref(false)
 let requestGeneration = 0
 
-const identityStamp = computed(() => JSON.stringify([
+const identityStamp = useOfficeErpReadIdentity(() => [
   user.value?.id ?? null,
   sessionGeneration.value,
   currentAccount.value?.id ?? null,
   currentAccount.value?.status ?? null,
-  currentAccount.value?.role ?? null,
-  context.capabilities.value?.capability_key ?? null
-]))
+  currentAccount.value?.role ?? null
+], () => context.capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identityStamp)
 const columns: TableColumn<OfficeErpContractRow>[] = [
   { accessorKey: 'client', header: 'Cliente' },
   { id: 'terms', header: 'Termos' },
@@ -76,6 +81,7 @@ function formatDate(value: string) {
 }
 
 async function loadContracts() {
+  const read = reads.begin('loadContracts')
   const request = ++requestGeneration
   const identity = identityStamp.value
   loading.value = true
@@ -83,7 +89,7 @@ async function loadContracts() {
   confirmedEmpty.value = false
   try {
     await context.refresh()
-    if (request !== requestGeneration || identity !== identityStamp.value) return
+    if (!read.current() || request !== requestGeneration || identity !== identityStamp.value) return
     if (!context.capabilities.value?.can_read) {
       contracts.value = []
       total.value = 0
@@ -93,26 +99,31 @@ async function loadContracts() {
     const token = context.capture()
     const params: Record<string, string | number> = { page: page.value, per_page: perPage.value }
     if (debouncedQuery.value.trim()) params.q = debouncedQuery.value.trim()
-    const response = await api<{ data: OfficeErpContractRow[], meta: { current_page: number, last_page: number, per_page: number, total: number } }>('/erp-commercial/contracts', { params })
-    if (request !== requestGeneration || identity !== identityStamp.value || !context.isCurrent(token)) return
+    const response = await api<{ data: OfficeErpContractRow[], meta: { current_page: number, last_page: number, per_page: number, total: number } }>('/erp-commercial/contracts', { signal: read.signal, params })
+    if (!read.current() || request !== requestGeneration || identity !== identityStamp.value || !context.isCurrent(token)) return
     if (!Array.isArray(response?.data) || !response.meta || !Number.isSafeInteger(response.meta.total))
       throw new Error('A resposta da lista de contratos está incompleta.')
+    const availablePage = officeErpAvailablePage(response.meta)
+    if (page.value !== availablePage) {
+      page.value = availablePage
+      return
+    }
     contracts.value = response.data
     total.value = response.meta.total
     lastPage.value = Math.max(1, response.meta.last_page)
     page.value = response.meta.current_page
     confirmedEmpty.value = response.meta.total === 0
   } catch (error) {
-    if (request === requestGeneration && identity === identityStamp.value)
+    if (read.current() && request === requestGeneration && identity === identityStamp.value)
       loadError.value = apiErrorMessage(error) ?? 'Não foi possível consultar os contratos agora.'
   } finally {
-    if (request === requestGeneration && identity === identityStamp.value) loading.value = false
+    if (read.current() && request === requestGeneration && identity === identityStamp.value) loading.value = false
   }
 }
 
 watch([debouncedQuery, perPage], () => {
   page.value = 1
-})
+}, { flush: 'sync' })
 watch([page, debouncedQuery, perPage, identityStamp], () => {
   void loadContracts()
 }, { immediate: true, flush: 'post' })

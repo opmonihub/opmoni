@@ -266,6 +266,7 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
   const session = Vue.ref(1)
   const apiCalls: ApiCall[] = []
   const stateKeys: string[] = []
+  const navigationStates = new Map<string, Vue.Ref<unknown>>()
   const command = options.command ?? createCommand()
   if (options.initialRecovery !== undefined) command.recoveryResult = options.initialRecovery
   const context = options.officeContext ?? {
@@ -283,7 +284,10 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
     useAuth: () => ({ user, currentAccount }),
     useState: (key: string, factory: () => unknown) => {
       stateKeys.push(key)
-      return key === 'access-session-generation' ? session : factory()
+      if (key === 'access-session-generation') return session
+      if (key === 'access-user') return user
+      if (!navigationStates.has(key)) navigationStates.set(key, Vue.ref(factory()))
+      return navigationStates.get(key)
     },
     useOfficeErpContext: () => context,
     useOfficeErpCommand: () => command,

@@ -4,6 +4,7 @@ import type { ContextToken, OfficeErpCapabilities } from '#shared/types/officeEr
 interface ContextFlight {
   authority: string
   request: number
+  generation: number
   promise: Promise<void>
 }
 
@@ -45,8 +46,7 @@ export function useOfficeErpContext() {
   const { user, currentAccount } = useAuth()
   const sessionGeneration = useState('access-session-generation', () => 0)
   const { api } = useAccessApi()
-  const storedCapabilities = useState<OfficeErpCapabilities | null>('office-erp-context-capabilities', () => null)
-  const capabilitiesOwner = useState<string | null>('office-erp-context-capabilities-owner', () => null)
+  const confirmed = useState<{ owner: string, capabilities: OfficeErpCapabilities | null } | null>('office-erp-context-confirmed', () => null)
   const generation = useState('office-erp-context-generation', () => 0)
   const requestGeneration = useState('office-erp-context-request-generation', () => 0)
 
@@ -57,27 +57,34 @@ export function useOfficeErpContext() {
     currentAccount.value?.status ?? null,
     currentAccount.value?.role ?? null
   ]))
-  const capabilities = computed(() => capabilitiesOwner.value === authorityKey.value ? storedCapabilities.value : null)
+  const authorityOwner = useState('office-erp-context-authority-owner', () => authorityKey.value)
+  const confirmation = computed(() => {
+    const value = confirmed.value
+    if (!value || value.owner !== authorityKey.value) return 'unknown'
+    return value.capabilities ? 'confirmed' : 'failed'
+  })
+  const capabilities = computed(() => confirmed.value?.owner === authorityKey.value ? confirmed.value.capabilities : null)
   const contextKey = computed(() => JSON.stringify([
     authorityKey.value,
     capabilities.value?.capability_key ?? null
   ]))
 
   function clearCapabilities() {
-    storedCapabilities.value = null
-    capabilitiesOwner.value = null
+    confirmed.value = null
   }
 
   function invalidate() {
     generation.value++
     requestGeneration.value++
-    clearCapabilities()
     pendingContext.delete(nuxtApp)
+    clearCapabilities()
   }
 
-  watch(authorityKey, () => {
+  watch(authorityKey, (owner) => {
+    if (authorityOwner.value === owner) return
+    authorityOwner.value = owner
     invalidate()
-  }, { flush: 'sync' })
+  }, { immediate: true, flush: 'sync' })
 
   function capture(): ContextToken {
     return { key: contextKey.value, generation: generation.value }
@@ -97,10 +104,10 @@ export function useOfficeErpContext() {
     const token = capture()
     const sourceKey = authorityKey.value
     const existing = pendingContext.get(nuxtApp)
-    if (existing?.authority === sourceKey && existing.request === requestGeneration.value) return existing.promise
+    if (existing?.authority === sourceKey && existing.request === requestGeneration.value && existing.generation === generation.value) return existing.promise
     const request = ++requestGeneration.value
     let complete!: () => void
-    const flight: ContextFlight = { authority: sourceKey, request, promise: new Promise<void>((resolve) => {
+    const flight: ContextFlight = { authority: sourceKey, request, generation: token.generation, promise: new Promise<void>((resolve) => {
       complete = resolve
     }) }
     pendingContext.set(nuxtApp, flight)
@@ -116,22 +123,22 @@ export function useOfficeErpContext() {
         if (request !== requestGeneration.value || !isCurrent(token)) return
         if (!response || !isCapabilities(response.data)) {
           if (capabilities.value) generation.value++
-          clearCapabilities()
+          confirmed.value = { owner: sourceKey, capabilities: null }
           return
         }
 
-        storedCapabilities.value = response.data
-        capabilitiesOwner.value = sourceKey
+        confirmed.value = { owner: sourceKey, capabilities: response.data }
       } catch {
         if (request === requestGeneration.value && isCurrent(token)) {
           if (capabilities.value) generation.value++
-          clearCapabilities()
+          confirmed.value = { owner: sourceKey, capabilities: null }
         }
       }
     }
   }
 
   return {
+    confirmation,
     capabilities: capabilities as ComputedRef<OfficeErpCapabilities | null>,
     capture,
     isCurrent,

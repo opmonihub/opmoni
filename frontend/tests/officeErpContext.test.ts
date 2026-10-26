@@ -218,3 +218,74 @@ describe('useOfficeErpContext', () => {
     assert.equal(second.context.capabilities.value?.capability_key, 'second')
   })
 })
+
+it('publishes owner and capabilities atomically to synchronous consumers', async (t) => {
+  const harness = mountContext()
+  t.after(harness.stop)
+  const publications: Array<string | null> = []
+  const stop = Vue.watch(harness.context.capabilities, value => publications.push(value?.capability_key ?? null), { flush: 'sync' })
+  t.after(stop)
+  await harness.context.refresh()
+  assert.deepEqual(publications, ['cap-v1'])
+})
+
+it('a capability publication consumer joins the current confirmation instead of dispatching twice', async (t) => {
+  let calls = 0
+  const harness = mountContext({ api: async () => {
+    calls++
+    return { data: fullCapabilities('published') }
+  } })
+  t.after(harness.stop)
+  const consumer = harness.createConsumer()
+  let joined: Promise<void> | undefined
+  const stop = Vue.watch(consumer.capabilities, () => {
+    joined = consumer.refresh()
+  }, { flush: 'sync' })
+  t.after(stop)
+  await harness.context.refresh()
+  await joined
+  assert.equal(calls, 1)
+  assert.equal(consumer.capabilities.value?.capability_key, 'published')
+})
+
+it('explicit invalidation fences an older flight even under unchanged authority', async (t) => {
+  const old = deferred<unknown>()
+  const fresh = deferred<unknown>()
+  let calls = 0
+  const harness = mountContext({ api: () => ++calls === 1 ? old.promise : fresh.promise })
+  t.after(harness.stop)
+  const oldRead = harness.context.refresh()
+  harness.context.invalidate()
+  const newRead = harness.context.refresh()
+  old.resolve({ data: fullCapabilities('invalid') })
+  await oldRead
+  const joined = harness.createConsumer().refresh()
+  assert.equal(calls, 2)
+  assert.equal(harness.context.capabilities.value, null)
+  fresh.resolve({ data: fullCapabilities('fresh') })
+  await Promise.all([newRead, joined])
+  assert.equal(harness.context.capabilities.value?.capability_key, 'fresh')
+})
+
+it('multiple authority watchers invalidate once before a reentrant new-authority confirmation', async (t) => {
+  let calls = 0
+  const response = deferred<unknown>()
+  const harness = mountContext({ api: async () => {
+    calls++
+    return calls === 1 ? { data: fullCapabilities('old') } : response.promise
+  } })
+  t.after(harness.stop)
+  harness.createConsumer()
+  await harness.context.refresh()
+  let transition: Promise<void> | undefined
+  const stop = Vue.watch(harness.context.capabilities, (value) => {
+    if (!value) transition = harness.context.refresh()
+  }, { flush: 'sync' })
+  t.after(stop)
+  harness.identity.value.current_account = { id: 12, status: 'active', role: 'admin' }
+  const joined = harness.context.refresh()
+  assert.equal(calls, 2)
+  response.resolve({ data: fullCapabilities('current') })
+  await Promise.all([transition, joined])
+  assert.equal(harness.context.capabilities.value?.capability_key, 'current')
+})

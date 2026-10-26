@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type { TableColumn } from '@nuxt/ui'
 import type { ContextToken, OfficeErpCommandResult } from '#shared/types/officeErpCommercial'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
@@ -82,14 +84,14 @@ let previewGeneration = 0
 let trialLinkGeneration = 0
 
 const capabilities = context.capabilities
-const identityStamp = computed(() => JSON.stringify([
+const identityStamp = useOfficeErpReadIdentity(() => [
   user.value?.id ?? null,
   sessionGeneration.value,
   currentAccount.value?.id ?? null,
   currentAccount.value?.status ?? null,
-  currentAccount.value?.role ?? null,
-  capabilities.value?.capability_key ?? null
-]))
+  currentAccount.value?.role ?? null
+], () => capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identityStamp)
 const recoveryKey = computed(() => command.recoveryKey.value)
 const canConfigure = computed(() => capabilities.value?.can_configure === true)
 const configureRestriction = computed(() => {
@@ -167,6 +169,7 @@ function clearProtectedState() {
 }
 
 async function loadTrialLink() {
+  const read = reads.begin('loadTrialLink')
   const request = ++trialLinkGeneration
   const scope = identityStamp.value
   let token = context.capture()
@@ -177,11 +180,11 @@ async function loadTrialLink() {
   trialLinkPlanId.value = null
   try {
     await context.refresh()
-    if (request !== trialLinkGeneration || !isCurrent(scope, token)) return
-    if (!canManageTrialLink.value) return
+    if (!read.current() || request !== trialLinkGeneration || scope !== identityStamp.value) return
     token = context.capture()
-    const response = await api<{ data: TrialLinkResource }>('/erp-commercial/trial-link')
-    if (request !== trialLinkGeneration || !isCurrent(scope, token)) return
+    if (!canManageTrialLink.value) return
+    const response = await api<{ data: TrialLinkResource }>('/erp-commercial/trial-link', { signal: read.signal })
+    if (!read.current() || request !== trialLinkGeneration || !isCurrent(scope, token)) return
     const data = response?.data
     if (!data || typeof data.configured !== 'boolean' || typeof data.enabled !== 'boolean'
       || !Array.isArray(data.plans) || (data.url !== null && typeof data.url !== 'string')
@@ -193,10 +196,10 @@ async function loadTrialLink() {
     trialLinkPlanId.value = data.erp_plan_id
     trialLinkEnabled.value = data.enabled
   } catch (error) {
-    if (request === trialLinkGeneration && isCurrent(scope, token))
+    if (read.current() && request === trialLinkGeneration && isCurrent(scope, token))
       trialLinkError.value = apiErrorMessage(error) ?? (error instanceof Error ? error.message : 'Não foi possível carregar o link de teste.')
   } finally {
-    if (request === trialLinkGeneration && isCurrent(scope, token))
+    if (read.current() && request === trialLinkGeneration && isCurrent(scope, token))
       trialLinkLoading.value = false
   }
 }
@@ -280,6 +283,7 @@ function invalidatePreview() {
 }
 
 async function loadSettings() {
+  const read = reads.begin('loadSettings')
   const request = ++readGeneration
   const scope = identityStamp.value
   let token = context.capture()
@@ -298,7 +302,8 @@ async function loadSettings() {
       return
     }
     await context.refresh()
-    if (request !== readGeneration || !isCurrent(scope, token)) return
+    if (!read.current() || request !== readGeneration || scope !== identityStamp.value) return
+    token = context.capture()
     if (!capabilities.value) {
       throw new Error('Não foi possível confirmar o acesso comercial do escritório.')
     }
@@ -307,8 +312,8 @@ async function loadSettings() {
       return
     }
     token = context.capture()
-    const response = await api<{ data: OfficeErpSettings }>('/erp-commercial/settings')
-    if (request !== readGeneration || !isCurrent(scope, token)) return
+    const response = await api<{ data: OfficeErpSettings }>('/erp-commercial/settings', { signal: read.signal })
+    if (!read.current() || request !== readGeneration || !isCurrent(scope, token)) return
     if (!response?.data || !['manual', 'automatic'].includes(response.data.mode)
       || !Number.isInteger(response.data.grace_days)
       || typeof response.data.billing_timezone !== 'string') {
@@ -320,10 +325,10 @@ async function loadSettings() {
     loaded.value = true
     invalidatePreview()
   } catch (error) {
-    if (request === readGeneration && isCurrent(scope, token))
+    if (read.current() && request === readGeneration && isCurrent(scope, token))
       loadError.value = apiErrorMessage(error) ?? 'Não foi possível carregar a política comercial.'
   } finally {
-    if (request === readGeneration && isCurrent(scope, token))
+    if (read.current() && request === readGeneration && isCurrent(scope, token))
       loading.value = false
   }
 }

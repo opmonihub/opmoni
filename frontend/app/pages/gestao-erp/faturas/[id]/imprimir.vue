@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
 definePageMeta({ middleware: 'auth', layout: 'office-erp-print' })
@@ -6,26 +8,28 @@ interface PrintInvoice { id: number, number: string | null, document_status: str
 const route = useRoute(), { api } = useAccessApi(), context = useOfficeErpContext()
 const { user, currentAccount } = useAuth(), sessionGeneration = useState('access-session-generation', () => 0)
 const invoice = ref<PrintInvoice | null>(null), error = ref(''), loading = ref(false), printing = ref(false)
-const identity = computed(() => JSON.stringify([user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null, context.capabilities.value?.capability_key ?? null]))
+const identity = useOfficeErpReadIdentity(() => [user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null], () => context.capabilities.value?.capability_key)
+const reads = useOfficeErpReads(identity)
 let generation = 0
 async function load() {
+  const read = reads.begin('load')
   const n = ++generation
   invoice.value = null
   error.value = ''
   loading.value = true
   await context.refresh()
-  if (n !== generation) return
+  if (!read.current() || n !== generation) return
   try {
     if (!context.capabilities.value?.can_read) throw Error('Acesso comercial indisponível.')
     const token = context.capture()
-    const result = await api<{ data: PrintInvoice }>('/erp-commercial/invoices/' + encodeURIComponent(String(route.params.id)) + '/print')
-    if (n !== generation || !context.isCurrent(token)) return
+    const result = await api<{ data: PrintInvoice }>('/erp-commercial/invoices/' + encodeURIComponent(String(route.params.id)) + '/print', { signal: read.signal })
+    if (!read.current() || n !== generation || !context.isCurrent(token)) return
     if (!result?.data || result.data.id !== Number(route.params.id) || result.data.document_status !== 'issued') throw Error('A fatura emitida não está disponível para impressão.')
     invoice.value = result.data
   } catch (e) {
-    if (n === generation) error.value = e instanceof Error ? e.message : 'Não foi possível carregar a fatura.'
+    if (read.current() && n === generation) error.value = e instanceof Error ? e.message : 'Não foi possível carregar a fatura.'
   } finally {
-    if (n === generation) loading.value = false
+    if (read.current() && n === generation) loading.value = false
   }
 }
 async function print() {

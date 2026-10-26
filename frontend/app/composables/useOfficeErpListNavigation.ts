@@ -1,0 +1,45 @@
+import { useListNavigationState } from '~/composables/useListNavigationState'
+
+type Criteria = Record<string, string | number>
+
+/** Retain only list criteria; grants and all protected resource state keep their own owners. */
+export function useOfficeErpListNavigation<T extends Criteria>(
+  key: string,
+  defaults: T,
+  context: { capabilities: { value: { capability_key: string } | null }, capture(): { key: string }, confirmation?: { value: string } },
+  choices: Partial<Record<keyof T, readonly (string | number)[]>> = {},
+  fromQuery?: () => T | null
+) {
+  function normalize(value: unknown): T {
+    const input = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    const result = { ...defaults }
+    for (const field of Object.keys(defaults) as Array<keyof T>) {
+      const candidate = input[field as string]
+      if (choices[field]) {
+        if (choices[field]!.includes(candidate as string | number)) result[field] = candidate as T[keyof T]
+      } else if (field === 'page') {
+        if (Number.isSafeInteger(candidate) && Number(candidate) > 0) result[field] = candidate as T[keyof T]
+      } else if (field === 'perPage') {
+        if ([25, 50, 100].includes(candidate as number)) result[field] = candidate as T[keyof T]
+      } else if (['from', 'to', 'dueFrom', 'dueTo'].includes(String(field))) {
+        if (candidate === '' || (typeof candidate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(candidate)
+          && Number.isFinite(Date.parse(candidate)) && new Date(candidate).toISOString().slice(0, 10) === candidate)) result[field] = candidate as T[keyof T]
+      } else if (typeof candidate === 'string') {
+        result[field] = candidate as T[keyof T]
+      }
+    }
+    return result
+  }
+  return useListNavigationState(`office-commercial:${key}`, {
+    defaults: () => ({ ...defaults }), normalize, fromQuery,
+    authority: () => context.capabilities.value || context.confirmation?.value === 'failed' ? context.capture().key : null
+  })
+}
+
+export function officeErpAvailablePage(meta: { total: number, current_page: number, last_page: number, per_page: number }): number {
+  if (!Number.isSafeInteger(meta.total) || meta.total < 0
+    || !Number.isSafeInteger(meta.current_page) || meta.current_page < 1
+    || !Number.isSafeInteger(meta.last_page) || meta.last_page < 1
+    || ![25, 50, 100].includes(meta.per_page)) throw new Error('A paginação retornada está incompleta.')
+  return Math.min(meta.current_page, meta.last_page)
+}
