@@ -99,6 +99,111 @@ class CustomerEnrollmentTest extends OfficeErpCommercialTestCase
         $this->assertDatabaseCount('office_erp_invoices', 0);
     }
 
+    public function test_soft_deleted_active_client_is_not_enrolled(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $client = $this->clientFor($ctx);
+        $client->delete();
+        $plan = $this->technicalPlan();
+
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-archived-client')
+            ->postJson('/api/v1/erp-commercial/enrollments', $this->payload($client->id, $plan->id))
+            ->assertNotFound();
+
+        $this->assertDatabaseCount('office_erp_contracts', 0);
+        $this->assertDatabaseCount('office_erp_invoices', 0);
+    }
+
+    public function test_new_client_enrollment_replay_skips_second_provider_lookup_and_preflight_has_no_transaction(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $plan = $this->technicalPlan();
+        $transactionLevels = [];
+        $baselineTransactionLevel = DB::transactionLevel();
+        Http::fake(function () use (&$transactionLevels) {
+            $transactionLevels[] = DB::transactionLevel();
+
+            return Http::response([], 404);
+        });
+
+        $payload = $this->newClientPayload($plan->id);
+        $first = $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-new-client-replay')
+            ->postJson('/api/v1/erp-commercial/enrollments', $payload)->assertCreated();
+        $retry = $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-new-client-replay')
+            ->postJson('/api/v1/erp-commercial/enrollments', $payload)->assertCreated();
+
+        $this->assertSame($first->json('data'), $retry->json('data'));
+        $this->assertSame([$baselineTransactionLevel], $transactionLevels);
+        Http::assertSentCount(1);
+        $this->assertDatabaseCount('office_erp_invoices', 1);
+    }
+
+    public function test_membership_revoked_during_provider_preflight_is_rechecked_before_effects(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $plan = $this->technicalPlan();
+        $transactionLevels = [];
+        $baselineTransactionLevel = DB::transactionLevel();
+        Http::fake(function () use ($ctx, &$transactionLevels) {
+            $transactionLevels[] = DB::transactionLevel();
+            DB::table('account_memberships')->where('account_id', $ctx->accountId)->where('user_id', $ctx->actor->id)->delete();
+
+            return Http::response([], 404);
+        });
+        $before = [DB::table('clients')->count(), ErpCompany::query()->count(), ErpSubscription::query()->count()];
+
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-revoked-during-provider')
+            ->postJson('/api/v1/erp-commercial/enrollments', $this->newClientPayload($plan->id))
+            ->assertForbidden();
+
+        $this->assertSame([$baselineTransactionLevel], $transactionLevels);
+        $this->assertSame($before, [DB::table('clients')->count(), ErpCompany::query()->count(), ErpSubscription::query()->count()]);
+    }
+
+    public function test_changed_payload_same_key_conflicts_without_second_enrollment(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $client = $this->clientFor($ctx);
+        $plan = $this->technicalPlan();
+        $payload = $this->payload($client->id, $plan->id);
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-payload-conflict')
+            ->postJson('/api/v1/erp-commercial/enrollments', $payload)->assertCreated();
+        $payload['price'] = '150.00';
+
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-payload-conflict')
+            ->postJson('/api/v1/erp-commercial/enrollments', $payload)->assertStatus(409);
+
+        $this->assertDatabaseCount('office_erp_contracts', 1);
+        $this->assertDatabaseCount('office_erp_invoices', 1);
+    }
+
+    public function test_provider_failure_after_client_persistence_rolls_back_enrollment_aggregate(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $plan = $this->technicalPlan();
+        $before = [DB::table('clients')->count(), ErpCompany::query()->count(), ErpSubscription::query()->count()];
+        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        \Event::listen('eloquent.creating: '.OfficeErpInvoice::class, static function (): never {
+            throw new \RuntimeException('invoice producer failed');
+        });
+
+        $this->withoutExceptionHandling();
+        try {
+            $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-rolls-back-invoice-failure')
+                ->postJson('/api/v1/erp-commercial/enrollments', $this->newClientPayload($plan->id));
+            self::fail('The invoice failure should abort the enrollment transaction.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame('invoice producer failed', $exception->getMessage());
+        } finally {
+            \Event::forget('eloquent.creating: '.OfficeErpInvoice::class);
+            $this->withExceptionHandling();
+        }
+
+        $this->assertSame($before, [DB::table('clients')->count(), ErpCompany::query()->count(), ErpSubscription::query()->count()]);
+        $this->assertDatabaseCount('office_erp_contracts', 0);
+        $this->assertDatabaseCount('office_erp_invoices', 0);
+    }
+
     public function test_invalid_source_plan_terms_and_future_start_have_no_effect(): void
     {
         CarbonImmutable::setTestNow('2026-10-25 15:00:00 UTC');
@@ -113,6 +218,14 @@ class CustomerEnrollmentTest extends OfficeErpCommercialTestCase
         $invalidPrice['price'] = '01.999';
         $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-invalid-price')
             ->postJson('/api/v1/erp-commercial/enrollments', $invalidPrice)->assertUnprocessable();
+        $invalidCycle = $this->payload($client->id, $plan->id);
+        $invalidCycle['interval_months'] = 2;
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-invalid-cycle')
+            ->postJson('/api/v1/erp-commercial/enrollments', $invalidCycle)->assertUnprocessable();
+        $missingPlan = $this->payload($client->id, $plan->id);
+        $missingPlan['erp_plan_id'] = 999999;
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'enroll-missing-plan')
+            ->postJson('/api/v1/erp-commercial/enrollments', $missingPlan)->assertNotFound();
         $foreignModulePlan = ErpPlan::factory()->create();
         ErpPlanModule::factory()->create(['erp_plan_id' => $foreignModulePlan->id, 'module_key' => 'sales']);
         $foreignModule = $this->payload($client->id, $foreignModulePlan->id);
