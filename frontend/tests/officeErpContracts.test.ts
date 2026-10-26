@@ -157,6 +157,36 @@ test('labels every canonical agreement state and never describes unknown states 
   }
 })
 
+test('shows factual trial dates without inventing a next invoice', async () => {
+  const trialRecord = {
+    ...detail,
+    licence_status: 'trialing',
+    trial: {
+      id: 71,
+      started_at: '2026-10-25T12:00:00Z',
+      ends_at: '2026-11-01T12:00:00Z',
+      converted_at: null,
+      expired_at: null,
+      situation: 'trialing'
+    },
+    next_billing_on: null
+  }
+  const list = harness('pages/gestao-erp/assinaturas/index.vue', detail, null, [trialRecord])
+  const page = harness('pages/gestao-erp/assinaturas/[id].vue', trialRecord)
+  try {
+    await settle()
+    assert.match(text(list.root), /Em teste/)
+    assert.match(text(list.root), /Encerra 01\/11\/2026/)
+    assert.doesNotMatch(text(list.root), /Próxima cobrança/)
+    assert.match(text(page.root), /Teste de 7 dias/)
+    assert.match(text(page.root), /Encerra 01\/11\/2026/)
+    assert.doesNotMatch(text(page.root), /Próxima cobrança/)
+  } finally {
+    list.app.unmount()
+    page.app.unmount()
+  }
+})
+
 test('renders the contract detail SFC, dispatches lifecycle actions, and recovers unknown outcomes', async () => {
   const page = harness('pages/gestao-erp/assinaturas/[id].vue')
   try {
