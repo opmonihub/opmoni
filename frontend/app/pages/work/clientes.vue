@@ -53,7 +53,7 @@ import { workSortableHeader as sortableHeader } from '~/utils/workSortableHeader
 
 definePageMeta({ middleware: 'auth' })
 
-const readLifecycle = useOfficeReadLifecycle()
+const readLifecycle = useWorkReadLifecycle('/work/clientes')
 
 const toast = useToast()
 const { grouped, updateTask } = useWork()
@@ -73,7 +73,7 @@ const rowSelection = ref<Record<string, boolean>>({})
 const { data, status, error, refresh: reload, clear: clearOffice0 } = await useAsyncData<WorkGroupedClient[]>(
   'work-clientes',
   (_nuxtApp, { signal }) => grouped(referenceMonth.value, { signal }),
-  { watch: [referenceMonth] }
+  { enabled: readLifecycle.enabled, watch: [referenceMonth] }
 )
 readLifecycle.own({ clear: clearOffice0, refresh: reload }, () => {
   rowSelection.value = {}
@@ -84,7 +84,7 @@ const groups = computed<WorkGroupedClient[]>(() => data.value ?? [])
 const { data: departments, clear: clearOffice1, refresh: refreshOffice1 } = await useAsyncData(
   'work-clientes-departments',
   (_nuxtApp, { signal }) => listDepartments({}, { signal }),
-  { default: () => [] }
+  { enabled: readLifecycle.enabled, default: () => [] }
 )
 readLifecycle.own({ clear: clearOffice1, refresh: refreshOffice1 })
 
