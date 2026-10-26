@@ -423,6 +423,90 @@ test('authenticated owner explicitly selects company adoption and submits the st
   } finally { page.restore() }
 })
 
+test('access setup continuation has no sales terms and claims the intended ERP company', async () => {
+  let accepted = false
+  const accessSetup = {
+    state: 'valid',
+    purpose: 'access_setup',
+    operation_key: 'setup-operation-key',
+    data: {
+      purpose: 'access_setup',
+      invitation: { id: 54, owner_name: 'Ana Owner', owner_email: 'ana@example.test', expires_at: '2026-10-30T00:00:00Z' },
+      seller: { account_id: 8, name: 'Escritório Central' },
+      client: { name: 'Loja Um', trade_name: null, tax_id: '12.345.678/0001-90' },
+      company: { id: 83, name: 'Loja Um ERP' },
+      owner_setup_status: 'unclaimed'
+    }
+  }
+  const page = harness({ api: async (path, config) => {
+    if (path === '/erp-invitations/current') {
+      if (!accepted) return { state: 'missing' }
+      return { ...accessSetup, state: 'accepted', data: { ...accessSetup.data, owner_setup_status: 'claimed' } }
+    }
+    if (path === '/erp-invitations/resolve') return accessSetup
+    if (path === '/erp-invitations/accept') {
+      accepted = true
+      assert.deepEqual(config?.body, { password: 'safe-password-123' })
+      return { data: { company_id: 83, owner_setup_status: 'claimed' } }
+    }
+    throw new Error(`Unexpected request ${path}`)
+  } })
+  try {
+    await flushPage()
+    page.navigateHash(`#token=${'a'.repeat(64)}`)
+    await flushPage()
+    assert.match(text(page.root), /Configure o acesso da empresa/)
+    assert.match(text(page.root), /Loja Um ERP/)
+    assert.match(text(page.root), /Aguardando configuração/)
+    assert.doesNotMatch(text(page.root), /Plano|Valor e ciclo|Contrato ficará pendente de ativação/)
+
+    setRenderedPassword(page.root, 'safe-password-123')
+    submitNewOwnerForm(page.root)
+    await flushPage()
+    assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+    assert.match(text(page.root), /Acesso à empresa configurado/)
+    assert.match(text(page.root), /Loja Um/)
+    assert.doesNotMatch(text(page.root), /aguarda a ativação do contrato/)
+  } finally { page.restore() }
+})
+
+test('authenticated access setup is bound to the invited company without an association selector', async () => {
+  let accepted = false
+  const setup = {
+    state: 'ready',
+    purpose: 'access_setup',
+    operation_key: 'setup-operation-key',
+    data: {
+      purpose: 'access_setup',
+      invitation: { id: 55, owner_name: 'Ana Owner', owner_email: 'ana@example.test', expires_at: '2026-10-30T00:00:00Z' },
+      seller: { account_id: 8, name: 'Escritório Central' },
+      client: { name: 'Loja Um', trade_name: null, tax_id: '12.345.678/0001-90' },
+      company: { id: 83, name: 'Loja Um ERP' },
+      owner_setup_status: 'unclaimed'
+    }
+  }
+  const page = harness({ user: { id: 4, email: 'ana@example.test' }, api: async (path, config) => {
+    if (path === '/erp-invitations/current')
+      return accepted ? { ...setup, state: 'accepted', data: { ...setup.data, owner_setup_status: 'claimed' } } : setup
+    if (path === '/erp-invitations/accept') {
+      accepted = true
+      assert.deepEqual(config?.body, {})
+      return { data: { company_id: 83, owner_setup_status: 'claimed' } }
+    }
+    throw new Error(`Unexpected request ${path}`)
+  } })
+  try {
+    await flushPage()
+    assert.equal(nodes(page.root, node => node.tag === 'select').length, 0)
+    const accept = nodes(page.root, node => node.tag === 'button' && String(node.text).includes('Configurar acesso à empresa'))[0]
+    assert.ok(accept)
+    accept.props.onClick?.()
+    await flushPage()
+    assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+    assert.match(text(page.root), /Acesso à empresa configurado/)
+  } finally { page.restore() }
+})
+
 test('invalid, expired, and retryable service failures produce distinct recovery states', async () => {
   for (const [status, expected] of [[422, /não é válido/i], [410, /expirou/i], [503, /não foi possível validar/i]] as const) {
     const page = harness({ hash: `#token=${secret}`, api: async () => {

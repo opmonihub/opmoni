@@ -5,16 +5,20 @@ import { apiFailure, passwordLength } from '#shared/utils/access'
 
 type CompanyOption = { id: number, name: string, cnpj: string }
 type InvitationData = {
+  purpose?: 'commercial_acceptance' | 'access_setup'
   invitation: { id: number, owner_name: string, owner_email: string, expires_at: string | null }
   seller: { account_id: number, name: string }
   client: { name: string, trade_name: string | null, tax_id: string }
-  offer: { name: string | null, price: string, currency: string, interval_months: number, due_in_days: number, module_keys: string[] }
-  service: { billing_timezone: string }
-  companies: CompanyOption[]
-  accepted_company: { id: number, name: string } | null
+  offer?: { name: string | null, price: string, currency: string, interval_months: number, due_in_days: number, module_keys: string[] }
+  service?: { billing_timezone: string }
+  companies?: CompanyOption[]
+  accepted_company?: { id: number, name: string } | null
+  company?: { id: number, name: string }
+  owner_setup_status?: 'unclaimed' | 'claimed'
 }
 type ContinuationResponse = {
   state: 'missing' | 'invalid' | 'expired' | 'valid' | 'ready' | 'accepted' | 'identity_mismatch' | 'login_required'
+  purpose?: 'commercial_acceptance' | 'access_setup'
   operation_key?: string
   data?: InvitationData
 }
@@ -30,6 +34,7 @@ const { api } = useAccessApi()
 const { user, refresh, logout } = useAuth()
 const route = useRoute()
 const state = ref<ContinuationResponse['state'] | 'loading' | 'retryable' | 'recovering' | 'recovery_required' | 'identity_login_required' | 'forbidden'>('loading')
+const purpose = ref<'commercial_acceptance' | 'access_setup'>('commercial_acceptance')
 const invitation = ref<InvitationData | null>(null)
 const pendingAcceptance = ref<PendingAcceptance | null>(null)
 const operationKey = ref('')
@@ -62,6 +67,7 @@ const companyOptions = computed(() => [
 
 function applyContinuation(response: ContinuationResponse) {
   state.value = response.state
+  purpose.value = response.purpose ?? response.data?.purpose ?? 'commercial_acceptance'
   operationKey.value = response.operation_key ?? ''
   invitation.value = response.data ?? null
   const pending = pendingAcceptance.value
@@ -206,6 +212,7 @@ function resetForIncomingToken() {
   continuationRequestId++
   latestTokenContinuation = null
   state.value = 'loading'
+  purpose.value = 'commercial_acceptance'
   invitation.value = null
   operationKey.value = ''
   selectedCompanyId.value = null
@@ -347,7 +354,7 @@ onBeforeUnmount(() => {
           Ativar acesso ao ERP
         </h1>
         <p class="text-sm leading-6 text-muted">
-          Confira o convite enviado ao responsável da empresa antes de aceitar.
+          {{ purpose === 'access_setup' ? 'Configure o acesso da empresa para o responsável indicado pelo escritório.' : 'Confira o convite enviado ao responsável da empresa antes de aceitar.' }}
         </p>
       </header>
 
@@ -359,7 +366,7 @@ onBeforeUnmount(() => {
 
       <div v-else-if="state === 'recovering'" role="status" class="space-y-3">
         <p class="text-sm text-muted">
-          Confirmando a criação da conta e o resultado do convite…
+          {{ purpose === 'access_setup' ? 'Confirmando a criação da conta e a configuração de acesso…' : 'Confirmando a criação da conta e o resultado do convite…' }}
         </p>
       </div>
 
@@ -472,7 +479,7 @@ onBeforeUnmount(() => {
       <template v-else-if="invitation">
         <section aria-labelledby="invitation-summary-title" class="space-y-4">
           <h2 id="invitation-summary-title" class="text-base font-semibold text-default">
-            Resumo do convite
+            {{ purpose === 'access_setup' ? 'Resumo do acesso à empresa' : 'Resumo do convite' }}
           </h2>
           <dl class="grid gap-3 text-sm sm:grid-cols-2">
             <div>
@@ -485,10 +492,10 @@ onBeforeUnmount(() => {
             </div>
             <div>
               <dt class="text-muted">
-                Empresa convidada
+                {{ purpose === 'access_setup' ? 'Empresa' : 'Empresa convidada' }}
               </dt>
               <dd class="font-medium text-default">
-                {{ invitation.client.name }}
+                {{ purpose === 'access_setup' ? invitation.company?.name || invitation.client.name : invitation.client.name }}
               </dd>
             </div>
             <div>
@@ -510,7 +517,7 @@ onBeforeUnmount(() => {
                 {{ invitation.client.tax_id }}
               </dd>
             </div>
-            <div>
+            <div v-if="purpose === 'commercial_acceptance'">
               <dt class="text-muted">
                 Plano
               </dt>
@@ -518,7 +525,15 @@ onBeforeUnmount(() => {
                 {{ invitation.offer.name || 'Plano ERP' }}
               </dd>
             </div>
-            <div>
+            <div v-if="purpose === 'access_setup'">
+              <dt class="text-muted">
+                Situação do acesso
+              </dt>
+              <dd class="font-medium text-default">
+                {{ invitation.owner_setup_status === 'claimed' ? 'Configurado' : 'Aguardando configuração' }}
+              </dd>
+            </div>
+            <div v-if="purpose === 'commercial_acceptance'">
               <dt class="text-muted">
                 Valor e ciclo
               </dt>
@@ -526,7 +541,7 @@ onBeforeUnmount(() => {
                 R$ {{ invitation.offer.price.replace('.', ',') }} / {{ invitation.offer.interval_months }} {{ invitation.offer.interval_months === 1 ? 'mês' : 'meses' }}
               </dd>
             </div>
-            <div>
+            <div v-if="purpose === 'commercial_acceptance'">
               <dt class="text-muted">
                 Vencimento após ativação
               </dt>
@@ -535,8 +550,11 @@ onBeforeUnmount(() => {
               </dd>
             </div>
           </dl>
-          <p class="text-sm leading-6 text-muted">
+          <p v-if="purpose === 'commercial_acceptance'" class="text-sm leading-6 text-muted">
             Ao aceitar, você autoriza a criação ou associação explícita da empresa ao seu usuário. O contrato ficará pendente de ativação; este convite não confirma pagamento nem emissão fiscal.
+          </p>
+          <p v-else class="text-sm leading-6 text-muted">
+            Este acesso vincula a empresa ao responsável indicado para apoiar a implantação. Ele não altera a situação comercial do contrato nem concede acesso ao escritório.
           </p>
         </section>
 
@@ -553,13 +571,20 @@ onBeforeUnmount(() => {
             color="success"
             variant="subtle"
             icon="i-lucide-circle-check"
-            title="Convite aceito"
-            :description="`A empresa ${invitation.accepted_company?.name || invitation.client.name} está vinculada à sua conta e aguarda a ativação do contrato.`"
+            :title="purpose === 'access_setup' ? 'Acesso à empresa configurado' : 'Convite aceito'"
+            :description="purpose === 'access_setup'
+              ? `A empresa ${invitation.company?.name || invitation.client.name} está vinculada à sua conta.`
+              : `A empresa ${invitation.accepted_company?.name || invitation.client.name} está vinculada à sua conta e aguarda a ativação do contrato.`"
           />
         </template>
 
         <template v-else-if="state === 'ready' && user">
-          <UFormField name="company_id" label="Como deseja vincular a empresa?" hint="Empresas existentes aparecem somente quando você já é proprietário direto e o CNPJ corresponde.">
+          <UFormField
+            v-if="purpose === 'commercial_acceptance'"
+            name="company_id"
+            label="Como deseja vincular a empresa?"
+            hint="Empresas existentes aparecem somente quando você já é proprietário direto e o CNPJ corresponde."
+          >
             <USelect
               v-model="selectedCompanyId"
               :items="companyOptions"
@@ -569,7 +594,7 @@ onBeforeUnmount(() => {
             />
           </UFormField>
           <UButton
-            :label="selectedCompanyId === null ? 'Aceitar convite e criar empresa' : 'Aceitar convite e associar empresa'"
+            :label="purpose === 'access_setup' ? 'Configurar acesso à empresa' : selectedCompanyId === null ? 'Aceitar convite e criar empresa' : 'Aceitar convite e associar empresa'"
             :loading="busy"
             :disabled="busy"
             @click="accept()"
@@ -607,7 +632,7 @@ onBeforeUnmount(() => {
             </p>
             <UButton
               type="submit"
-              label="Aceitar convite e criar empresa"
+              :label="purpose === 'access_setup' ? 'Criar conta e configurar acesso' : 'Aceitar convite e criar empresa'"
               :loading="busy"
               :disabled="busy"
             />
