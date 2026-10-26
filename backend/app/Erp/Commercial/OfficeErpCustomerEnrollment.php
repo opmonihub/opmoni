@@ -101,10 +101,16 @@ final class OfficeErpCustomerEnrollment
             ],
         ];
 
-        $cnpj = $data['new_client']['tax_id'] ?? Client::withoutGlobalScopes()
-            ->where('account_id', $ctx->accountId)
-            ->whereKey($data['client_id'])
-            ->value('tax_id');
+        $cnpj = $data['new_client']['tax_id'] ?? null;
+        if (isset($data['client_id'])) {
+            $selectedClient = Client::withoutGlobalScopes()
+                ->where('account_id', $ctx->accountId)
+                ->whereKey($data['client_id'])
+                ->whereNull('deleted_at')
+                ->first();
+            abort_unless($selectedClient !== null, 404);
+            $cnpj = $selectedClient->tax_id;
+        }
 
         $outcome = DB::transaction(function () use ($ctx, $key, $payload, $data, $prepared, $cnpj): array {
             AccessTransaction::boundLockWaits();
@@ -132,6 +138,7 @@ final class OfficeErpCustomerEnrollment
                             $client = Client::withoutGlobalScopes()
                                 ->where('account_id', $ctx->accountId)
                                 ->whereKey($data['client_id'])
+                                ->whereNull('deleted_at')
                                 ->lockForUpdate()
                                 ->firstOrFail();
                             abort_unless($client->person_type->value === 'company' && $client->status->value === 'active', 404);
