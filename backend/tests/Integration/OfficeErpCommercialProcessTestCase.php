@@ -846,7 +846,8 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             $firstLine = substr($firstLine, 0, 240);
             $sqlState = self::workerSqlState($output);
             self::fail('Worker emitted invalid JSON (stdout bytes='.strlen($output).', json error='.$exception->getMessage()
-                .', sqlstate='.$sqlState.', first line='.$firstLine.'; '.self::workerFailureFingerprint($process).').');
+                .', sqlstate='.$sqlState.', query_category='.self::workerQueryCategory($output).', first line='.$firstLine
+                .'; '.self::workerFailureFingerprint($process).').');
         }
         self::assertSame(0, $result['transaction_level']);
 
@@ -895,6 +896,27 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         $message = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i', '[email]', $message) ?? $message;
 
         return $matches[1].' '.substr($message, 0, 240);
+    }
+
+    private static function workerQueryCategory(string $output): string
+    {
+        $output = strtolower($output);
+        if (str_contains($output, 'pg_advisory_xact_lock')) {
+            return 'advisory-xact-lock';
+        }
+        foreach (['accounts', 'subscriptions', 'plans', 'erp_companies', 'erp_plans', 'erp_subscriptions', 'office_erp_contracts', 'office_erp_licence_allocations'] as $table) {
+            if (str_contains($output, 'from "'.$table.'"') && str_contains($output, 'for update')) {
+                return $table.'-row-lock';
+            }
+            if (str_contains($output, 'insert into "'.$table.'"')) {
+                return $table.'-insert';
+            }
+            if (str_contains($output, 'update "'.$table.'"')) {
+                return $table.'-update';
+            }
+        }
+
+        return 'unclassified-query';
     }
 
     /** @return array{pid: int, database_pid: int, checkout: string, source_hashes: array<string, string>} */
