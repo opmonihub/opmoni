@@ -477,6 +477,62 @@ describe('office ERP trial registration surface', () => {
     }
   })
 
+  it('denies a wrong Company owner without offering Client association confirmation', async () => {
+    let posts = 0
+    const app = setupTrial(async (_path, options) => {
+      if (options?.method === 'POST') {
+        posts++
+        throw { statusCode: 409, data: { code: 'company_association_required', message: 'Conflict' } }
+      }
+      return { data: { sponsor: { name: 'Escritório Exemplo' }, plan: { name: 'ERP Essencial' }, duration_days: 7, available: true } }
+    }, async () => ({ id: 21, name: 'Outro titular', email: 'outro@example.test' }))
+    const mounted = renderPublicPage(app.view, app.states.get('access-user') as Vue.Ref<unknown>)
+    try {
+      await app.view.load('public-code')
+      ;(mounted.form!.props.onSubmit as (event: { data: TrialRegistrationInput }) => void)({ data: input() })
+      for (let index = 0; index < 6; index++) await Promise.resolve()
+      await Vue.nextTick()
+      assert.equal(posts, 1, 'the wrong-owner response does not automatically resubmit')
+      assert.equal(mounted.nodes().some(node => node.type === 'UCheckbox'), false)
+      const ownershipAlert = mounted.nodes().find(node => node.type === 'UAlert' && node.props.title === 'Não foi possível confirmar a titularidade')
+      assert.ok(ownershipAlert)
+      assert.match(String(ownershipAlert.props.description), /titular correto|proprietário correto/i)
+      assert.match(String(ownershipAlert.props.description), /revise o CNPJ|fale com o escritório/i)
+      assert.equal(mounted.nodes().some(node => node.type === 'UButton' && node.props.target === '_blank' && node.props.to === '/login'), true)
+    } finally {
+      mounted.app.unmount()
+      app.stop()
+    }
+  })
+
+  it('keeps route-specific pre-commit 409s out of ambiguous recovery', async () => {
+    const cases = [
+      ['trial_link_changed', 'availability'],
+      ['trial_plan_modules_changed', 'availability'],
+      ['client_not_active', 'availability'],
+      ['company_subscription_ineligible', 'availability'],
+      ['idempotency_conflict', 'form']
+    ] as const
+    for (const [code, expectedPhase] of cases) {
+      const app = setupTrial(async (_path, options) => {
+        if (options?.method === 'POST') throw { statusCode: 409, data: { code, message: 'Conflict' } }
+        return { data: { sponsor: { name: 'Escritório Exemplo' }, plan: { name: 'ERP Essencial' }, duration_days: 7, available: true } }
+      }, async () => null)
+      const body = input()
+      try {
+        await app.view.load('public-code')
+        await app.view.submit(body)
+        assert.equal((app.view.phase as Vue.Ref<string>).value, expectedPhase, code)
+        assert.notEqual((app.view.failure as Vue.Ref<{ message: string } | null>).value?.message, 'Conflict', `${code} uses product copy instead of an untrusted exception message`)
+        assert.equal((app.view.pending as Vue.Ref<unknown>).value, null, `${code} is definitive before commit`)
+        assert.equal((app.view.operationKey as Vue.Ref<string>).value, '', `${code} releases the rejected key`)
+        assert.notEqual((app.view.phase as Vue.Ref<string>).value, 'recovery', code)
+      } finally {
+        app.stop()
+      }
+    }
+  })
+
   it('maps public trial availability reason codes to safe Portuguese copy', async (t) => {
     const app = setupTrial(async () => ({
       data: { sponsor: { name: 'Escritório Exemplo' }, plan: { name: 'ERP Essencial' }, duration_days: 7, available: false, reason: 'trial_capacity_unavailable' }

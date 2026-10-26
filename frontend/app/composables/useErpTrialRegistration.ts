@@ -22,6 +22,29 @@ const publicAvailabilityMessages: Record<string, string> = {
   commercial_module_not_allowed: 'Os módulos deste teste não estão disponíveis para o escritório responsável neste momento. Entre em contato com ele.',
   trial_registration_disabled: 'O escritório não está aceitando novos testes neste momento. Entre em contato com ele.'
 }
+const publicRegistrationFailureMessages: Record<string, string> = {
+  login_required: 'Entre com a conta já cadastrada e volte a este link para continuar.',
+  client_association_requires_owner_verification: 'Entre com a conta do titular da empresa e volte a este link para confirmar a associação.',
+  confirm_existing_association_required: 'Confirme que reconhece a relação da sua empresa com este escritório para continuar.',
+  company_association_required: 'Não foi possível confirmar a titularidade desta empresa. Entre com a conta do titular correto, revise o CNPJ ou fale com o escritório.',
+  company_client_association_required: 'O escritório precisa confirmar o vínculo da empresa antes de iniciar este teste. Fale com o escritório responsável.',
+  trial_already_used: 'Esta empresa já utilizou o período de avaliação. Fale com o escritório para conhecer as opções disponíveis.',
+  trial_capacity_unavailable: 'O escritório atingiu o limite de avaliações disponíveis. Entre em contato com o escritório para saber como continuar.',
+  trial_link_changed: 'Este link de avaliação foi atualizado. Confira novamente a disponibilidade antes de continuar.',
+  trial_plan_modules_changed: 'O plano deste link foi atualizado. Confira novamente a disponibilidade antes de continuar.',
+  client_not_active: 'Este CNPJ está em um cadastro inativo. Fale com o escritório para regularizar o cadastro.',
+  company_subscription_ineligible: 'O escritório não pode iniciar avaliações neste momento. Entre em contato com ele.',
+  idempotency_conflict: 'Esta tentativa não pôde ser confirmada. Revise os dados e inicie uma nova tentativa.'
+}
+const definitive409Denials = [
+  'company_client_association_required',
+  'trial_already_used',
+  'trial_capacity_unavailable',
+  'trial_link_changed',
+  'trial_plan_modules_changed',
+  'client_not_active',
+  'company_subscription_ineligible'
+]
 
 export function useErpTrialRegistration() {
   const { api, refreshCsrf } = useAccessApi()
@@ -78,7 +101,7 @@ export function useErpTrialRegistration() {
     const parsed = apiFailure(error)
     failure.value = {
       code: parsed.code,
-      message: parsed.message,
+      message: publicRegistrationFailureMessages[parsed.code] ?? parsed.message,
       errors: parsed.errors,
       http_status: parsed.status,
       fieldErrors: parsed.errors ?? {}
@@ -200,12 +223,13 @@ export function useErpTrialRegistration() {
         return
       }
       const parsed = setFailure(error)
+      const knownPreCommit409 = ['login_required', 'client_association_requires_owner_verification', 'confirm_existing_association_required', 'idempotency_conflict', ...definitive409Denials].includes(parsed.code)
       if (parsed.status === 422 || parsed.status === 403 || parsed.status === 410
-        || (parsed.status === 409 && ['login_required', 'company_association_required', 'client_association_requires_owner_verification', 'confirm_existing_association_required', 'trial_already_used', 'trial_capacity_unavailable'].includes(parsed.code))) {
+        || (parsed.status === 409 && knownPreCommit409)) {
         if (parsed.status !== 422 && !['client_association_requires_owner_verification', 'confirm_existing_association_required'].includes(parsed.code))
           input.password = undefined
         operationKey.value = ''
-        phase.value = parsed.status === 410 || parsed.status === 403 ? 'availability' : 'form'
+        phase.value = parsed.status === 410 || parsed.status === 403 || (parsed.status === 409 && definitive409Denials.includes(parsed.code)) ? 'availability' : 'form'
         return
       }
 

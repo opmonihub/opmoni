@@ -49,11 +49,12 @@ const regimeOptions = [
 const fieldError = (name: string) => trial.failure.value?.fieldErrors[name]?.[0]
 const associationConfirmationCode = ref('')
 watch(() => trial.failure.value?.code, (code) => {
-  if (['company_association_required', 'client_association_requires_owner_verification', 'confirm_existing_association_required'].includes(code ?? ''))
+  if (['client_association_requires_owner_verification', 'confirm_existing_association_required'].includes(code ?? ''))
     associationConfirmationCode.value = String(route.params.code ?? '')
 }, { immediate: true })
 const requiresAssociationConfirmation = computed(() => !!user.value && associationConfirmationCode.value === String(route.params.code ?? ''))
 const loginRequired = computed(() => ['login_required', 'client_association_requires_owner_verification'].includes(trial.failure.value?.code ?? ''))
+const companyOwnerRequired = computed(() => trial.failure.value?.code === 'company_association_required')
 const busy = computed(() => trial.phase.value === 'submitting')
 const recoveryBusy = ref(false)
 const taxRegimeValue = computed({
@@ -143,7 +144,7 @@ onMounted(() => {
 
       <section class="min-w-0 space-y-5">
         <UAlert
-          v-if="trial.failure.value && !loginRequired"
+          v-if="trial.failure.value && !loginRequired && !companyOwnerRequired"
           :color="trial.phase.value === 'recovery' ? 'warning' : 'error'"
           :title="trial.phase.value === 'recovery' ? 'Confirme o resultado do cadastro' : 'Não foi possível continuar'"
           :description="trial.failure.value.message"
@@ -171,6 +172,25 @@ onMounted(() => {
               @click="trial.load(String(route.params.code ?? ''))"
             >
               Já entrei, atualizar acesso
+            </UButton>
+          </template>
+        </UAlert>
+
+        <UAlert
+          v-if="companyOwnerRequired"
+          color="warning"
+          title="Não foi possível confirmar a titularidade"
+          description="O CNPJ informado já está vinculado a outro titular. Entre com a conta do titular correto, revise o CNPJ ou fale com o escritório responsável."
+        >
+          <template #actions>
+            <UButton
+              to="/login"
+              target="_blank"
+              rel="noopener"
+              color="neutral"
+              variant="outline"
+            >
+              Entrar como titular da empresa
             </UButton>
           </template>
         </UAlert>
