@@ -60,6 +60,18 @@ const columns: FilterPanelColumn[] = [
   }
 ]
 
+it('supports open-ended date ranges only when a column explicitly allows them', () => {
+  const period: FilterPanelColumn = { id: 'period', label: 'Período', control: 'date-range', allowOpenRange: true }
+  const draft = { text: '', from: '2026-10-01', to: '', operator: 'is between' as const }
+  const result = applyColumnDraft(period, [], draft)
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.model[0]?.values, ['2026-10-01', ''])
+  assert.equal(formatFilterValue(period, result.model[0]!), 'A partir de 2026-10-01')
+  assert.equal(applyColumnDraft({ ...period, allowOpenRange: false }, [], draft).ok, false)
+  assert.equal(applyColumnDraft(period, [], { ...draft, from: '', to: '2026-10-31' }).ok, true)
+  assert.equal(applyColumnDraft(period, [], { ...draft, from: '2026-11-01', to: '2026-10-01' }).ok, false)
+})
+
 function drafts() {
   return draftsFromModel(columns, [])
 }

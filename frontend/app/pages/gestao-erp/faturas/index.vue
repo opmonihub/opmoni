@@ -1,12 +1,17 @@
 <script setup lang="ts">
+import OfficeErpDataTable from '~/components/office-erp/OfficeErpDataTable.vue'
+import OfficeErpPagination from '~/components/office-erp/OfficeErpPagination.vue'
+import OfficeErpPanel from '~/components/office-erp/OfficeErpPanel.vue'
 import { listNavigationField } from '~/composables/useListNavigationState'
 import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
+import type { FilterPanelColumn } from '~/utils/filterPanel'
+import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import type { TableColumn } from '@nuxt/ui'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
-import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
+import { panelBodyClass } from '~/components/data-table/panel'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -35,6 +40,29 @@ const dueFrom = listNavigationField(navigation, 'dueFrom')
 const dueTo = listNavigationField(navigation, 'dueTo')
 const page = listNavigationField(navigation, 'page')
 const perPage = listNavigationField(navigation, 'perPage')
+const invoiceFilterColumns: FilterPanelColumn[] = [
+  { id: 'status', label: 'Situação', icon: 'i-lucide-circle-dot', control: 'select', options: [{ label: 'Rascunho', value: 'draft' }, { label: 'Emitida', value: 'issued' }, { label: 'Cancelada', value: 'canceled' }] },
+  { id: 'issued', label: 'Emissão', icon: 'i-lucide-calendar', control: 'date-range', allowOpenRange: true },
+  { id: 'due', label: 'Vencimento', icon: 'i-lucide-calendar-clock', control: 'date-range', allowOpenRange: true }
+]
+const invoiceFilters = computed<DataTableFilterModel[]>({
+  get: () => {
+    const filters: DataTableFilterModel[] = []
+    if (status.value !== 'all') filters.push({ columnId: 'status', type: 'option', operator: 'is', values: [status.value] })
+    if (from.value || to.value) filters.push({ columnId: 'issued', type: 'date', operator: 'is between', values: [from.value, to.value] })
+    if (dueFrom.value || dueTo.value) filters.push({ columnId: 'due', type: 'date', operator: 'is between', values: [dueFrom.value, dueTo.value] })
+    return filters
+  },
+  set: (filters) => {
+    const selected = String(filters.find(filter => filter.columnId === 'status')?.values[0] ?? 'all')
+    const issued = filters.find(filter => filter.columnId === 'issued')?.values ?? []
+    const due = filters.find(filter => filter.columnId === 'due')?.values ?? []
+    navigation.value = { ...navigation.value,
+      status: selected as 'all' | 'draft' | 'issued' | 'canceled',
+      from: String(issued[0] ?? ''), to: String(issued[1] ?? ''),
+      dueFrom: String(due[0] ?? ''), dueTo: String(due[1] ?? ''), page: 1 }
+  }
+})
 const rows = ref<InvoiceRow[]>([])
 const total = ref(0)
 const lastPage = ref(1)
@@ -133,8 +161,8 @@ watch(identity, () => {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col gap-4">
-    <DataTablePanelList title="Faturas" description="Documentos internos do escritório, com ajustes e saldos confirmados pelo servidor.">
+  <div class="flex min-h-0 min-w-0 flex-col gap-5">
+    <OfficeErpPanel title="Faturas" description="Cobranças, vencimentos e saldos.">
       <template #action>
         <div class="flex flex-wrap gap-2">
           <UButton
@@ -153,24 +181,15 @@ watch(identity, () => {
         </div>
       </template>
       <template #toolbar>
-        <UFormField label="Buscar fatura" class="w-full max-w-sm">
-          <UInput v-model="query" aria-label="Buscar fatura" placeholder="Número, cliente ou empresa" />
-        </UFormField>
-        <UFormField label="Situação">
-          <USelect v-model="status" aria-label="Filtrar situação" :items="[{ label: 'Todas', value: 'all' }, { label: 'Rascunho', value: 'draft' }, { label: 'Emitida', value: 'issued' }, { label: 'Cancelada', value: 'canceled' }]" />
-        </UFormField>
-        <UFormField label="Emissão de">
-          <UInput v-model="from" type="date" aria-label="Emissão de" />
-        </UFormField>
-        <UFormField label="Emissão até">
-          <UInput v-model="to" type="date" aria-label="Emissão até" />
-        </UFormField>
-        <UFormField label="Vencimento de">
-          <UInput v-model="dueFrom" type="date" aria-label="Vencimento de" />
-        </UFormField>
-        <UFormField label="Vencimento até">
-          <UInput v-model="dueTo" type="date" aria-label="Vencimento até" />
-        </UFormField>
+        <DataTableFilterPanel v-model="invoiceFilters" :columns="invoiceFilterColumns">
+          <UInput
+            v-model="query"
+            aria-label="Buscar fatura"
+            placeholder="Buscar fatura ou cliente"
+            icon="i-lucide-search"
+            class="w-full min-w-0 sm:max-w-sm"
+          />
+        </DataTableFilterPanel>
       </template>
       <div :class="panelBodyClass">
         <UAlert
@@ -205,14 +224,16 @@ watch(identity, () => {
           :description="loadError ? 'A atualização falhou; este resultado vazio pertence à última consulta confirmada.' : 'Altere os filtros ou crie um novo rascunho.'"
         />
         <div v-if="!confirmedEmpty && (!loadError || hasConfirmedResults)" class="overflow-x-auto">
-          <UTable
+          <OfficeErpDataTable
             :data="rows"
             :columns="columns"
             :loading="loading"
-            :ui="panelTableUi"
           >
             <template #client-cell="{ row }">
-              <span>{{ row.original.bill_to_snapshot.client?.name || row.original.bill_to_snapshot.company?.name || 'Cliente' }}</span>
+              <span class="block max-w-72 min-w-56 whitespace-normal wrap-anywhere">{{ row.original.bill_to_snapshot.client?.name || row.original.bill_to_snapshot.company?.name || 'Cliente' }}</span>
+            </template>
+            <template #due_on-cell="{ row }">
+              {{ row.original.due_on.split('-').reverse().join('/') }}
             </template>
             <template #document_status-cell="{ row }">
               <UBadge :color="row.original.document_status === 'issued' ? 'success' : 'neutral'" variant="subtle">
@@ -235,18 +256,17 @@ watch(identity, () => {
                 Abrir
               </UButton>
             </template>
-          </UTable>
+          </OfficeErpDataTable>
         </div>
-        <div v-if="hasConfirmedResults && !confirmedEmpty && total > 0" :class="panelFooterClass">
-          <span :class="panelFooterCountClass">{{ total }} faturas · página {{ page }} de {{ lastPage }}</span><UPagination
-            v-model:page="page"
-            :total="total"
-            :items-per-page="perPage"
-            :disabled="loading"
-            :class="panelPaginationClass"
-          />
-        </div>
+        <OfficeErpPagination
+          v-if="hasConfirmedResults && !confirmedEmpty && total > 0"
+          v-model:page="page"
+          v-model:per-page="perPage"
+          :total="total"
+          :loading="loading"
+          label="faturas"
+        />
       </div>
-    </DataTablePanelList>
+    </OfficeErpPanel>
   </div>
 </template>

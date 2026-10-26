@@ -1,3 +1,4 @@
+import { registerOfficeErpPresentationStubs } from './helpers/officeErpPresentationStubs.ts'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
@@ -149,6 +150,7 @@ function mountRenderer(componentToMount: Vue.Component) {
     'disabled': props.disabled || Number(props.page) >= 2,
     'onClick': () => ctx.emit('update:page', Number(props.page) + 1)
   }, 'Próxima página'), ['page', 'total', 'itemsPerPage', 'disabled']))
+  registerOfficeErpPresentationStubs(app)
   app.mount(root)
   return { app, root }
 }
@@ -488,17 +490,13 @@ describe('rendered invoice list controls and read states', () => {
     const update = (node: HostNode, value: string) => (node.props.onInput as (event: { target: { value: string } }) => void)({ target: { value } })
     update(input('Buscar fatura'), 'NF 41')
     await settle()
-    update(input('Emissão de'), '2026-10-01')
-    await settle()
-    update(input('Emissão até'), '2026-10-31')
-    await settle()
-    update(input('Vencimento de'), '2026-11-01')
-    await settle()
-    update(input('Vencimento até'), '2026-11-30')
-    await settle()
-    const status = find(page.root, node => node.tag === 'select' && node.props['aria-label'] === 'Filtrar situação')
-    assert.ok(status)
-    ;(status.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'issued' } })
+    const panel = find(page.root, node => node.props['data-filter-panel'] === true)
+    assert.ok(panel)
+    ;(panel.props.onApplyFilters as (filters: unknown[]) => void)([
+      { columnId: 'status', type: 'option', operator: 'is', values: ['issued'] },
+      { columnId: 'issued', type: 'date', operator: 'is between', values: ['2026-10-01', '2026-10-31'] },
+      { columnId: 'due', type: 'date', operator: 'is between', values: ['2026-11-01', '2026-11-30'] }
+    ])
     await settle()
     const nextPage = find(page.root, node => node.tag === 'button' && node.props['aria-label'] === 'Próxima página')
     assert.ok(nextPage)

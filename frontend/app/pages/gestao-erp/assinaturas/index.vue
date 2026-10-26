@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import OfficeErpDataTable from '~/components/office-erp/OfficeErpDataTable.vue'
+import OfficeErpPagination from '~/components/office-erp/OfficeErpPagination.vue'
+import OfficeErpPanel from '~/components/office-erp/OfficeErpPanel.vue'
 import { listNavigationField } from '~/composables/useListNavigationState'
 import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
@@ -6,7 +9,7 @@ import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity
 import type { TableColumn } from '@nuxt/ui'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
-import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
+import { panelBodyClass } from '~/components/data-table/panel'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -137,15 +140,16 @@ watch(identityStamp, () => {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col gap-4">
-    <DataTablePanelList title="Assinaturas" description="Contratos aceitos, termos vigentes e situação da licença ERP.">
+  <div class="flex min-h-0 min-w-0 flex-col gap-5">
+    <OfficeErpPanel title="Assinaturas" description="Contratos e situação das licenças ERP.">
       <template #toolbar>
-        <UFormField label="Buscar contrato" class="w-full max-w-sm">
+        <UFormField label="Buscar contrato" class="w-full sm:max-w-sm">
           <UInput
             v-model="query"
             icon="i-lucide-search"
             placeholder="Nome do cliente"
             aria-label="Buscar contrato"
+            class="w-full"
           />
         </UFormField>
       </template>
@@ -177,14 +181,13 @@ watch(identityStamp, () => {
           description="Contratos aceitos aparecerão aqui depois da confirmação do responsável."
         />
         <div v-else class="overflow-x-auto">
-          <UTable
+          <OfficeErpDataTable
             :columns="columns"
             :data="contracts"
             :loading="loading"
-            :ui="panelTableUi"
           >
             <template #client-cell="{ row }">
-              <div class="min-w-40 py-1">
+              <div class="max-w-72 min-w-56 whitespace-normal py-1">
                 <p class="font-medium text-highlighted">
                   {{ row.original.client.name }}
                 </p>
@@ -239,20 +242,17 @@ watch(identityStamp, () => {
                 Nenhum contrato nesta página.
               </div>
             </template>
-          </UTable>
+          </OfficeErpDataTable>
         </div>
-        <div v-if="!loadError && !confirmedEmpty && total > 0" :class="panelFooterClass">
-          <span :class="panelFooterCountClass">{{ total }} contratos · página {{ page }} de {{ lastPage }}</span>
-          <div :class="panelPaginationClass">
-            <UPagination
-              v-model:page="page"
-              :total="total"
-              :items-per-page="perPage"
-              :disabled="loading"
-            />
-          </div>
-        </div>
+        <OfficeErpPagination
+          v-if="!loadError && !confirmedEmpty && total > 0"
+          v-model:page="page"
+          v-model:per-page="perPage"
+          :total="total"
+          :loading="loading"
+          label="contratos"
+        />
       </div>
-    </DataTablePanelList>
+    </OfficeErpPanel>
   </div>
 </template>

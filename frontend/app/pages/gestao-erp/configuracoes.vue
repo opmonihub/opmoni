@@ -478,15 +478,12 @@ onMounted(() => {
 
 <template>
   <div class="mx-auto flex w-full max-w-5xl flex-col gap-6">
-    <header class="space-y-2">
-      <p class="text-sm font-medium text-primary">
-        Gestão ERP · Escritório
-      </p>
-      <h1 class="text-2xl font-semibold text-highlighted sm:text-3xl">
+    <header class="space-y-1">
+      <h2 class="text-base font-semibold text-highlighted">
         Configurações comerciais
-      </h1>
+      </h2>
       <p class="max-w-3xl text-sm text-muted">
-        Defina como atrasos afetam os contratos ERP do escritório. A política inicial é manual, sem tolerância automática.
+        Link de teste e regras de cobrança.
       </p>
     </header>
 
@@ -676,7 +673,7 @@ onMounted(() => {
           </div>
         </template>
         <div class="space-y-6">
-          <div class="flex flex-col justify-between gap-4 rounded-lg border border-default p-4 sm:flex-row sm:items-center">
+          <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div class="max-w-2xl space-y-1">
               <p class="font-medium text-highlighted">
                 Automatizar suspensão por atraso
@@ -703,7 +700,7 @@ onMounted(() => {
               inputmode="numeric"
               :disabled="!canConfigure || commandBusy || command.pending.value"
               aria-describedby="grace-help"
-              class="max-w-xs"
+              class="w-full sm:max-w-xs"
             />
             <template #help>
               <span id="grace-help">A suspensão automática considera apenas o atraso após este prazo, em dias corridos.</span>
@@ -715,7 +712,7 @@ onMounted(() => {
               autocomplete="off"
               placeholder="America/Sao_Paulo"
               :disabled="!canConfigure || commandBusy || command.pending.value"
-              class="max-w-sm"
+              class="w-full sm:max-w-sm"
             />
           </UFormField>
 

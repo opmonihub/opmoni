@@ -19,7 +19,7 @@ const pageTabs = computed<NavigationMenuItem[][]>(() => [[{
   label: 'Clientes ERP',
   icon: 'i-lucide-users',
   to: '/gestao-erp/clientes',
-  active: route.path === '/gestao-erp/clientes'
+  active: route.path === '/gestao-erp/clientes' || route.path.startsWith('/gestao-erp/clientes/')
 }, {
   label: 'Assinaturas',
   icon: 'i-lucide-file-key',
@@ -46,28 +46,47 @@ const pageTabs = computed<NavigationMenuItem[][]>(() => [[{
 <template>
   <NuxtPage v-if="isInvoicePrintRoute" />
   <main v-else aria-label="Gestão comercial ERP" class="flex min-h-0 min-w-0 flex-1">
-    <UDashboardPanel id="gestao-erp" :ui="{ body: 'min-h-0 flex-1 gap-0 overflow-y-auto p-3 sm:p-4 lg:p-5' }">
+    <UDashboardPanel id="gestao-erp" :ui="{ body: 'min-h-0 min-w-0 flex-1 gap-0 overflow-y-auto p-4 sm:p-6 lg:p-8' }">
       <template #header>
         <UDashboardNavbar title="Gestão ERP">
           <template #leading>
             <UDashboardSidebarCollapse />
           </template>
+          <template #right>
+            <UButton
+              v-if="!['/gestao-erp/clientes', '/gestao-erp/clientes/novo'].includes(route.path)"
+              to="/gestao-erp/clientes/novo"
+              icon="i-lucide-plus"
+              size="sm"
+            >
+              Cadastrar cliente
+            </UButton>
+          </template>
         </UDashboardNavbar>
-        <UDashboardToolbar>
+        <UDashboardToolbar :ui="{ left: 'min-w-0 flex-1', root: 'min-w-0' }">
           <template #left>
+            <USelect
+              :model-value="String(pageTabs.flat().find(item => item.active)?.to ?? '')"
+              :items="pageTabs.flat().map(item => ({ label: item.label, value: String(item.to), icon: item.icon }))"
+              aria-label="Seção da gestão ERP"
+              class="w-full lg:hidden"
+              @update:model-value="value => navigateTo(value)"
+            />
             <UNavigationMenu
               as="nav"
               aria-label="Navegação comercial ERP"
               :items="pageTabs"
               highlight
-              class="-mx-1 min-w-0 flex-1"
+              class="-mx-1 hidden min-w-0 flex-1 lg:flex"
             />
           </template>
         </UDashboardToolbar>
       </template>
 
       <template #body>
-        <NuxtPage />
+        <div class="mx-auto w-full max-w-[100rem]">
+          <NuxtPage />
+        </div>
       </template>
     </UDashboardPanel>
   </main>

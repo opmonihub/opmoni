@@ -1,3 +1,4 @@
+import { registerOfficeErpPresentationStubs } from './helpers/officeErpPresentationStubs.ts'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
@@ -32,6 +33,7 @@ function compileSfcSetup(path: string, globals: Record<string, unknown>) {
       if (specifier === '~/composables/useOfficeErpListNavigation') return loadAppComposable('composables/useOfficeErpListNavigation.ts', globals)
       if (specifier === '~/composables/useListNavigationState') return loadAppComposable('composables/useListNavigationState.ts', globals)
       if (specifier === 'vue') return Vue
+      if (specifier.endsWith('.vue')) return { __esModule: true, default: {} }
       if (specifier === '~/composables/useOfficeErpReadIdentity') return loadAppComposable('composables/useOfficeErpReadIdentity.ts', globals)
       if (specifier === '~/composables/useOfficeErpReads') return loadAppComposable('composables/useOfficeErpReads.ts', globals)
       if (specifier === '#shared/utils/officeErpCommercial') return officeErpMoney
@@ -127,6 +129,7 @@ function mountRenderedComponent(component: Vue.Component, components: Record<str
   })
   const app = renderer.createApp(component)
   for (const [name, registered] of Object.entries(components)) app.component(name, registered)
+  registerOfficeErpPresentationStubs(app)
   app.mount(root)
   return { app, root }
 }

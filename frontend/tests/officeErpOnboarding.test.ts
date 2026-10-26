@@ -1,3 +1,4 @@
+import { registerOfficeErpPresentationStubs } from './helpers/officeErpPresentationStubs.ts'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
@@ -69,6 +70,7 @@ function mountTree(component: Vue.Component, components: Record<string, Vue.Comp
   })
   const app = renderer.createApp(component)
   for (const [name, registered] of Object.entries(components)) app.component(name, registered)
+  registerOfficeErpPresentationStubs(app)
   app.mount(root)
   return { app, root }
 }
@@ -576,6 +578,26 @@ describe('Office ERP seller onboarding SFC', () => {
     assert.deepEqual(form.apiCalls.find(call => call.path === '/erp-commercial/clients')?.options?.params, { page: 2, per_page: 25, q: 'Caribe' })
     assert.equal(controlFor(form.root, 'client_id')?.props.value, 77, textOf(form.root))
     page.app.unmount()
+    form.app.unmount()
+  })
+
+  it('preserves a larger portfolio page when enrolling a client beyond the first 25 rows', async () => {
+    const clients = harness('pages/gestao-erp/clientes/index.vue', {
+      routeQuery: { pagina: 1, porPagina: 50 },
+      api: async (_path, request) => ({ data: [{ id: 26, name: 'Cliente 26', trade_name: null, tax_id: null }], meta: { current_page: 1, last_page: 1, per_page: Number((request?.params as Record<string, unknown>).per_page), total: 26 } })
+    })
+    await flush()
+    const destination = findButton(clients.root, 'Selecionar da carteira')?.props.to as { query: Record<string, string | number> }
+    assert.equal(destination.query.porPagina, 50)
+    const form = harness('pages/gestao-erp/clientes/novo.vue', {
+      routeQuery: destination.query,
+      api: async (path, request) => path === '/erp-commercial/clients'
+        ? { data: Number((request?.params as Record<string, unknown>).per_page) === 50 ? [{ id: 26, name: 'Cliente 26', trade_name: null, tax_id: null }] : [], meta: { current_page: 1, last_page: 1, per_page: 50, total: 26 } }
+        : { data: [{ id: 7, slug: 'standard', name: 'ERP Padrão', module_keys: ['purchases'] }], eligibility: { can_provision: true, reasons: [], licence_limit: null, used_licences: 1, available_module_keys: ['purchases'] } }
+    })
+    await flush()
+    assert.equal(controlFor(form.root, 'client_id')?.props.value, 26)
+    clients.app.unmount()
     form.app.unmount()
   })
 

@@ -68,6 +68,7 @@ function harness(override?: (path: string, options?: Record<string, unknown>) =>
     const exports: { default?: { setup: (props: object, context: object) => Record<string, Vue.Ref | (() => Promise<void>)> } } = {}
     new Function('require', 'exports', ...Object.keys(globals), compiled)((specifier: string) => {
       if (specifier === 'vue') return Vue
+      if (specifier.endsWith('.vue')) return { __esModule: true, default: {} }
       const file = specifier.startsWith('~/') ? specifier.slice(2) : specifier.replace('#shared/', '../shared/')
       return loadAppComposable(file + '.ts', bindings)
     }, exports, ...Object.values(globals))

@@ -33,6 +33,8 @@ export type FilterPanelColumn = {
   options?: DataTableFilterOption[]
   /** Mostra o seletor de operador. Sem a flag, o campo só inclui. */
   operators?: boolean
+  /** Permit one missing date boundary for APIs with inclusive from/to criteria. */
+  allowOpenRange?: boolean
   /** Mensagem de erro, ou null quando o rascunho serve. Vazio não é consultado. */
   validate?: (draft: FilterPanelDraft) => string | null
 }
@@ -166,7 +168,7 @@ export function draftError(column: FilterPanelColumn, draft: FilterPanelDraft): 
 
   if (column.control === 'date-range' || column.control === 'number-range') {
     const pair = rangeTarget(column, draft) === 'multiple'
-    if (pair && (draft.from.trim() === '' || draft.to.trim() === '')) return 'Preencha os dois limites.'
+    if (pair && !(column.control === 'date-range' && column.allowOpenRange) && (draft.from.trim() === '' || draft.to.trim() === '')) return 'Preencha os dois limites.'
 
     if (column.control === 'number-range') {
       const from = Number(draft.from)
@@ -175,7 +177,7 @@ export function draftError(column: FilterPanelColumn, draft: FilterPanelDraft): 
       if (pair && from > to) return 'O valor inicial é maior que o final.'
     }
 
-    if (column.control === 'date-range' && pair && draft.from > draft.to) {
+    if (column.control === 'date-range' && pair && draft.from && draft.to && draft.from > draft.to) {
       return 'A data inicial é posterior à final.'
     }
   }
@@ -235,6 +237,10 @@ function optionLabel(column: FilterPanelColumn, value: string | number) {
 }
 
 export function formatFilterValue(column: FilterPanelColumn, filter: DataTableFilterModel) {
+  if (column.control === 'date-range' && column.allowOpenRange) {
+    if (!filter.values[0] && filter.values[1]) return `Até ${filter.values[1]}`
+    if (filter.values[0] && !filter.values[1]) return `A partir de ${filter.values[0]}`
+  }
   const labels = filter.values.map(value => optionLabel(column, value))
   const separator = column.control === 'date-range' || column.control === 'number-range' ? ' – ' : ', '
   return labels.join(separator)

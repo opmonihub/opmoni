@@ -334,15 +334,15 @@ watch(identityStamp, () => {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col gap-4">
+  <div class="mx-auto flex min-h-0 w-full min-w-0 max-w-5xl flex-col gap-5">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="min-w-0">
         <p class="text-sm text-muted">
           <NuxtLink to="/gestao-erp/assinaturas" class="underline">Assinaturas</NuxtLink> / contrato {{ route.params.id }}
         </p>
-        <h1 class="mt-1 truncate text-xl font-semibold text-highlighted">
+        <h2 class="mt-1 text-base font-semibold wrap-anywhere text-highlighted">
           {{ record?.client.name ?? 'Contrato ERP' }}
-        </h1>
+        </h2>
       </div>
       <UButton to="/gestao-erp/assinaturas" color="neutral" variant="outline">
         Voltar às assinaturas

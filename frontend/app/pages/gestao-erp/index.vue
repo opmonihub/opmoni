@@ -146,14 +146,11 @@ onMounted(() => {
   <div class="flex shrink-0 flex-col gap-5">
     <header class="flex flex-wrap items-start justify-between gap-4">
       <div class="max-w-2xl">
-        <p class="text-sm font-medium text-primary">
-          Comercial do escritório
-        </p>
-        <h1 class="mt-1 text-2xl font-semibold tracking-tight text-highlighted">
+        <h1 class="text-base font-semibold text-highlighted">
           Visão geral
         </h1>
         <p class="mt-2 text-sm text-muted">
-          Acompanhe licenças, faturamento e recebimentos do ERP vendidos por este escritório.
+          Clientes, assinaturas e cobranças do escritório.
         </p>
       </div>
       <UButton
@@ -167,6 +164,31 @@ onMounted(() => {
         Atualizar
       </UButton>
     </header>
+
+    <section aria-labelledby="erp-start" class="flex flex-col gap-5 rounded-xl border border-default bg-default p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <div class="max-w-2xl space-y-2">
+        <h2 id="erp-start" class="text-lg font-semibold text-highlighted">
+          Ative o ERP para um cliente
+        </h2>
+        <p class="text-sm text-muted">
+          Selecione um cliente e defina o plano para ativar a assinatura.
+        </p>
+      </div>
+      <div class="flex shrink-0 flex-col gap-2">
+        <UButton to="/gestao-erp/clientes/novo" icon="i-lucide-user-plus" class="justify-center">
+          Cadastrar cliente e ativar ERP
+        </UButton>
+        <UButton
+          to="/gestao-erp/clientes"
+          color="neutral"
+          variant="ghost"
+          trailing-icon="i-lucide-arrow-right"
+          class="justify-center"
+        >
+          Consultar clientes da carteira
+        </UButton>
+      </div>
+    </section>
 
     <UAlert
       v-if="permissionMessage"
@@ -224,53 +246,50 @@ onMounted(() => {
         title="Ainda não há movimentação comercial"
         description="Os indicadores serão atualizados quando houver contratos ou cobranças neste escritório."
       />
-      <UPageGrid class="gap-4 sm:gap-6 lg:grid-cols-3 lg:gap-px">
-        <UPageCard
-          v-for="metric in metrics"
-          :key="metric.label"
-          :title="metric.label"
-          :description="metric.detail"
-          :icon="metric.icon"
-          variant="subtle"
-          :ui="{ container: 'gap-y-1.5', wrapper: 'items-start', title: 'font-normal text-muted text-xs uppercase' }"
-          class="min-w-0 lg:rounded-none first:rounded-l-lg last:rounded-r-lg hover:z-1"
-        >
-          <p class="break-all text-2xl font-semibold tabular-nums tracking-tight text-highlighted">
-            {{ metric.value }}
-          </p>
-        </UPageCard>
-      </UPageGrid>
+      <section aria-labelledby="erp-summary" class="space-y-4">
+        <h2 id="erp-summary" class="text-base font-semibold text-highlighted">
+          Resumo comercial
+        </h2>
+        <dl class="grid grid-cols-1 gap-x-8 gap-y-5 border-y border-default py-5 sm:grid-cols-2 xl:grid-cols-3">
+          <div v-for="metric in metrics" :key="metric.label" class="min-w-0 space-y-1">
+            <dt class="text-sm text-muted">
+              {{ metric.label }}
+            </dt>
+            <dd class="break-words text-xl font-semibold tabular-nums text-highlighted">
+              {{ metric.value }}
+            </dd>
+            <dd class="text-xs text-muted">
+              {{ metric.detail }}
+            </dd>
+          </div>
+        </dl>
+      </section>
     </template>
 
     <section aria-labelledby="atalhos-comerciais" class="space-y-3">
-      <div>
-        <h2 id="atalhos-comerciais" class="text-base font-semibold text-highlighted">
-          Atalhos
-        </h2>
-        <p class="text-sm text-muted">
-          Acesse as áreas comerciais disponíveis.
-        </p>
+      <h2 id="atalhos-comerciais" class="text-base font-semibold text-highlighted">
+        Continue a operação
+      </h2>
+      <div class="divide-y divide-default">
+        <NuxtLink
+          v-for="item in [
+            { title: 'Assinaturas', detail: 'Acompanhe contratos, licenças e acesso dos responsáveis.', to: '/gestao-erp/assinaturas', icon: 'i-lucide-file-key' },
+            { title: 'Faturas e cobranças', detail: 'Consulte valores em aberto, vencimentos e documentos emitidos.', to: '/gestao-erp/faturas', icon: 'i-lucide-receipt' },
+            { title: 'Recebimentos', detail: 'Registre pagamentos e acompanhe suas alocações.', to: '/gestao-erp/recebimentos', icon: 'i-lucide-banknote' },
+            { title: 'Planos do escritório', detail: 'Prepare os termos comerciais para novas vendas.', to: '/gestao-erp/planos', icon: 'i-lucide-tags' }
+          ]"
+          :key="item.to"
+          :to="item.to"
+          class="group flex items-center gap-3 rounded-lg px-2 py-4 transition-colors hover:bg-elevated focus-visible:outline-2 focus-visible:outline-primary"
+        >
+          <UIcon :name="item.icon" class="size-5 shrink-0 text-muted" />
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-highlighted">{{ item.title }}</p>
+            <p class="mt-0.5 text-sm text-muted">{{ item.detail }}</p>
+          </div>
+          <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted" />
+        </NuxtLink>
       </div>
-      <UPageGrid class="gap-3 lg:grid-cols-3">
-        <UPageCard
-          title="Planos"
-          description="Gerencie os planos ERP oferecidos pelo escritório."
-          icon="i-lucide-tags"
-          to="/gestao-erp/planos"
-        />
-        <UPageCard
-          title="Clientes da carteira"
-          description="Consulte clientes e inicie novos convites quando permitido."
-          icon="i-lucide-users"
-          to="/gestao-erp/clientes"
-        />
-        <UPageCard
-          title="Assinaturas"
-          description="Acompanhe contratos e licenças dos clientes."
-          icon="i-lucide-file-key"
-          to="/gestao-erp/assinaturas"
-        />
-      </UPageGrid>
     </section>
   </div>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OfficeErpPanel from '~/components/office-erp/OfficeErpPanel.vue'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type {
@@ -51,6 +52,7 @@ const selectedClient = ref<OfficeErpPortfolioClient | null>(null)
 const clientQuery = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const clientSearch = refDebounced(clientQuery, 300)
 const clientPage = ref(Math.max(1, Number(route.query.pagina) || 1))
+const clientPerPage = ref([25, 50, 100].includes(Number(route.query.porPagina)) ? Number(route.query.porPagina) : 25)
 const clientTotal = ref(0)
 const clientLastPage = ref(1)
 const clientsLoading = ref(false)
@@ -182,7 +184,7 @@ async function loadClients() {
     if (!read.current() || request !== clientRequest || identity !== identityStamp.value) return
     if (!canManage.value) throw new Error('A conta selecionada não pode consultar a carteira do escritório.')
     const token = context.capture()
-    const params: Record<string, string | number> = { page: clientPage.value, per_page: 25 }
+    const params: Record<string, string | number> = { page: clientPage.value, per_page: clientPerPage.value }
     if (clientSearch.value.trim()) params.q = clientSearch.value.trim()
     const response = await api<OfficeErpPortfolioClientListResponse>('/erp-commercial/clients', { signal: read.signal, params })
     if (!read.current() || request !== clientRequest || identity !== identityStamp.value || !context.isCurrent(token)) return
@@ -563,8 +565,8 @@ void loadPlans()
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col gap-4">
-    <DataTablePanelList title="Cadastrar cliente ERP" description="Escolha um cliente, defina os termos e ative a assinatura em uma única operação.">
+  <div class="mx-auto flex min-h-0 w-full min-w-0 max-w-5xl flex-col gap-5">
+    <OfficeErpPanel title="Cadastrar cliente ERP" description="Selecione o cliente e defina o plano para ativar o ERP.">
       <div :class="panelBodyClass">
         <UAlert
           v-if="!canManage"
@@ -575,8 +577,14 @@ void loadPlans()
         />
 
         <template v-else-if="enrollment">
-          <UAlert color="success" title="Assinatura cadastrada" description="O cliente foi vinculado e a primeira fatura foi registrada. A configuração de acesso do responsável é opcional." />
-          <section class="mt-5 grid gap-4 rounded-lg border border-default bg-elevated p-4 sm:grid-cols-2">
+          <UAlert
+            color="success"
+            variant="subtle"
+            icon="i-lucide-circle-check"
+            title="Assinatura cadastrada"
+            description="O cliente foi vinculado e a primeira fatura foi registrada. Você também pode preparar o acesso do responsável abaixo."
+          />
+          <section class="mt-5 grid gap-4 border-y border-default py-5 sm:grid-cols-2">
             <div>
               <p class="text-sm text-muted">
                 Cliente
@@ -852,7 +860,7 @@ void loadPlans()
                 </div>
               </template>
             </UAlert>
-            <div v-if="clientTotal > 25" class="flex items-center justify-between text-sm text-muted">
+            <div v-if="clientTotal > clientPerPage" class="flex flex-col gap-3 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
               <span>{{ clientTotal }} clientes · página {{ clientPage }} de {{ clientLastPage }}</span>
               <div class="flex gap-2">
                 <UButton
@@ -899,7 +907,7 @@ void loadPlans()
                 label="Valor por ciclo (R$)"
                 name="price"
                 required
-                help="O valor será enviado sem arredondamento, com duas casas decimais."
+                help="Informe o valor em reais para cada ciclo de cobrança."
               >
                 <UInput
                   v-model="price"
@@ -954,7 +962,7 @@ void loadPlans()
             title="Revise os campos"
             :description="Object.values(fieldErrors).flat().join(' ')"
           />
-          <div class="mt-6 flex flex-wrap gap-3">
+          <div class="mt-6 flex flex-col gap-3 border-t border-default pt-5 sm:flex-row sm:flex-wrap">
             <UButton
               color="primary"
               :disabled="!canSubmit"
@@ -978,6 +986,6 @@ void loadPlans()
           </div>
         </template>
       </div>
-    </DataTablePanelList>
+    </OfficeErpPanel>
   </div>
 </template>

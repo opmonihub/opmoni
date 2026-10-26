@@ -1,13 +1,15 @@
 <script setup lang="ts">
+import OfficeErpDataTable from '~/components/office-erp/OfficeErpDataTable.vue'
+import OfficeErpPagination from '~/components/office-erp/OfficeErpPagination.vue'
 import { listNavigationField } from '~/composables/useListNavigationState'
 import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type { TableColumn } from '@nuxt/ui'
 import type { OfficeErpCommandResult, OfficeErpOffer, OfficeErpOfferListResponse, OfficeErpOfferTerms } from '#shared/types/officeErpCommercial'
-import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
+import { formatOfficeErpMoney, officeErpModuleOptions } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
-import { panelFooterClass, panelFooterCountClass, panelPaginationClass, panelRowActionsClass, panelSelectUi, panelTableUi, panelToolbarClass } from '~/components/data-table/panel'
+import { panelRowActionsClass, panelSelectUi } from '~/components/data-table/panel'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -73,11 +75,6 @@ const salesReason = computed(() => {
 })
 const legacyNotice = computed(() => route.query.origem === 'admin-erp')
 const recoveryKey = computed(() => command.recoveryKey.value)
-const pageSizeOptions = [
-  { label: '25 por página', value: 25 },
-  { label: '50 por página', value: 50 },
-  { label: '100 por página', value: 100 }
-]
 
 const columns: TableColumn<OfficeErpOffer>[] = [
   { accessorKey: 'name', header: 'Plano' },
@@ -289,11 +286,11 @@ watch([debouncedQuery, status, perPage], () => {
   <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-4 sm:gap-6">
     <header class="flex flex-col items-start justify-between gap-3 sm:flex-row">
       <div class="min-w-0 flex-1 space-y-1">
-        <h2 class="text-lg font-semibold text-highlighted">
+        <h2 class="text-base font-semibold text-highlighted">
           Planos do escritório
         </h2>
         <p class="max-w-2xl text-sm text-muted">
-          Defina os termos comerciais que serão usados em novas vendas. Contratos existentes preservam a revisão aceita.
+          Planos disponíveis para novas assinaturas.
         </p>
       </div>
       <UButton
@@ -377,8 +374,8 @@ watch([debouncedQuery, status, perPage], () => {
       </template>
     </UAlert>
 
-    <section aria-label="Lista de planos" class="flex min-w-0 flex-1 flex-col gap-4">
-      <div :class="panelToolbarClass">
+    <section aria-label="Lista de planos" class="flex min-w-0 flex-1 flex-col gap-4 rounded-xl border border-default bg-default p-4 sm:p-6">
+      <div class="flex flex-wrap items-end gap-3">
         <UInput
           v-model="query"
           icon="i-lucide-search"
@@ -394,13 +391,6 @@ watch([debouncedQuery, status, perPage], () => {
             :ui="panelSelectUi"
             class="min-w-0 flex-1 sm:w-36 sm:flex-none"
           />
-          <USelect
-            v-model="perPage"
-            :items="pageSizeOptions"
-            aria-label="Planos por página"
-            :ui="panelSelectUi"
-            class="w-40 shrink-0"
-          />
         </div>
       </div>
       <div
@@ -410,28 +400,24 @@ watch([debouncedQuery, status, perPage], () => {
         {{ status === 'active' ? 'Nenhum plano ativo foi cadastrado.' : 'Nenhum plano arquivado foi encontrado.' }}
       </div>
       <div v-else-if="!loadError || offers.length" class="min-w-0 overflow-x-auto">
-        <UTable
+        <OfficeErpDataTable
           :columns="columns"
           :data="offers"
           :loading="loading"
           class="shrink-0"
-          :ui="{ ...panelTableUi, th: `${panelTableUi.th} whitespace-nowrap` }"
         >
           <template #name-cell="{ row }">
-            <div class="min-w-44 py-1">
+            <div class="max-w-64 min-w-36">
               <p class="font-medium text-highlighted">
-                {{ row.original.name }}
+                {{ row.original.name }}<span v-if="row.original.current_revision" class="ml-1 text-xs font-normal text-muted">· r{{ row.original.current_revision.revision_number }}</span>
               </p>
-              <p v-if="row.original.description" class="mt-1 line-clamp-2 text-sm text-muted">
+              <p v-if="row.original.description" class="mt-0.5 line-clamp-1 text-xs text-muted">
                 {{ row.original.description }}
-              </p>
-              <p v-if="row.original.current_revision" class="mt-1 text-xs text-muted">
-                Revisão {{ row.original.current_revision.revision_number }}
               </p>
             </div>
           </template>
           <template #price-cell="{ row }">
-            <div v-if="row.original.current_revision" class="min-w-36">
+            <div v-if="row.original.current_revision" class="min-w-32">
               <p class="font-medium text-highlighted">
                 {{ formatOfficeErpMoney(row.original.current_revision.price) }}
               </p>
@@ -442,10 +428,27 @@ watch([debouncedQuery, status, perPage], () => {
             <span v-else class="text-sm text-muted">Sem revisão</span>
           </template>
           <template #modules-cell="{ row }">
-            <span class="text-sm text-muted">{{ row.original.current_revision?.module_keys.join(', ') || 'Nenhum módulo' }}</span>
+            <UPopover v-if="row.original.current_revision?.module_keys.length">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                trailing-icon="i-lucide-chevron-down"
+                :label="`${row.original.current_revision.module_keys.length} módulos`"
+                aria-label="Ver módulos do plano"
+              />
+              <template #content>
+                <ul class="max-w-64 space-y-2 p-4 text-sm">
+                  <li v-for="key in row.original.current_revision.module_keys" :key="key">
+                    {{ officeErpModuleOptions.find(module => module.value === key)?.label ?? 'Módulo adicional' }}
+                  </li>
+                </ul>
+              </template>
+            </UPopover>
+            <span v-else class="text-sm text-muted">Nenhum módulo</span>
           </template>
           <template #status-cell="{ row }">
-            <div class="flex flex-col items-start gap-1">
+            <div class="flex items-center gap-2 whitespace-nowrap">
               <UBadge :color="row.original.status === 'archived' ? 'neutral' : 'success'" variant="subtle">
                 {{ row.original.status === 'archived' ? 'Arquivado' : 'Ativo' }}
               </UBadge>
@@ -458,7 +461,7 @@ watch([debouncedQuery, status, perPage], () => {
             <div :class="panelRowActionsClass" class="flex flex-wrap justify-end gap-1">
               <UButton
                 v-if="row.original.status === 'active'"
-                size="xs"
+                size="sm"
                 color="neutral"
                 variant="ghost"
                 icon="i-lucide-pencil"
@@ -468,7 +471,7 @@ watch([debouncedQuery, status, perPage], () => {
               />
               <UButton
                 v-if="row.original.status === 'active'"
-                size="xs"
+                size="sm"
                 color="neutral"
                 variant="ghost"
                 icon="i-lucide-archive"
@@ -478,23 +481,17 @@ watch([debouncedQuery, status, perPage], () => {
               />
             </div>
           </template>
-        </UTable>
+        </OfficeErpDataTable>
       </div>
 
-      <div v-if="!loading && !loadError && total > 0" :class="panelFooterClass" class="mt-auto flex-wrap">
-        <p :class="panelFooterCountClass">
-          {{ total }} {{ total === 1 ? 'plano' : 'planos' }} · página {{ page }} de {{ lastPage }}
-        </p>
-        <div :class="panelPaginationClass">
-          <UPagination
-            v-model:page="page"
-            :total="total"
-            :items-per-page="perPage"
-            :sibling-count="1"
-            show-edges
-          />
-        </div>
-      </div>
+      <OfficeErpPagination
+        v-if="!loadError && total > 0"
+        v-model:page="page"
+        v-model:per-page="perPage"
+        :total="total"
+        :loading="loading"
+        label="planos"
+      />
     </section>
 
     <OfficeErpPlanEditor

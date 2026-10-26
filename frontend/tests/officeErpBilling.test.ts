@@ -1,3 +1,4 @@
+import { registerOfficeErpPresentationStubs } from './helpers/officeErpPresentationStubs.ts'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
@@ -55,6 +56,7 @@ function mountComponent(name: 'OfficeErpAdjustmentForm' | 'OfficeErpReceiptModal
   app.component('UModal', { props: ['open', 'title', 'description'], emits: ['update:open'], setup: (modal, context) => () => modal.open ? Vue.h('section', { 'role': 'dialog', 'aria-label': modal.title }, [Vue.h('h2', String(modal.title ?? '')), Vue.h('p', String(modal.description ?? '')), ...(context.slots.body?.() ?? []), ...(context.slots.footer?.() ?? []), Vue.h('button', { 'type': 'button', 'aria-label': 'Fechar modal', 'onClick': () => context.emit('update:open', false) }, 'Fechar modal')]) : null })
   app.component('UAlert', { props: ['title', 'description'], setup: (alert, context) => () => Vue.h('div', { role: 'alert' }, [String(alert.title ?? ''), String(alert.description ?? ''), ...(context.slots.default?.() ?? [])]) })
   app.component('UButton', { props: ['label', 'type', 'disabled', 'loading'], setup: (button, context) => () => Vue.h('button', { ...context.attrs, 'type': button.type ?? 'button', 'disabled': button.disabled, 'aria-busy': button.loading ? 'true' : undefined }, context.slots.default?.() ?? String(button.label ?? '')) })
+  registerOfficeErpPresentationStubs(app)
   app.mount(root)
   const find = (predicate: (node: HostNode) => boolean): HostNode | undefined => {
     const visit = (node: HostNode): HostNode | undefined => predicate(node) ? node : node.children.map(visit).find(Boolean)
@@ -197,6 +199,7 @@ function mountPage(path: string, options: {
   app.component('OfficeErpReceiptModal', compileVueComponent('components/office-erp/OfficeErpReceiptModal.vue', bindings, modules))
   app.component('OfficeErpReversalModal', compileVueComponent('components/office-erp/OfficeErpReversalModal.vue', bindings, modules))
   app.component('NuxtLink', { props: ['to'], setup: (_p: unknown, c: { slots: { default?: () => HostNode[] } }) => () => Vue.h('a', {}, c.slots.default?.()) })
+  registerOfficeErpPresentationStubs(app)
   app.mount(root)
   const find = (predicate: (node: HostNode) => boolean) => {
     const visit = (node: HostNode): HostNode | undefined => predicate(node) ? node : node.children.map(visit).find(Boolean)
@@ -862,17 +865,17 @@ describe('office ERP billing form components', () => {
     t.after(() => mounted.app.unmount())
     await settlePage()
 
-    const statusFilter = mounted.find(node => node.tag === 'select' && node.children.some(option => mounted.text(option).trim() === 'Todas'))
-    assert.ok(statusFilter, 'the invoice status filter is rendered')
-    assert.deepEqual(statusFilter.children.map(option => option.props.value), ['all', 'draft', 'issued', 'canceled'])
-    const initialRequest = mounted.calls.filter(call => call.path === '/erp-commercial/invoices').at(-1)
-    assert.equal((initialRequest?.options?.params as Record<string, unknown> | undefined)?.status, undefined)
-
-    ;(statusFilter.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'issued' } })
+    const filterPanel = mounted.find(node => node.props['data-filter-panel'] === true)
+    assert.ok(filterPanel, 'the existing reusable filter panel is rendered')
+    const filterColumns = filterPanel.props.filterColumns as Array<{ id: string, options?: Array<{ value: string }> }>
+    assert.deepEqual(filterColumns.map(column => column.id), ['status', 'issued', 'due'])
+    assert.deepEqual(filterColumns[0]?.options?.map(option => option.value), ['draft', 'issued', 'canceled'])
+    const applyFilters = filterPanel.props.onApplyFilters as (filters: unknown[]) => void
+    applyFilters([{ columnId: 'status', type: 'option', operator: 'is', values: ['issued'] }])
     await settlePage()
     const issuedRequest = mounted.calls.filter(call => call.path === '/erp-commercial/invoices').at(-1)
     assert.equal((issuedRequest?.options?.params as Record<string, unknown> | undefined)?.status, 'issued')
-    ;(statusFilter.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'all' } })
+    applyFilters([])
     await settlePage()
 
     const nextPage = mounted.find(node => node.tag === 'button' && node.props['aria-label'] === 'Próxima página')
@@ -882,10 +885,10 @@ describe('office ERP billing form components', () => {
     const pageTwoRequest = mounted.calls.filter(call => call.path === '/erp-commercial/invoices').at(-1)
     assert.equal((pageTwoRequest?.options?.params as Record<string, unknown> | undefined)?.page, 2)
 
-    input(mounted, 'Emissão de', '2026-10-01')
-    input(mounted, 'Emissão até', '2026-10-31')
-    input(mounted, 'Vencimento de', '2026-11-01')
-    input(mounted, 'Vencimento até', '2026-11-30')
+    applyFilters([
+      { columnId: 'issued', type: 'date', operator: 'is between', values: ['2026-10-01', '2026-10-31'] },
+      { columnId: 'due', type: 'date', operator: 'is between', values: ['2026-11-01', '2026-11-30'] }
+    ])
     await settlePage()
 
     const request = mounted.calls.filter(call => call.path === '/erp-commercial/invoices').at(-1)

@@ -145,12 +145,12 @@ watch(identity, () => {
 </script>
 
 <template>
-  <main class="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4">
-    <header class="flex justify-between">
+  <div class="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5">
+    <header class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <NuxtLink to="/gestao-erp/faturas">Faturas</NuxtLink><h1 class="text-2xl font-semibold">
+        <NuxtLink to="/gestao-erp/faturas" class="text-sm text-muted underline underline-offset-4">Faturas</NuxtLink><h2 class="mt-1 text-base font-semibold text-highlighted">
           {{ isNew?'Novo rascunho':'Fatura '+(record?.number||record?.id||'') }}
-        </h1>
+        </h2>
       </div><UButton v-if="record" :to="'/gestao-erp/faturas/'+record.id+'/imprimir'" variant="outline">
         Imprimir
       </UButton>
@@ -180,24 +180,24 @@ watch(identity, () => {
         <h2>Dados do rascunho</h2>
       </template><div class="grid gap-3 sm:grid-cols-2">
         <UFormField v-if="isNew" label="Contrato">
-          <USelect v-model="f.contract_id" :items="contracts.map(c => ({ label: c.client.name+' · '+c.id, value: String(c.id) }))" />
+          <USelect v-model="f.contract_id" :items="contracts.map(c => ({ label: c.client.name+' · '+c.id, value: String(c.id) }))" class="w-full" />
         </UFormField><UFormField label="Início do período">
-          <UInput v-model="f.period_start" type="date" />
+          <UInput v-model="f.period_start" type="date" class="w-full" />
         </UFormField><UFormField label="Fim do período">
-          <UInput v-model="f.period_end" type="date" />
+          <UInput v-model="f.period_end" type="date" class="w-full" />
         </UFormField><UFormField label="Vencimento">
-          <UInput v-model="f.due_on" type="date" />
+          <UInput v-model="f.due_on" type="date" class="w-full" />
         </UFormField>
       </div>
       <div v-for="(item, index) in draftItems" :key="index" class="mt-4 grid gap-3 border-t border-default pt-4 sm:grid-cols-3">
         <UFormField :label="'Descrição da linha ' + (index + 1)" :error="errors['items.' + index + '.description']?.[0]">
-          <UInput v-model="item.description" />
+          <UInput v-model="item.description" class="w-full" />
         </UFormField>
         <UFormField :label="'Valor da linha ' + (index + 1)" :error="errors['items.' + index + '.amount']?.[0]">
-          <UInput v-model="item.amount" inputmode="decimal" />
+          <UInput v-model="item.amount" inputmode="decimal" class="w-full" />
         </UFormField>
         <UFormField :label="'Desconto da linha ' + (index + 1)" :error="errors['items.' + index + '.discount']?.[0]">
-          <UInput v-model="item.discount" inputmode="decimal" />
+          <UInput v-model="item.discount" inputmode="decimal" class="w-full" />
         </UFormField>
         <UButton
           v-if="draftItems.length > 1"
@@ -301,5 +301,5 @@ watch(identity, () => {
         </UButton>
       </template>
     </UModal>
-  </main>
+  </div>
 </template>

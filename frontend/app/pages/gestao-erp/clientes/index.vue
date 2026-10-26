@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import OfficeErpDataTable from '~/components/office-erp/OfficeErpDataTable.vue'
+import OfficeErpPagination from '~/components/office-erp/OfficeErpPagination.vue'
+import OfficeErpPanel from '~/components/office-erp/OfficeErpPanel.vue'
 import { listNavigationField } from '~/composables/useListNavigationState'
 import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
@@ -6,7 +9,7 @@ import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity
 import type { TableColumn } from '@nuxt/ui'
 import type { OfficeErpPortfolioClient, OfficeErpPortfolioClientListResponse } from '#shared/types/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
-import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
+import { panelBodyClass } from '~/components/data-table/panel'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -18,9 +21,10 @@ const context = useOfficeErpContext()
 const route = useRoute()
 function explicitCriteria() {
   const query = route.query ?? {}
-  if (!Object.hasOwn(query, 'q') && !Object.hasOwn(query, 'pagina')) return null
+  if (!Object.hasOwn(query, 'q') && !Object.hasOwn(query, 'pagina') && !Object.hasOwn(query, 'porPagina')) return null
   const requestedPage = typeof query.pagina === 'string' && /^[1-9]\d*$/.test(query.pagina) ? Number(query.pagina) : 1
-  return { q: typeof query.q === 'string' ? query.q : '', page: Number.isSafeInteger(requestedPage) ? requestedPage : 1, perPage: 25 as 25 | 50 | 100 }
+  const requestedSize = Number(query.porPagina)
+  return { q: typeof query.q === 'string' ? query.q : '', page: Number.isSafeInteger(requestedPage) ? requestedPage : 1, perPage: ([25, 50, 100].includes(requestedSize) ? requestedSize : 25) as 25 | 50 | 100 }
 }
 const navigation = useOfficeErpListNavigation('clients', { q: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context, {}, explicitCriteria)
 const query = listNavigationField(navigation, 'q')
@@ -168,8 +172,8 @@ watch(identityStamp, () => {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col gap-4">
-    <DataTablePanelList title="Clientes ERP" description="Cadastre clientes, selecione alguém da carteira e acompanhe as matrículas do escritório.">
+  <div class="flex min-h-0 min-w-0 flex-col gap-5">
+    <OfficeErpPanel title="Clientes ERP" description="Clientes e assinaturas ERP do escritório.">
       <template #action>
         <div class="flex flex-wrap gap-2">
           <UButton
@@ -188,12 +192,13 @@ watch(identityStamp, () => {
         </div>
       </template>
       <template #toolbar>
-        <UFormField name="client-search" label="Buscar cliente" class="w-full max-w-sm">
+        <UFormField name="client-search" label="Buscar cliente" class="w-full sm:max-w-sm">
           <UInput
             v-model="query"
             icon="i-lucide-search"
             placeholder="Nome ou CNPJ"
             aria-label="Buscar cliente"
+            class="w-full"
           />
         </UFormField>
       </template>
@@ -224,18 +229,17 @@ watch(identityStamp, () => {
           :title="debouncedQuery.trim() ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'"
           :description="debouncedQuery.trim() ? 'Altere a busca para consultar outros clientes da carteira.' : 'A carteira deste escritório ainda não tem clientes para convidar.'"
         />
-        <UTable
+        <OfficeErpDataTable
           v-else
           :data="clients"
           :columns="columns"
           :loading="loading"
-          :ui="panelTableUi"
         >
           <template #name-cell="{ row }">
-            <div class="min-w-0">
-              <p class="truncate font-medium text-highlighted">
+            <div class="max-w-72 min-w-56 whitespace-normal">
+              <p class="font-medium wrap-anywhere text-highlighted">
                 {{ row.original.trade_name || row.original.name }}
-              </p><p v-if="row.original.trade_name" class="truncate text-sm text-muted">
+              </p><p v-if="row.original.trade_name" class="text-sm wrap-anywhere text-muted">
                 {{ row.original.name }}
               </p>
             </div>
@@ -287,6 +291,7 @@ watch(identityStamp, () => {
                   query: {
                     cliente: row.original.id,
                     pagina: page,
+                    ...(perPage !== 25 ? { porPagina: perPage } : {}),
                     ...(debouncedQuery.trim() ? { q: debouncedQuery.trim() } : {})
                   }
                 }"
@@ -303,18 +308,16 @@ watch(identityStamp, () => {
               Nenhum resultado nesta página.
             </div>
           </template>
-        </UTable>
-        <div v-if="!loadError && !confirmedEmpty" :class="panelFooterClass">
-          <span :class="panelFooterCountClass">{{ total }} clientes</span>
-          <UPagination
-            v-model:page="page"
-            :total="total"
-            :items-per-page="perPage"
-            :disabled="loading"
-            :class="panelPaginationClass"
-          />
-        </div>
+        </OfficeErpDataTable>
+        <OfficeErpPagination
+          v-if="!loadError && !confirmedEmpty"
+          v-model:page="page"
+          v-model:per-page="perPage"
+          :total="total"
+          :loading="loading"
+          label="clientes"
+        />
       </div>
-    </DataTablePanelList>
+    </OfficeErpPanel>
   </div>
 </template>

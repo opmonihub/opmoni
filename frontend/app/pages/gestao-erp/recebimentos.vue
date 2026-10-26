@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import OfficeErpDataTable from '~/components/office-erp/OfficeErpDataTable.vue'
+import OfficeErpPagination from '~/components/office-erp/OfficeErpPagination.vue'
+import OfficeErpPanel from '~/components/office-erp/OfficeErpPanel.vue'
 import { listNavigationField } from '~/composables/useListNavigationState'
 import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
+import type { FilterPanelColumn } from '~/utils/filterPanel'
+import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import type { TableColumn } from '@nuxt/ui'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
@@ -15,6 +20,16 @@ const navigation = useOfficeErpListNavigation('receipts', { from: '', to: '', pa
 const { user, currentAccount } = useAuth(), sessionGeneration = useState('access-session-generation', () => 0)
 const rows = ref<Receipt[]>([]), invoices = ref<InvoiceChoice[]>([]), total = ref(0), lastPage = ref(1), page = listNavigationField(navigation, 'page'), perPage = listNavigationField(navigation, 'perPage')
 const from = listNavigationField(navigation, 'from'), to = listNavigationField(navigation, 'to'), loading = ref(false), loadError = ref(''), empty = ref(false), open = ref(false), busy = ref(false), pending = ref(false), unknown = ref(false), recovering = ref(false), error = ref(''), errors = ref<Record<string, string[]>>({}), proofId = ref<string | null>(null), proofName = ref(''), proofError = ref('')
+const receiptFilterColumns: FilterPanelColumn[] = [
+  { id: 'received', label: 'Recebimento', icon: 'i-lucide-calendar', control: 'date-range', allowOpenRange: true }
+]
+const receiptFilters = computed<DataTableFilterModel[]>({
+  get: (): DataTableFilterModel[] => from.value || to.value ? [{ columnId: 'received', type: 'date', operator: 'is between', values: [from.value, to.value] }] : [],
+  set: (filters) => {
+    const range = filters.find(filter => filter.columnId === 'received')?.values ?? []
+    navigation.value = { ...navigation.value, from: String(range[0] ?? ''), to: String(range[1] ?? ''), page: 1 }
+  }
+})
 const proofUploadPending = ref(false), proofRequired = ref(false), invoiceChoicesLoading = ref(false)
 const key = computed(() => command.recoveryKey.value)
 const recoverable = computed(() => !!command.pending.value || !!key.value)
@@ -236,67 +251,74 @@ watch(identity, () => {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col gap-4">
-    <DataTablePanelList title="Recebimentos" description="Registros manuais e suas alocações. Reversão é um ajuste interno, não uma confirmação bancária.">
+  <div class="flex min-h-0 min-w-0 flex-col gap-5">
+    <OfficeErpPanel title="Recebimentos" description="Pagamentos registrados e suas alocações.">
       <template #action>
-        <UButton @click="open=true">
+        <UButton icon="i-lucide-plus" @click="open=true">
           Registrar recebimento
         </UButton>
-      </template><template #toolbar>
-        <UFormField label="Recebido de">
-          <UInput v-model="from" type="date" />
-        </UFormField><UFormField label="Recebido até">
-          <UInput v-model="to" type="date" />
-        </UFormField>
-      </template><UAlert
-        v-if="loadError"
-        color="error"
-        title="Não foi possível carregar recebimentos"
-        :description="loadError"
-      >
-        <template #description>
-          <div class="flex justify-between">
-            <span>{{ loadError }}</span><UButton variant="outline" @click="load">
-              Tentar novamente
-            </UButton>
-          </div>
-        </template>
-      </UAlert><UAlert
-        v-else-if="error"
-        color="error"
-        title="A operação não foi concluída"
-        :description="error"
-      /><UAlert v-else-if="empty" title="Nenhum recebimento encontrado" /><div v-else class="overflow-x-auto">
-        <UTable :data="rows" :columns="columns" :loading="loading">
-          <template #amount-cell="{ row }">
-            {{ formatOfficeErpMoney(row.original.amount) }}
-          </template><template #allocations-cell="{ row }">
-            <span v-for="(a, n) in row.original.allocations" :key="n" class="mr-2">Fatura {{ a.invoice_id }} · {{ formatOfficeErpMoney(a.amount) }}</span>
-          </template><template #status-cell="{ row }">
-            <UBadge :color="row.original.reversal?'warning':'success'" variant="subtle">
-              {{ row.original.reversal?'Revertido':'Registrado' }}
-            </UBadge>
-          </template><template #actions-cell="{ row }">
-            <UButton
-              v-if="!row.original.reversal"
-              size="sm"
-              color="error"
-              variant="outline"
-              @click="reversing=row.original"
-            >
-              Reverter
-            </UButton><span v-else>{{ row.original.reversal.reason }}</span>
+      </template>
+      <template #toolbar>
+        <DataTableFilterPanel v-model="receiptFilters" :columns="receiptFilterColumns" />
+      </template>
+      <div class="flex min-w-0 flex-col gap-4 p-4 sm:p-6">
+        <UAlert
+          v-if="loadError"
+          color="error"
+          title="Não foi possível carregar recebimentos"
+          :description="loadError"
+        >
+          <template #description>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <span>{{ loadError }}</span><UButton variant="outline" @click="load">
+                Tentar novamente
+              </UButton>
+            </div>
           </template>
-        </UTable>
-      </div><div v-if="total>0" class="flex items-center justify-between">
-        <span>{{ total }} recebimentos · página {{ page }} de {{ lastPage }}</span><UPagination
+        </UAlert><UAlert
+          v-else-if="error"
+          color="error"
+          title="A operação não foi concluída"
+          :description="error"
+        /><UAlert v-else-if="empty" title="Nenhum recebimento encontrado" /><div v-else class="overflow-x-auto">
+          <OfficeErpDataTable :data="rows" :columns="columns" :loading="loading">
+            <template #received_on-cell="{ row }">
+              {{ row.original.received_on.split('-').reverse().join('/') }}
+            </template>
+            <template #reference-cell="{ row }">
+              <span class="block max-w-64 min-w-40 whitespace-normal wrap-anywhere">{{ row.original.reference || '—' }}</span>
+            </template>
+            <template #amount-cell="{ row }">
+              {{ formatOfficeErpMoney(row.original.amount) }}
+            </template><template #allocations-cell="{ row }">
+              <span v-for="(a, n) in row.original.allocations" :key="n" class="mr-2">Fatura {{ a.invoice_id }} · {{ formatOfficeErpMoney(a.amount) }}</span>
+            </template><template #status-cell="{ row }">
+              <UBadge :color="row.original.reversal?'warning':'success'" variant="subtle">
+                {{ row.original.reversal?'Revertido':'Registrado' }}
+              </UBadge>
+            </template><template #actions-cell="{ row }">
+              <UButton
+                v-if="!row.original.reversal"
+                size="sm"
+                color="error"
+                variant="outline"
+                @click="reversing=row.original"
+              >
+                Reverter
+              </UButton><span v-else>{{ row.original.reversal.reason }}</span>
+            </template>
+          </OfficeErpDataTable>
+        </div>
+        <OfficeErpPagination
+          v-if="total > 0"
           v-model:page="page"
+          v-model:per-page="perPage"
           :total="total"
-          :items-per-page="perPage"
-          :disabled="loading"
+          :loading="loading"
+          label="recebimentos"
         />
       </div>
-    </DataTablePanelList>
+    </OfficeErpPanel>
     <UAlert v-if="recoverable && !unknown" color="warning" title="Confirmação pendente">
       <template #description>
         <div>

@@ -1,3 +1,4 @@
+import { registerOfficeErpPresentationStubs } from './helpers/officeErpPresentationStubs.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import * as Vue from 'vue'
@@ -154,6 +155,7 @@ function mountOverview(api: () => Promise<unknown>) {
   app.component('UPageCard', passthrough)
   app.component('UAlert', { props: ['title', 'description', 'color', 'variant'], setup: (props, slotContext) => () => Vue.h('aside', { role: 'alert', title: props.title, color: props.color, variant: props.variant }, [String(props.title ?? ''), String(props.description ?? ''), slotContext.slots.default?.()]) })
   app.component('UButton', { setup: (_props, slotContext) => () => Vue.h('button', { ...slotContext.attrs, onClick: slotContext.attrs.onClick }, slotContext.slots.default?.()) })
+  registerOfficeErpPresentationStubs(app)
   app.mount(root)
 
   const text = (node: HostNode): string => `${node.text ?? ''}${node.children.map(text).join('')}`
