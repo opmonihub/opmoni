@@ -26,7 +26,7 @@ import {
 
 definePageMeta({ middleware: 'auth' })
 
-const readLifecycle = useOfficeReadLifecycle()
+const readLifecycle = useWorkReadLifecycle('/work/tarefas')
 
 const toast = useToast()
 const { grouped, unscopedTasks, updateTask } = useWork()
@@ -63,7 +63,7 @@ const { data, status, error, refresh: reload, clear: clearOffice0 } = await useA
     ])
     return { groups, unscoped }
   },
-  { watch: [referenceMonth], default: () => ({ groups: [], unscoped: [] }) }
+  { enabled: readLifecycle.enabled, watch: [referenceMonth], default: () => ({ groups: [], unscoped: [] }) }
 )
 readLifecycle.own({ clear: clearOffice0, refresh: reload }, () => {
   rowSelection.value = {}
@@ -94,7 +94,7 @@ const { isLoading, showError, refresh, retry } = useRetryableLoad({
 const { data: departments, clear: clearOffice1, refresh: refreshOffice1 } = await useAsyncData(
   'work-departments',
   (_nuxtApp, { signal }) => listDepartments({}, { signal }),
-  { default: () => [] }
+  { enabled: readLifecycle.enabled, default: () => [] }
 )
 readLifecycle.own({ clear: clearOffice1, refresh: refreshOffice1 })
 
