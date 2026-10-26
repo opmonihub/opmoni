@@ -44,3 +44,30 @@ test('effective office membership changes clear protected reads synchronously an
   assert.equal(resource.error.value, undefined)
   scope.stop()
 })
+
+test('a reactive authority key admits only one read for its new authority', async () => {
+  const registry = Vue.ref({ authority: 'office-a' })
+  const { useOfficeReadLifecycle } = loadAppComposable<{ useOfficeReadLifecycle: () => { authority: Vue.Ref<string>, own: (resource: { clear: () => void, refresh: () => Promise<unknown> }) => void } }>('composables/useOfficeReadLifecycle.ts', { useListNavigationRegistry: () => ({ registry }), computed: Vue.computed, watch: Vue.watch, nextTick: Vue.nextTick, onScopeDispose: Vue.onScopeDispose })
+  const engine = officeAsyncDataEngine(false, { serverRendered: false, data: {}, _errors: {} })
+  engine.app.isHydrating = false
+  const reads: { authority: string, signal: AbortSignal }[] = []
+  const scope = Vue.effectScope()
+  const lifecycle = scope.run(useOfficeReadLifecycle)!
+  const resource = scope.run(() => (engine.useAsyncData as (...args: unknown[]) => unknown)(Vue.computed(() => `detail-${lifecycle.authority.value}`), (_app: unknown, options: { signal: AbortSignal }) => {
+    reads.push({ authority: lifecycle.authority.value, signal: options.signal })
+    return new Promise(() => {})
+  }, { default: () => null })) as { data: Vue.Ref<unknown>, clear: () => void, refresh: () => Promise<unknown> }
+  // The reactive key is this read's owner; page cleanup clears only its local ref.
+  Vue.watch(lifecycle.authority, () => {
+    resource.data.value = null
+  }, { flush: 'sync' })
+  resource.data.value = { name: 'Prior authority' }
+  registry.value.authority = 'office-b'
+  assert.equal(resource.data.value, null)
+  assert.equal(reads[0]!.signal.aborted, true)
+  await Vue.nextTick()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(reads.filter(read => read.authority === 'office-b').length, 1)
+  assert.equal(reads[0]!.signal.aborted, true)
+  scope.stop()
+})

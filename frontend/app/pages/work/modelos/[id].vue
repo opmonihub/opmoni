@@ -108,12 +108,11 @@ watch(readAuthority, () => {
   Object.assign(form, { name: '', description: '', cascade: false, is_active: true, generate_day: 1, due_day: 20, regimes: [], tag_ids: [], exceptions: [], steps: [] })
 }, { flush: 'sync' })
 const templateReadKey = computed(() => `work-template-${readAuthority.value}-${templateId.value ?? 'new'}`)
-const { data: templateData, status: templateStatus, error: loadError, refresh: load, clear: clearOffice0 } = await useAsyncData<WorkTemplate | null>(
+const { data: templateData, status: templateStatus, error: loadError, refresh: load } = await useAsyncData<WorkTemplate | null>(
   templateReadKey,
   (_nuxtApp, { signal }) => isNew.value ? Promise.resolve(null) : showTemplate(templateId.value as number, { signal }),
   { default: () => null, getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined }
 )
-readLifecycle.own({ clear: clearOffice0, refresh: load })
 const loading = computed(() => templateStatus.value === 'pending')
 watch(templateData, (template) => {
   if (template) syncFromTemplate(template)
