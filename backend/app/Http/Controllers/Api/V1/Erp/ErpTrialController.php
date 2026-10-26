@@ -31,13 +31,13 @@ class ErpTrialController extends Controller
             $code,
             $input,
             (string) $request->header('Idempotency-Key', ''),
-        ), 201);
+        ), 201)->header('Cache-Control', 'no-store');
     }
 
     public function current(Request $request, OfficeErpTrialRegistration $registration): JsonResponse
     {
         return response()->json([
             'data' => $registration->current($request, (string) $request->header('Idempotency-Key', '')),
-        ]);
+        ])->header('Cache-Control', 'no-store');
     }
 }
