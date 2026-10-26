@@ -158,7 +158,7 @@ final class OfficeErpTrialRegistration
             ->where('actor_kind', 'owner')
             ->where('action', 'trial.register')
             ->where('idempotency_key', $key)
-            ->where('outcome->owner_user_id', (int) $owner->getKey())
+            ->where('outcome->data->owner_user_id', (int) $owner->getKey())
             ->get(['outcome']);
 
         abort_unless($matches->count() === 1, 404);
@@ -230,6 +230,7 @@ final class OfficeErpTrialRegistration
         $modules = array_values($snapshot['plan_module_keys']);
         $provisioned = $this->contracts->createProvisioned($context, $client, $company, (int) $snapshot['erp_plan_id'], [
             'price' => '0.00',
+            'currency' => 'BRL',
             'interval_months' => 1,
             'due_in_days' => 0,
             'module_keys' => $modules,
