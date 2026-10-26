@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { effectScope, ref, type Ref } from 'vue'
+import { effectScope, ref, watch, type Ref } from 'vue'
 import { useListNavigationRegistry, useListNavigationState, listNavigationField } from '../app/composables/useListNavigationState.ts'
 
 function application() {
@@ -135,6 +135,37 @@ test('supports codec-approved primitive multiselect arrays but stores no nested 
   }))!
   state.value.status = ['active', 'pending']
   assert.deepEqual(state.value.status, ['active', 'pending'])
+  scope.stop()
+  app.scope.stop()
+})
+
+test('scalar field-lens edits preserve equivalent multiselect identity and never reset the selected page', () => {
+  const app = application()
+  const scope = effectScope()
+  scope.run(() => {
+    const state = useListNavigationState('filters', {
+      defaults: () => ({ q: '', page: 1, tags: ['active'] }),
+      normalize: (value) => {
+        const input = value as { q: string, page: number, tags: string[] }
+        return { q: input.q, page: input.page, tags: [...input.tags] }
+      }
+    })
+    const page = listNavigationField(state, 'page')
+    const tags = listNavigationField(state, 'tags')
+    const q = listNavigationField(state, 'q')
+    let filterChanges = 0
+    watch(tags, () => {
+      filterChanges++
+      page.value = 1
+    }, { flush: 'sync' })
+    page.value = 3
+    q.value = 'needle'
+    assert.equal(page.value, 3)
+    assert.equal(filterChanges, 0)
+    tags.value = ['pending']
+    assert.equal(filterChanges, 1)
+    assert.equal(page.value, 1)
+  })
   scope.stop()
   app.scope.stop()
 })
