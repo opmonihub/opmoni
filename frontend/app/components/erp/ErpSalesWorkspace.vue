@@ -12,7 +12,7 @@ import { erpWorkspaceModuleDestinations, erpWorkspaceModuleSelection } from '~/u
 type ModalKind = 'create' | 'edit' | 'tax-review' | 'detail' | 'representation' | 'convert' | 'post-sale' | 'return' | 'post-return' | null
 type ErpSaleReturnDraft = { reason: string, quantities: Record<number, string> }
 type RecoveryOwner = { key: string, authority: number, modal: ModalKind, identity: number, kind: ErpCommercialKind | null, sourceId: number | null, fingerprint: string, returnDraftKey?: string, returnDraftFingerprint?: string }
-const sales = useErpSalesWorkspace()
+const sales = useErpSalesWorkspace('quotes', false)
 const route = useRoute()
 const router = useRouter()
 const { key: workspaceContextKey } = useErpAdministrationContext()
@@ -607,6 +607,8 @@ watch(sales.authorityGeneration, () => {
   editIdentity.value = ''
   createIdentity++
   closeModal()
+  const next = areaFromHash(route.hash)
+  if (next) void setArea(next, false)
 })
 onMounted(() => {
   const hashArea = areaFromHash(route.hash)

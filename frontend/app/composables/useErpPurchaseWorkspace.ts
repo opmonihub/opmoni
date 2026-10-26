@@ -1,3 +1,4 @@
+import { useErpReadScope } from '~/composables/useErpReadScope'
 import type {
   ErpPurchase,
   ErpPurchaseEstablishment,
@@ -47,10 +48,11 @@ export function erpPurchaseAllowed(grants: readonly string[] | undefined, role: 
   return grants.some(grant => grant === '*' || grant === action || grant === `${family}.*` || grant === `${family}.${scope}` || grant === (write ? 'erp.write' : 'erp.read'))
 }
 
-export function useErpPurchaseWorkspace() {
+export function useErpPurchaseWorkspace(initializeLists = true) {
   const { api, refreshCsrf } = useAccessApi()
   const { user, currentCompany, refreshWithStatus } = useAuth()
   const context = useErpAdministrationContext()
+  const reads = useErpReadScope()
   const purchases = ref<ErpPurchase[]>([])
   const returns = ref<ErpPurchaseReturn[]>([])
   const meta = ref<ErpPurchasePage['meta'] | null>(null)
@@ -118,6 +120,7 @@ export function useErpPurchaseWorkspace() {
     return typeof data === 'object' && data !== null && (data as { code?: unknown }).code === 'company_context_changed'
   }
   function clearPrivateState() {
+    reads.cancel()
     requestGeneration++
     listSequence++
     returnListSequence++
@@ -309,9 +312,10 @@ export function useErpPurchaseWorkspace() {
     const token = context.capture()
     const generation = requestGeneration
     const sequence = ++listSequence
+    const signal = reads.start('purchases')
     listLoading.value = true
     try {
-      const result = await api<ErpPurchasePage>(`/erp/purchases?${makeQuery()}`)
+      const result = await api<ErpPurchasePage>(`/erp/purchases?${makeQuery()}`, { signal })
       if (!current(token, generation) || sequence !== listSequence) return
       purchases.value = result.data
       meta.value = result.meta
@@ -329,11 +333,12 @@ export function useErpPurchaseWorkspace() {
     const token = context.capture()
     const generation = requestGeneration
     const sequence = ++returnListSequence
+    const signal = reads.start('returns')
     const query = new URLSearchParams({ page: String(returnFilters.page), per_page: String(returnFilters.per_page) })
     if (returnFilters.status) query.set('status', returnFilters.status)
     returnsLoading.value = true
     try {
-      const result = await api<ErpPurchasePage>(`/erp/purchase-returns?${query}`)
+      const result = await api<ErpPurchasePage>(`/erp/purchase-returns?${query}`, { signal })
       if (!current(token, generation) || sequence !== returnListSequence) return
       returns.value = result.data as unknown as ErpPurchaseReturn[]
       returnMeta.value = result.meta
@@ -346,13 +351,13 @@ export function useErpPurchaseWorkspace() {
       if (current(token, generation) && sequence === returnListSequence) returnsLoading.value = false
     }
   }
-  async function loadAllPages<T>(path: string, token: ReturnType<typeof context.capture>, generation: number): Promise<T[]> {
+  async function loadAllPages<T>(path: string, token: ReturnType<typeof context.capture>, generation: number, signal: AbortSignal): Promise<T[]> {
     const rows: T[] = []
     let page = 1
     let lastPage = 1
     while (page <= lastPage) {
       const query = new URLSearchParams({ status: 'active', per_page: '100', page: String(page) })
-      const result = await api<PageResult<T>>(`${path}?${query}`)
+      const result = await api<PageResult<T>>(`${path}?${query}`, { signal })
       if (!current(token, generation)) return []
       rows.push(...result.data)
       lastPage = result.meta?.last_page ?? page
@@ -364,15 +369,16 @@ export function useErpPurchaseWorkspace() {
     if (!currentCompany.value) return
     const token = context.capture()
     const generation = requestGeneration
+    const signal = reads.start('references')
     referencesLoading.value = true
     referenceError.value = ''
     variants.value = []
     const settled = await Promise.allSettled([
-      allowed('erp.contacts.index') ? loadAllPages<Record<string, unknown>>('/erp/contacts', token, generation) : Promise.resolve([]),
-      allowed('erp.establishments.index') ? loadAllPages<ErpPurchaseEstablishment>('/erp/establishments', token, generation) : Promise.resolve([]),
-      allowed('erp.units.index') ? loadAllPages<ErpPurchaseUnit>('/erp/units', token, generation) : Promise.resolve([])
+      allowed('erp.contacts.index') ? loadAllPages<Record<string, unknown>>('/erp/contacts', token, generation, signal) : Promise.resolve([]),
+      allowed('erp.establishments.index') ? loadAllPages<ErpPurchaseEstablishment>('/erp/establishments', token, generation, signal) : Promise.resolve([]),
+      allowed('erp.units.index') ? loadAllPages<ErpPurchaseUnit>('/erp/units', token, generation, signal) : Promise.resolve([])
     ])
-    if (!current(token, generation)) return
+    if (!current(token, generation) || signal.aborted) return
     const readActions = ['erp.contacts.index', 'erp.establishments.index', 'erp.units.index'] as const
     const failures = settled.flatMap((result, index) => result.status === 'rejected' ? [{ error: result.reason, action: readActions[index] ?? readActions[0] }] : [])
     if (settled[0].status === 'fulfilled') suppliers.value = (settled[0].value as Record<string, unknown>[]).filter(row => row.is_supplier === true && row.status === 'active') as unknown as ErpPurchaseSupplier[]
@@ -844,20 +850,25 @@ export function useErpPurchaseWorkspace() {
     if (currentCompany.value) {
       restorePending()
       restorePreview()
-      void load()
-      void loadReturns()
+      if (initializeLists) {
+        void load()
+        void loadReturns()
+      }
       void loadReferences()
     }
   }, { flush: 'sync' })
   onMounted(() => {
     restorePending()
     restorePreview()
-    void load()
-    void loadReturns()
+    if (initializeLists) {
+      void load()
+      void loadReturns()
+    }
     void loadReferences()
   })
   onScopeDispose(() => {
     requestGeneration++
+    reads.cancel()
     listSequence++
     detailSequence++
     selectionIntentSequence++
