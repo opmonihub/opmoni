@@ -26,4 +26,3 @@ Real portfolio, Fiscal, Monitoring, Work, office-commercial, Admin and company E
 #### Scenario: Ordering changes while an earlier read is pending
 - **WHEN** a new supported ordering supersedes a pending list read
 - **THEN** pagination resets once and the older response cannot replace the new ordered result or clear its loading state
-

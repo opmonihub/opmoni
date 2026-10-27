@@ -32,4 +32,3 @@ Office client, offer, contract, invoice and receipt lists SHALL support document
 #### Scenario: Office changes while sorting
 - **WHEN** the office or effective read authority changes during a sorted list request
 - **THEN** prior results cannot populate the new office and no new read or write permission is inferred
-
