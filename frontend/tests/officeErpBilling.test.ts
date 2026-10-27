@@ -150,7 +150,7 @@ function mountPage(path: string, options: {
   }
   const metadata: Record<string, unknown>[] = []
   const bindings = {
-    ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, nextTick: Vue.nextTick,
+    ref: Vue.ref, refDebounced: (value: Vue.Ref<unknown>) => value, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, nextTick: Vue.nextTick,
     onMounted: Vue.onMounted, onBeforeUnmount: Vue.onBeforeUnmount,
     useRoute: () => route,
     useRouter: () => ({ replace: async (url: string) => {

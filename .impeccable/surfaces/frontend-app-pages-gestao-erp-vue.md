@@ -26,3 +26,9 @@ FIRST VIEWPORT: A compact dashboard header places Cadastrar cliente at the right
 FORM: Operational center, grounded candidate 3, seed a5fa713b. Code-led choice confirmed by the user; no approved comp.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+
+## User screenshot correction
+
+The user's 1046px dashboard captures supersede the first visual acceptance: client rows required horizontal scrolling and subscription cells repeated client, company, plan and owner setup. Preserve compact essential fields, move CNPJ/company/owner/dates into explicit row expansion, and use UCollapsible mobile records rather than requiring sideways scrolling for clients and subscriptions. Remove decorative settings subtitles and keep policy/trial explanations in optional help. Plans retain their compact module disclosure. Debounce invoice search to avoid a context and list request per keystroke; preserve current authorization confirmation and honest loading states.
+
+Finish-review correction: keep section navigation in selector form below 1280px, use title-adjacent contextual help popovers without standalone body help rows, and label the mobile enrollment action Ativar ERP for clients without a subscription.

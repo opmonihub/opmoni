@@ -53,11 +53,11 @@ const identityStamp = useOfficeErpReadIdentity(() => [
 ], () => context.capabilities.value?.capability_key)
 const reads = useOfficeErpReads(identityStamp)
 const columns: TableColumn<OfficeErpContractRow>[] = [
+  { id: 'details', header: '', meta: { class: { th: 'w-14' } } },
   { accessorKey: 'client', header: 'Cliente' },
-  { id: 'terms', header: 'Termos' },
-  { id: 'agreement', header: 'Contrato' },
-  { id: 'licence', header: 'Licença' },
-  { id: 'actions', header: '' }
+  { id: 'plan', header: 'Plano' },
+  { id: 'licence', header: 'Situação', meta: { class: { th: 'w-28' } } },
+  { id: 'actions', header: '', meta: { class: { th: 'w-32' } } }
 ]
 const agreementStatusLabels: Record<string, string> = {
   draft: 'Rascunho',
@@ -180,62 +180,188 @@ watch(identityStamp, () => {
           title="Nenhum contrato encontrado"
           description="Contratos aceitos aparecerão aqui depois da confirmação do responsável."
         />
-        <div v-else class="overflow-x-auto">
+        <div v-else class="min-w-0">
           <OfficeErpDataTable
             :columns="columns"
             :data="contracts"
             :loading="loading"
+            compact
+            expandable
+            label="Assinaturas"
           >
+            <template #details-cell="{ row }">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                :icon="row.getIsExpanded() ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                :aria-label="row.getIsExpanded() ? 'Ocultar detalhes do contrato' : 'Ver detalhes do contrato'"
+                :aria-expanded="row.getIsExpanded()"
+                class="size-11 min-w-11"
+                @click="row.toggleExpanded()"
+              />
+            </template>
             <template #client-cell="{ row }">
-              <div class="max-w-72 min-w-56 whitespace-normal py-1">
-                <p class="font-medium text-highlighted">
+              <div class="min-w-0">
+                <p class="max-w-56 wrap-anywhere font-medium text-highlighted">
                   {{ row.original.client.name }}
-                </p>
-                <p v-if="row.original.company" class="mt-1 text-xs text-muted">
-                  {{ row.original.company.name }}
-                </p>
-                <p v-if="row.original.erp_plan_id" class="mt-1 text-xs text-muted">
-                  Plano ERP: {{ row.original.erp_plan?.name ?? `#${row.original.erp_plan_id}` }}
-                </p>
-                <p v-if="row.original.company?.owner_setup_status" class="mt-1 text-xs text-muted">
-                  Acesso do responsável: {{ row.original.company.owner_setup_status === 'claimed' ? 'configurado' : 'aguardando configuração' }}
                 </p>
               </div>
             </template>
-            <template #terms-cell="{ row }">
-              <span v-if="row.original.current_revision" class="text-sm text-muted">
-                {{ formatOfficeErpMoney(row.original.current_revision.price) }} · {{ row.original.current_revision.interval_months === 1 ? 'mensal' : `a cada ${row.original.current_revision.interval_months} meses` }}
-              </span>
-              <span v-else class="text-sm text-muted">Sem revisão</span>
-            </template>
-            <template #agreement-cell="{ row }">
-              <UBadge :color="row.original.agreement_status === 'effective' ? 'success' : 'neutral'" variant="subtle">
-                {{ agreementStatusLabels[row.original.agreement_status] ?? 'Situação não reconhecida' }}
-              </UBadge>
+            <template #plan-cell="{ row }">
+              <div class="min-w-0">
+                <p class="max-w-40 truncate font-medium text-highlighted sm:max-w-56">
+                  {{ row.original.erp_plan?.name ?? (row.original.erp_plan_id ? `Plano #${row.original.erp_plan_id}` : 'Plano indisponível') }}
+                </p>
+                <p v-if="row.original.current_revision" class="truncate text-xs text-muted">
+                  {{ formatOfficeErpMoney(row.original.current_revision.price) }} · {{ row.original.current_revision.interval_months === 1 ? 'mensal' : `${row.original.current_revision.interval_months} meses` }}
+                </p>
+                <p v-else class="text-xs text-muted">
+                  Termos indisponíveis
+                </p>
+              </div>
             </template>
             <template #licence-cell="{ row }">
               <UBadge :color="row.original.licence_status === 'active' ? 'success' : 'warning'" variant="subtle">
                 {{ row.original.trial?.situation === 'trialing' ? 'Em teste' : row.original.trial?.situation === 'expired' ? 'Teste encerrado' : licenceStatusLabels[row.original.licence_status ?? ''] ?? 'Situação não reconhecida' }}
               </UBadge>
-              <p v-if="row.original.trial?.situation === 'trialing' || row.original.trial?.situation === 'expired'" class="mt-1 text-xs text-muted">
-                {{ row.original.trial.situation === 'trialing' ? 'Encerra' : 'Encerrou' }} {{ formatDate(row.original.trial.ends_at) }}
-              </p>
-              <p v-else-if="row.original.trial?.situation === 'converted'" class="mt-1 text-xs text-muted">
-                {{ trialStatusLabels.converted }}: {{ formatDate(row.original.trial.ends_at) }}
-              </p>
-              <p v-if="row.original.next_billing_on && row.original.trial?.situation !== 'trialing' && row.original.trial?.situation !== 'expired'" class="mt-1 text-xs text-muted">
-                Próxima cobrança {{ formatDate(row.original.next_billing_on) }}
-              </p>
             </template>
             <template #actions-cell="{ row }">
               <UButton
                 :to="`/gestao-erp/assinaturas/${row.original.id}`"
-                color="neutral"
-                variant="ghost"
+                variant="outline"
                 size="sm"
               >
-                Abrir contrato
+                Abrir
               </UButton>
+            </template>
+            <template #expanded="{ row }">
+              <div class="grid gap-x-6 gap-y-3 px-4 py-3 text-sm sm:grid-cols-3">
+                <div>
+                  <p class="text-xs text-muted">
+                    Empresa ERP
+                  </p>
+                  <p class="wrap-anywhere text-highlighted">
+                    {{ row.original.company?.name ?? 'Empresa indisponível' }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted">
+                    Contrato
+                  </p>
+                  <p class="text-highlighted">
+                    {{ agreementStatusLabels[row.original.agreement_status] ?? 'Situação não reconhecida' }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted">
+                    Acesso do responsável
+                  </p>
+                  <p class="text-highlighted">
+                    {{ row.original.company?.owner_setup_status === 'claimed' ? 'Configurado' : row.original.company?.owner_setup_status === 'unclaimed' ? 'Aguardando configuração' : 'Indisponível' }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted">
+                    Próxima cobrança
+                  </p>
+                  <p class="text-highlighted">
+                    {{ formatDate(row.original.next_billing_on ?? '') }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted">
+                    Saldo em aberto
+                  </p>
+                  <p class="text-highlighted">
+                    {{ formatOfficeErpMoney(row.original.balance.outstanding) }} · {{ row.original.balance.invoice_count }} faturas
+                  </p>
+                </div>
+                <div v-if="row.original.trial">
+                  <p class="text-xs text-muted">
+                    Teste
+                  </p>
+                  <p class="text-highlighted">
+                    {{ trialStatusLabels[row.original.trial.situation] }} · {{ row.original.trial.situation === 'trialing' ? 'encerra' : 'encerrou' }} {{ formatDate(row.original.trial.ends_at) }}
+                  </p>
+                </div>
+                <UButton
+                  :to="`/gestao-erp/assinaturas/${row.original.id}`"
+                  class="w-fit"
+                  variant="ghost"
+                  size="sm"
+                >
+                  Abrir contrato
+                </UButton>
+              </div>
+            </template>
+            <template #mobile="{ data }">
+              <UCollapsible v-for="contract in data" :key="contract.id" class="py-3">
+                <UButton
+                  block
+                  color="neutral"
+                  variant="ghost"
+                  class="h-auto min-h-11 justify-between px-0 py-1 text-left"
+                >
+                  <template #leading>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate font-medium text-highlighted">{{ contract.client.name }}</span>
+                      <span class="block truncate text-xs text-muted">{{ contract.erp_plan?.name ?? (contract.erp_plan_id ? `Plano #${contract.erp_plan_id}` : 'Plano indisponível') }}</span>
+                    </span>
+                  </template>
+                  <template #trailing>
+                    <UBadge :color="contract.licence_status === 'active' ? 'success' : 'warning'" variant="subtle" class="max-w-28 truncate">
+                      {{ contract.trial?.situation === 'trialing' ? 'Em teste' : contract.trial?.situation === 'expired' ? 'Teste encerrado' : licenceStatusLabels[contract.licence_status ?? ''] ?? 'Situação indisponível' }}
+                    </UBadge>
+                    <UIcon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted" />
+                  </template>
+                </UButton>
+                <template #content>
+                  <div class="space-y-3 pt-3 text-sm">
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <p class="text-xs text-muted">
+                          Empresa ERP
+                        </p><p class="wrap-anywhere">
+                          {{ contract.company?.name ?? 'Indisponível' }}
+                        </p>
+                      </div>
+                      <div>
+                        <p class="text-xs text-muted">
+                          Contrato
+                        </p><p>{{ agreementStatusLabels[contract.agreement_status] ?? 'Situação não reconhecida' }}</p>
+                      </div>
+                      <div>
+                        <p class="text-xs text-muted">
+                          Valor
+                        </p><p>{{ contract.current_revision ? formatOfficeErpMoney(contract.current_revision.price) : 'Indisponível' }}</p>
+                      </div>
+                      <div>
+                        <p class="text-xs text-muted">
+                          Próxima cobrança
+                        </p><p>{{ formatDate(contract.next_billing_on ?? '') }}</p>
+                      </div>
+                      <div>
+                        <p class="text-xs text-muted">
+                          Saldo em aberto
+                        </p><p>{{ formatOfficeErpMoney(contract.balance.outstanding) }}</p>
+                      </div>
+                      <div>
+                        <p class="text-xs text-muted">
+                          Acesso do responsável
+                        </p><p>{{ contract.company?.owner_setup_status === 'claimed' ? 'Configurado' : contract.company?.owner_setup_status === 'unclaimed' ? 'Aguardando configuração' : 'Indisponível' }}</p>
+                      </div>
+                    </div>
+                    <UButton
+                      :to="`/gestao-erp/assinaturas/${contract.id}`"
+                      variant="outline"
+                      size="sm"
+                      class="min-h-11"
+                    >
+                      Abrir contrato
+                    </UButton>
+                  </div>
+                </template>
+              </UCollapsible>
             </template>
             <template #empty>
               <div class="py-8 text-center text-sm text-muted">

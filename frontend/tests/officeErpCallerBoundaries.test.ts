@@ -2,6 +2,7 @@ import { registerOfficeErpPresentationStubs } from './helpers/officeErpPresentat
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
+import { refDebounced } from '@vueuse/core'
 import { compileVueComponent } from './helpers/compileVueComponent.ts'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import { formatOfficeErpMoney } from '../shared/utils/officeErpCommercial.ts'
@@ -144,7 +145,7 @@ function mountRenderer(componentToMount: Vue.Component) {
   app.component('UFormField', component((_props, ctx) => () => Vue.h('label', {}, [ctx.slots.default?.(), ctx.slots.hint?.()])))
   app.component('UBadge', passthrough)
   app.component('NuxtLink', component((props, ctx) => () => Vue.h('a', { href: props.to }, ctx.slots.default?.()), ['to']))
-  app.component('UTable', component((props, ctx) => () => Vue.h('div', {}, (props.data as unknown[] ?? []).map(original => Vue.h('article', {}, Object.values(ctx.slots).map(slot => slot({ row: { original } }))))), ['data', 'columns', 'loading', 'ui']))
+  app.component('UTable', component((props, ctx) => () => Vue.h('div', {}, (props.data as unknown[] ?? []).map(original => Vue.h('article', {}, Object.entries(ctx.slots).filter(([name]) => name.endsWith('-cell')).map(([, slot]) => slot({ row: { original, getIsExpanded: () => false, toggleExpanded: () => {} } }))))), ['data', 'columns', 'loading', 'ui']))
   app.component('UPagination', component((props, ctx) => () => Vue.h('button', {
     'aria-label': 'Próxima página',
     'disabled': props.disabled || Number(props.page) >= 2,
@@ -182,6 +183,7 @@ function mountCaller(path: string, options: {
   initialRead: (request?: ApiCall) => Promise<unknown>
   currentRead: (request?: ApiCall) => Promise<unknown>
   onToast?: (value: unknown) => void
+  debounceSearch?: boolean
 }): {
   app: Vue.App
   root: HostNode
@@ -228,7 +230,7 @@ function mountCaller(path: string, options: {
     },
     useAuth: () => ({ user: identity, currentAccount }),
     useAccessApi: () => ({ api }),
-    refDebounced: (value: Vue.Ref<unknown>) => value,
+    refDebounced: options.debounceSearch ? refDebounced : (value: Vue.Ref<unknown>) => value,
     definePageMeta() {},
     useToast: () => ({ add: (value: unknown) => options.onToast?.(value) }),
     formatOfficeErpMoney,
@@ -366,6 +368,32 @@ for (const caller of callers) {
 }
 
 describe('rendered invoice list controls and read states', () => {
+  it('coalesces rapid invoice typing into one authorized read for the final search', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const response = { data: [invoice('Search Result')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }
+    const page = mountCaller('pages/gestao-erp/faturas/index.vue', {
+      debounceSearch: true,
+      initialRead: async () => response,
+      currentRead: async () => response
+    })
+    t.after(page.stop)
+    await settle()
+    const initialCalls = page.calls.length
+    const search = find(page.root, node => node.tag === 'input' && node.props['aria-label'] === 'Buscar fatura')
+    assert.ok(search)
+    for (const value of ['N', 'NF', 'NF 41']) {
+      ;(search.props.onInput as (event: { target: { value: string } }) => void)({ target: { value } })
+      await settle()
+      t.mock.timers.tick(80)
+    }
+    assert.equal(page.calls.length, initialCalls, 'typing should not queue context or invoice requests')
+    t.mock.timers.tick(300)
+    await settle()
+    const newCalls = page.calls.slice(initialCalls)
+    assert.deepEqual(newCalls.map(call => call.path), ['/erp-commercial/context', '/erp-commercial/invoices'])
+    assert.equal(newCalls[1]?.options?.params?.q, 'NF 41')
+  })
+
   it('keeps same-query confirmed invoices visible and labeled when refresh fails', async (t) => {
     let reads = 0
     const page = mountCaller('pages/gestao-erp/faturas/index.vue', {

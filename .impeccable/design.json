@@ -70,7 +70,12 @@
       {
         "name": "lg",
         "value": "1024px",
-        "purpose": "Desktop route navigation replaces the mobile section selector."
+        "purpose": "Global dashboard sidebar layout."
+      },
+      {
+        "name": "xl",
+        "value": "1280px",
+        "purpose": "ERP desktop section navigation replaces its selector when all route labels fit beside the sidebar."
       }
     ]
   },

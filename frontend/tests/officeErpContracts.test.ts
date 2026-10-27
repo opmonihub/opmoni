@@ -14,6 +14,13 @@ function nodes(node: Node, predicate: (candidate: Node) => boolean): Node[] {
 function text(node: Node): string {
   return `${node.text ?? ''}${node.children.map(text).join('')}`
 }
+async function expandAllContractRows(root: Node) {
+  const expanders = nodes(root, node => node.tag === 'button' && node.props['aria-label'] === 'Ver detalhes do contrato')
+  assert.ok(expanders.length > 0, 'expected contract detail controls')
+  for (const expander of expanders)
+    (expander.props.onClick as (() => void) | undefined)?.()
+  await settle()
+}
 function mount(component: Vue.Component, registered: Record<string, Vue.Component>) {
   const root: Node = { props: {}, children: [] }
   const renderer = Vue.createRenderer({
@@ -92,7 +99,40 @@ function harness(path: string, recordData = detail, initialRecoveryKey: string |
   const component = compileVueComponent(path, bindings)
   const button: Vue.Component = { props: ['disabled', 'loading', 'to'], setup: (props, ctx) => () => Vue.h(props.to ? 'a' : 'button', { ...ctx.attrs, disabled: props.disabled, href: props.to, onClick: ctx.attrs.onClick }, props.to ? ctx.slots.default?.() : ctx.slots.default?.()) }
   const passthrough = passThrough()
-  const registered: Record<string, Vue.Component> = { UButton: button, UAlert: passthrough, UBadge: passthrough, UFormField: { setup: (_p, ctx) => () => Vue.h('label', {}, [ctx.slots.default?.(), ctx.slots.hint?.()]) }, UInput: { props: ['modelValue'], setup: (props, ctx) => () => Vue.h('input', { 'value': props.modelValue, 'aria-label': ctx.attrs['aria-label'], 'onInput': (event: Event) => ctx.emit('update:modelValue', (event.target as HTMLInputElement).value) }) }, USelect: passthrough, USelectMenu: passthrough, UTextarea: passthrough, UModal: passthrough, UTable: { props: ['data'], setup: (props, ctx) => () => Vue.h('div', {}, (props.data as unknown[]).length ? (props.data as unknown[]).map(original => Vue.h('article', {}, Object.entries(ctx.slots).filter(([name]) => name.endsWith('-cell')).map(([, slot]) => slot?.({ row: { original } })))) : ctx.slots['empty']?.()) }, UPagination: passthrough, DataTablePanelList: passthrough, NuxtLink: { setup: (_p, ctx) => () => Vue.h('a', {}, ctx.slots.default?.()) } }
+  const registered: Record<string, Vue.Component> = { UButton: button, UAlert: passthrough, UBadge: passthrough, UFormField: { setup: (_p, ctx) => () => Vue.h('label', {}, [ctx.slots.default?.(), ctx.slots.hint?.()]) }, UInput: { props: ['modelValue'], setup: (props, ctx) => () => Vue.h('input', { 'value': props.modelValue, 'aria-label': ctx.attrs['aria-label'], 'onInput': (event: Event) => ctx.emit('update:modelValue', (event.target as HTMLInputElement).value) }) }, USelect: passthrough, USelectMenu: passthrough, UTextarea: passthrough, UModal: passthrough, UTable: {
+    props: ['data', 'columns', 'expandedOptions'],
+    setup: (props, ctx) => {
+      const expandedRows = Vue.ref(new Set<number>())
+      return () => {
+        const data = props.data as Array<Record<string, unknown>>
+        const columns = props.columns as Array<{ id?: string, accessorKey?: string }>
+        return data.length
+          ? Vue.h('div', {}, data.map((original, index) => {
+              const row = {
+                original,
+                index,
+                getCanExpand: () => Boolean((props.expandedOptions as { getRowCanExpand?: (row: unknown) => boolean } | undefined)?.getRowCanExpand?.(row)),
+                getIsExpanded: () => expandedRows.value.has(index),
+                toggleExpanded: () => {
+                  const next = new Set(expandedRows.value)
+                  if (next.has(index)) next.delete(index)
+                  else next.add(index)
+                  expandedRows.value = next
+                }
+              }
+              const cells = columns.map((column) => {
+                const key = column.id ?? column.accessorKey ?? ''
+                return ctx.slots[`${key}-cell`]?.({ row })
+              })
+              return Vue.h('article', {}, [
+                ...cells,
+                ...(row.getIsExpanded() ? ctx.slots.expanded?.({ row }) ?? [] : [])
+              ])
+            }))
+          : ctx.slots['empty']?.()
+      }
+    }
+  }, UPagination: passthrough, DataTablePanelList: passthrough, NuxtLink: { setup: (_p, ctx) => () => Vue.h('a', {}, ctx.slots.default?.()) } }
   const rendered = mount(component, registered)
   return {
     ...rendered,
@@ -123,11 +163,12 @@ test('renders the contracts list SFC and keeps agreement and licence statuses di
   const page = harness('pages/gestao-erp/assinaturas/index.vue')
   try {
     await settle()
+    await expandAllContractRows(page.root)
     assert.match(text(page.root), /Mercado Central/)
     assert.match(text(page.root), /R\$ 99,00/)
     assert.match(text(page.root), /Contábil Essencial/)
     assert.match(text(page.root), /Próxima cobrança/)
-    assert.match(text(page.root), /aguardando configuração/)
+    assert.match(text(page.root), /aguardando configuração/i)
     assert.match(text(page.root), /Vigente/)
     assert.match(text(page.root), /Ativa/)
     assert.ok(page.calls.some(call => call.path === '/erp-commercial/contracts'))
@@ -145,6 +186,7 @@ test('labels every canonical agreement state and never describes unknown states 
   const page = harness('pages/gestao-erp/assinaturas/index.vue', detail, null, rows)
   try {
     await settle()
+    await expandAllContractRows(page.root)
     const rendered = text(page.root)
     assert.match(rendered, /Rascunho/)
     assert.match(rendered, /Aguardando confirmação do responsável/)
@@ -176,8 +218,11 @@ test('shows factual trial dates without inventing a next invoice', async () => {
   try {
     await settle()
     assert.match(text(list.root), /Em teste/)
-    assert.match(text(list.root), /Encerra 01\/11\/2026/)
-    assert.doesNotMatch(text(list.root), /Próxima cobrança/)
+    assert.doesNotMatch(text(list.root), /Encerra 01\/11\/2026/)
+    await expandAllContractRows(list.root)
+    assert.match(text(list.root), /encerra 01\/11\/2026/i)
+    assert.match(text(list.root), /Data indisponível/)
+    assert.doesNotMatch(text(list.root), /Próxima cobrança01\/11\/2026/)
     assert.match(text(page.root), /Teste de 7 dias/)
     assert.match(text(page.root), /Encerra 01\/11\/2026/)
     assert.doesNotMatch(text(page.root), /Próxima cobrança/)
@@ -217,13 +262,16 @@ test('keeps paid subscription status and next billing visible after trial conver
   })
   try {
     await settle()
+    assert.doesNotMatch(text(page.root), /25\/11\/2026/)
+    await expandAllContractRows(page.root)
     const rendered = text(page.root)
     assert.match(rendered, /Ativa/)
     assert.match(rendered, /Suspensa/)
     assert.match(rendered, /Em atraso/)
     assert.match(rendered, /Cancelada/)
-    assert.equal((rendered.match(/Próxima cobrança 25\/11\/2026/g) ?? []).length, 4)
-    assert.equal((rendered.match(/Período de teste convertido: 25\/10\/2026/g) ?? []).length, 4)
+    assert.equal((rendered.match(/25\/11\/2026/g) ?? []).length, 4)
+    assert.equal((rendered.match(/Período de teste convertido/g) ?? []).length, 4)
+    assert.equal((rendered.match(/encerrou 25\/10\/2026/g) ?? []).length, 4)
     assert.match(text(convertedActiveDetail.root), /Próxima cobrança 2026-11-25/)
     assert.match(text(convertedActiveDetail.root), /Período original até/)
     assert.match(text(convertedCanceledDetail.root), /Período original até/)

@@ -80,7 +80,11 @@ function uiComponents(): Record<string, Vue.Component> {
     UButton: {
       props: ['disabled', 'loading', 'to', 'label'],
       setup(props, context) {
-        return () => Vue.h('button', { ...context.attrs, 'to': props.to, 'disabled': props.disabled, 'data-loading': String(props.loading ?? false) }, context.slots.default?.() ?? props.label)
+        return () => Vue.h('button', { ...context.attrs, 'to': props.to, 'disabled': props.disabled, 'data-loading': String(props.loading ?? false) }, [
+          context.slots.leading?.(),
+          context.slots.default?.() ?? props.label,
+          context.slots.trailing?.()
+        ])
       }
     },
     UInput: {
@@ -134,15 +138,42 @@ function uiComponents(): Record<string, Vue.Component> {
     },
     UBadge: { setup(_props, context) { return () => Vue.h('span', {}, context.slots.default?.()) } },
     UTable: {
-      props: ['data', 'loading'],
+      props: ['data', 'columns', 'loading', 'expandedOptions'],
       setup(props, context) {
-        return () => (props.data as Array<Record<string, unknown>>).length
-          ? Vue.h('table', {}, (props.data as Array<Record<string, unknown>>).map(row => Vue.h('tr', {}, (context.attrs.columns as Array<{ id?: string, accessorKey?: string }>).map((column) => {
+        const expandedRows = Vue.ref(new Set<number>())
+        return () => {
+          const data = props.data as Array<Record<string, unknown>>
+          const columns = props.columns as Array<{ id?: string, accessorKey?: string, header?: unknown }>
+          if (!data.length) return Vue.h('table', {}, context.slots.empty?.())
+          const rows = data.map((original, index) => {
+            const row = {
+              original,
+              index,
+              getValue: (key: string) => original[key],
+              getCanExpand: () => Boolean((props.expandedOptions as { getRowCanExpand?: (row: unknown) => boolean } | undefined)?.getRowCanExpand?.(row)),
+              getIsExpanded: () => expandedRows.value.has(index),
+              toggleExpanded: () => {
+                const next = new Set(expandedRows.value)
+                if (next.has(index)) next.delete(index)
+                else next.add(index)
+                expandedRows.value = next
+              }
+            }
+            const cells = columns.map((column) => {
               const key = column.id ?? column.accessorKey ?? ''
-              const cell = context.slots[`${key}-cell`]?.({ row: { original: row } })
-              return Vue.h('td', {}, cell ?? String(row[key] ?? ''))
-            }))))
-          : Vue.h('table', {}, context.slots.empty?.())
+              const cell = context.slots[`${key}-cell`]?.({ row })
+              return Vue.h('td', {}, cell ?? String(original[key] ?? ''))
+            })
+            return Vue.h(Vue.Fragment, {}, [
+              Vue.h('tr', {}, cells),
+              ...(row.getIsExpanded() && context.slots.expanded ? [Vue.h('tr', {}, Vue.h('td', { colspan: columns.length }, context.slots.expanded({ row })))] : [])
+            ])
+          })
+          return Vue.h('table', {}, [
+            Vue.h('thead', {}, Vue.h('tr', {}, columns.map(column => Vue.h('th', {}, typeof column.header === 'string' ? column.header : '')))),
+            Vue.h('tbody', {}, rows)
+          ])
+        }
       }
     },
     UPagination: {
@@ -413,7 +444,7 @@ describe('Office ERP seller onboarding SFC', () => {
     page.app.unmount()
   })
 
-  it('shows the attributed contract summary and a direct contract action in each customer row', async () => {
+  it('keeps client rows compact and exposes full details and actions when expanded', async () => {
     const page = harness('pages/gestao-erp/clientes/index.vue', {
       api: async path => path === '/erp-commercial/clients'
         ? {
@@ -435,21 +466,63 @@ describe('Office ERP seller onboarding SFC', () => {
         : testOffers()
     })
     await flush()
-    assert.match(textOf(page.root), /ERP Varejo/)
-    assert.match(textOf(page.root), /01\/11\/2026/)
-    assert.match(textOf(page.root), /ERP Oficina/)
-    assert.match(textOf(page.root), /Em teste/)
-    assert.match(textOf(page.root), /27\/10\/2026/)
-    assert.match(textOf(page.root), /Sem contrato ERP vinculado/)
-    assert.match(textOf(page.root), /Resumo do contrato indisponível/)
+    const summary = textOf(page.root)
+    assert.match(summary, /ERP Varejo/)
+    assert.match(summary, /ERP Oficina/)
+    assert.match(summary, /Em teste/)
+    assert.match(summary, /Sem assinatura/)
+    assert.match(summary, /Resumo indisponível/)
+    assert.doesNotMatch(summary, /27865757000102/)
+    assert.doesNotMatch(summary, /01\/11\/2026/)
+    assert.doesNotMatch(summary, /Mercado São José/)
+    const activationLink = findButton(page.root, 'Ativar ERP')
+    assert.deepEqual(activationLink?.props.to, { path: '/gestao-erp/clientes/novo', query: { cliente: 20, pagina: 1 } })
+
+    const expanders = findAll(page.root, node => node.tag === 'button' && node.props['aria-label'] === 'Ver detalhes do cliente')
+    assert.equal(expanders.length, 7)
+    for (const expander of expanders)
+      (expander.props.onClick as (() => void) | undefined)?.()
+    await flush()
+
     const converted = textOf(page.root)
+    assert.match(converted, /27865757000102/)
+    assert.match(converted, /01\/11\/2026/)
+    assert.match(converted, /27\/10\/2026/)
+    assert.match(converted, /Selecionar da carteira/)
     assert.ok((converted.match(/Assinatura ativa/g) ?? []).length >= 2)
     assert.match(converted, /Assinatura suspensa/)
     assert.match(converted, /Assinatura cancelada/)
     assert.equal((converted.match(/Próxima cobrança 01\/12\/2026/g) ?? []).length, 3)
     assert.equal((converted.match(/Período de teste convertido/g) ?? []).length, 3)
-    const contractLink = findAll(page.root, node => node.tag === 'button' && textOf(node).includes('Ver contrato'))[0]
+    const contractLink = findAll(page.root, node => node.tag === 'button' && textOf(node).includes('Abrir contrato'))[0]
     assert.deepEqual(contractLink?.props.to, '/gestao-erp/assinaturas/42')
+
+    const selectedLinksBeforeMobile = findAll(page.root, node => node.tag === 'button'
+      && typeof node.props.to === 'object'
+      && (node.props.to as { query?: { cliente?: number } }).query?.cliente === 18)
+    const mobileTrigger = findButton(page.root, 'ERP Varejo')
+    assert.ok(mobileTrigger)
+    ;(mobileTrigger.props.onClick as (() => void) | undefined)?.()
+    await flush()
+    const selectedLinksAfterMobile = findAll(page.root, node => node.tag === 'button'
+      && typeof node.props.to === 'object'
+      && (node.props.to as { query?: { cliente?: number } }).query?.cliente === 18)
+    assert.equal(selectedLinksBeforeMobile.length, 1)
+    assert.equal(selectedLinksAfterMobile.length, 2)
+
+    const noSubscriptionTrigger = findButton(page.root, 'Sem assinatura')
+    assert.ok(noSubscriptionTrigger)
+    ;(noSubscriptionTrigger.props.onClick as (() => void) | undefined)?.()
+    await flush()
+    const mobileClientList = findAll(page.root, node => node.tag === 'div'
+      && node.props['aria-label'] === 'Clientes ERP'
+      && !node.props.role)[0]
+    assert.ok(mobileClientList)
+    const mobileClientRecord = noSubscriptionTrigger.parent
+    assert.ok(mobileClientRecord)
+    const mobileActivationLink = findButton(mobileClientRecord, 'Ativar ERP')
+    assert.deepEqual(mobileActivationLink?.props.to, { path: '/gestao-erp/clientes/novo', query: { cliente: 20, pagina: 1 } })
+    assert.equal(Boolean(findButton(mobileClientRecord, 'Selecionar da carteira')), false)
     page.app.unmount()
   })
 
@@ -557,9 +630,9 @@ describe('Office ERP seller onboarding SFC', () => {
     await flush()
     ;(findButton(page.root, 'Próxima')?.props.onClick as () => void)()
     await flush()
-    const invitationLink = findButton(page.root, 'Selecionar da carteira')
-    assert.ok(invitationLink)
-    const destination = invitationLink.props.to as { query: Record<string, unknown> }
+    const activationLink = findButton(page.root, 'Ativar ERP')
+    assert.ok(activationLink)
+    const destination = activationLink.props.to as { query: Record<string, unknown> }
     assert.deepEqual(destination.query, { cliente: 77, pagina: 2, q: 'Caribe' })
 
     const form = harness('pages/gestao-erp/clientes/novo.vue', {
@@ -587,7 +660,7 @@ describe('Office ERP seller onboarding SFC', () => {
       api: async (_path, request) => ({ data: [{ id: 26, name: 'Cliente 26', trade_name: null, tax_id: null }], meta: { current_page: 1, last_page: 1, per_page: Number((request?.params as Record<string, unknown>).per_page), total: 26 } })
     })
     await flush()
-    const destination = findButton(clients.root, 'Selecionar da carteira')?.props.to as { query: Record<string, string | number> }
+    const destination = findButton(clients.root, 'Ativar ERP')?.props.to as { query: Record<string, string | number> }
     assert.equal(destination.query.porPagina, 50)
     const form = harness('pages/gestao-erp/clientes/novo.vue', {
       routeQuery: destination.query,

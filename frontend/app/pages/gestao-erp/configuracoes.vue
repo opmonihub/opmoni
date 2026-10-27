@@ -482,9 +482,6 @@ onMounted(() => {
       <h2 class="text-base font-semibold text-highlighted">
         Configurações comerciais
       </h2>
-      <p class="max-w-3xl text-sm text-muted">
-        Link de teste e regras de cobrança.
-      </p>
     </header>
 
     <UAlert
@@ -521,13 +518,24 @@ onMounted(() => {
 
     <UCard v-if="canManageTrialLink || trialLinkLoading">
       <template #header>
-        <div class="space-y-1">
+        <div class="flex items-center justify-between gap-2">
           <h2 class="font-semibold text-highlighted">
             Link de teste ERP
           </h2>
-          <p class="text-sm text-muted">
-            Compartilhe um acesso de avaliação atribuído a este escritório. O link não concede acesso operacional ao escritório.
-          </p>
+          <UPopover :content="{ align: 'end' }">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-info"
+              aria-label="Sobre o link de teste"
+              class="size-11 min-w-11 shrink-0"
+            />
+            <template #content>
+              <p class="max-w-xs p-3 text-sm text-muted">
+                O teste fica atribuído a este escritório e não concede acesso operacional à conta.
+              </p>
+            </template>
+          </UPopover>
         </div>
       </template>
       <USkeleton v-if="trialLinkLoading" class="h-36 w-full" />
@@ -663,23 +671,31 @@ onMounted(() => {
 
       <UCard>
         <template #header>
-          <div class="space-y-1">
+          <div class="flex items-center justify-between gap-2">
             <h2 class="font-semibold text-highlighted">
               Política de inadimplência
             </h2>
-            <p class="text-sm text-muted">
-              As alterações ficam como rascunho até você salvar.
-            </p>
+            <UPopover :content="{ align: 'end' }">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-info"
+                aria-label="Sobre a suspensão por atraso"
+                class="size-11 min-w-11 shrink-0"
+              />
+              <template #content>
+                <p class="max-w-xs p-3 text-sm text-muted">
+                  Suspende contratos com saldo vencido após o prazo informado. Suspensões manuais ou de segurança permanecem.
+                </p>
+              </template>
+            </UPopover>
           </div>
         </template>
-        <div class="space-y-6">
+        <div class="space-y-4">
           <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div class="max-w-2xl space-y-1">
               <p class="font-medium text-highlighted">
                 Automatizar suspensão por atraso
-              </p>
-              <p class="text-sm text-muted">
-                No modo automático, contratos com saldo vencido após a tolerância podem ficar suspensos. Suspensões manuais e de segurança não são removidas por esta política.
               </p>
             </div>
             <USwitch
@@ -703,7 +719,7 @@ onMounted(() => {
               class="w-full sm:max-w-xs"
             />
             <template #help>
-              <span id="grace-help">A suspensão automática considera apenas o atraso após este prazo, em dias corridos.</span>
+              <span id="grace-help">Prazo contado em dias corridos após o vencimento.</span>
             </template>
           </UFormField>
           <UFormField name="billing_timezone" label="Fuso horário de cobrança" :error="fieldErrors.billing_timezone">

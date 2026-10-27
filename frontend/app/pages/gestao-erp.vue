@@ -69,7 +69,7 @@ const pageTabs = computed<NavigationMenuItem[][]>(() => [[{
               :model-value="String(pageTabs.flat().find(item => item.active)?.to ?? '')"
               :items="pageTabs.flat().map(item => ({ label: item.label, value: String(item.to), icon: item.icon }))"
               aria-label="Seção da gestão ERP"
-              class="w-full lg:hidden"
+              class="w-full xl:hidden"
               @update:model-value="value => navigateTo(value)"
             />
             <UNavigationMenu
@@ -77,7 +77,7 @@ const pageTabs = computed<NavigationMenuItem[][]>(() => [[{
               aria-label="Navegação comercial ERP"
               :items="pageTabs"
               highlight
-              class="-mx-1 hidden min-w-0 flex-1 lg:flex"
+              class="-mx-1 hidden min-w-0 flex-1 xl:flex"
             />
           </template>
         </UDashboardToolbar>

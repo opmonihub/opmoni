@@ -54,11 +54,10 @@ const identityStamp = useOfficeErpReadIdentity(() => [
 ], () => context.capabilities.value?.capability_key)
 const reads = useOfficeErpReads(identityStamp)
 const columns: TableColumn<OfficeErpPortfolioClient>[] = [
+  { id: 'details', header: '', meta: { class: { th: 'w-14' } } },
   { accessorKey: 'name', header: 'Cliente' },
-  { accessorKey: 'tax_id', header: 'CNPJ' },
   { id: 'subscription', header: 'Plano e situação' },
-  { id: 'billing', header: 'Próxima data' },
-  { id: 'actions', header: '' }
+  { id: 'actions', header: '', meta: { class: { th: 'w-32' } } }
 ]
 
 const licenceLabels: Record<string, string> = {
@@ -75,6 +74,18 @@ function formatOfficeDate(value: string | null | undefined) {
   const date = new Date(`${value.slice(0, 10)}T00:00:00Z`)
   if (!Number.isFinite(date.getTime())) return null
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(date)
+}
+
+function clientSelectionTarget(clientId: number) {
+  return {
+    path: '/gestao-erp/clientes/novo',
+    query: {
+      cliente: clientId,
+      pagina: page.value,
+      ...(perPage.value !== 25 ? { porPagina: perPage.value } : {}),
+      ...(debouncedQuery.value.trim() ? { q: debouncedQuery.value.trim() } : {})
+    }
+  }
 }
 
 async function loadClients() {
@@ -234,74 +245,182 @@ watch(identityStamp, () => {
           :data="clients"
           :columns="columns"
           :loading="loading"
+          compact
+          expandable
+          label="Clientes ERP"
         >
+          <template #details-cell="{ row }">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              :icon="row.getIsExpanded() ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+              :aria-label="row.getIsExpanded() ? 'Ocultar detalhes do cliente' : 'Ver detalhes do cliente'"
+              :aria-expanded="row.getIsExpanded()"
+              class="size-11 min-w-11"
+              @click="row.toggleExpanded()"
+            />
+          </template>
           <template #name-cell="{ row }">
-            <div class="max-w-72 min-w-56 whitespace-normal">
-              <p class="font-medium wrap-anywhere text-highlighted">
+            <div class="min-w-0">
+              <p class="max-w-72 font-medium wrap-anywhere text-highlighted">
                 {{ row.original.trade_name || row.original.name }}
-              </p><p v-if="row.original.trade_name" class="text-sm wrap-anywhere text-muted">
-                {{ row.original.name }}
               </p>
             </div>
-          </template>
-          <template #tax_id-cell="{ row }">
-            <span class="text-sm text-muted">{{ row.original.tax_id || '—' }}</span>
           </template>
           <template #subscription-cell="{ row }">
             <div v-if="row.original.subscription" class="min-w-0">
-              <p class="truncate font-medium text-highlighted">
+              <p class="max-w-40 truncate font-medium text-highlighted sm:max-w-56">
                 {{ row.original.subscription.erp_plan?.name || 'Plano ERP' }}
               </p>
-              <p class="text-sm text-muted">
+              <p class="truncate text-xs text-muted">
                 {{ row.original.subscription.trial?.situation === 'trialing' ? trialLabels.trialing : row.original.subscription.trial?.situation === 'expired' ? trialLabels.expired : licenceLabels[row.original.subscription.licence_status || ''] || 'Situação indisponível' }}
               </p>
-              <p v-if="row.original.subscription.trial?.situation === 'converted'" class="text-xs text-muted">
-                {{ trialLabels.converted }}
-              </p>
             </div>
-            <span v-else-if="row.original.subscription === null" class="text-sm text-muted">Sem contrato ERP vinculado</span>
-            <span v-else class="text-sm text-muted">Resumo do contrato indisponível</span>
-          </template>
-          <template #billing-cell="{ row }">
-            <template v-if="row.original.subscription?.trial?.situation === 'trialing' || row.original.subscription?.trial?.situation === 'expired'">
-              <span class="text-sm text-muted">Termina em {{ formatOfficeDate(row.original.subscription.trial.ends_at) || 'data indisponível' }}</span>
-            </template>
-            <template v-else-if="row.original.subscription">
-              <span class="text-sm text-muted">
-                {{ formatOfficeDate(row.original.subscription.next_billing_on) ? `Próxima cobrança ${formatOfficeDate(row.original.subscription.next_billing_on)}` : 'Próxima cobrança indisponível' }}
-              </span>
-            </template>
-            <span v-else-if="row.original.subscription === null" class="text-sm text-muted">—</span>
-            <span v-else class="text-sm text-muted">Data indisponível</span>
+            <span v-else-if="row.original.subscription === null" class="text-xs text-muted">Sem assinatura</span>
+            <span v-else class="text-xs text-muted">Resumo indisponível</span>
           </template>
           <template #actions-cell="{ row }">
-            <div class="flex flex-wrap gap-1">
+            <div class="flex justify-end">
               <UButton
                 v-if="row.original.subscription"
                 :to="`/gestao-erp/assinaturas/${row.original.subscription.contract_id}`"
                 color="neutral"
-                variant="ghost"
+                variant="outline"
                 size="sm"
               >
-                Ver contrato
+                Abrir contrato
               </UButton>
               <UButton
-                :to="{
-                  path: '/gestao-erp/clientes/novo',
-                  query: {
-                    cliente: row.original.id,
-                    pagina: page,
-                    ...(perPage !== 25 ? { porPagina: perPage } : {}),
-                    ...(debouncedQuery.trim() ? { q: debouncedQuery.trim() } : {})
-                  }
-                }"
+                v-else
+                :to="clientSelectionTarget(row.original.id)"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              >
+                Ativar ERP
+              </UButton>
+            </div>
+          </template>
+          <template #expanded="{ row }">
+            <div class="grid gap-3 px-4 py-3 text-sm sm:grid-cols-3">
+              <div>
+                <p class="text-xs text-muted">
+                  Razão social
+                </p>
+                <p class="wrap-anywhere font-medium text-highlighted">
+                  {{ row.original.name }}
+                </p>
+              </div>
+              <div>
+                <p class="text-xs text-muted">
+                  CNPJ
+                </p>
+                <p class="text-highlighted">
+                  {{ row.original.tax_id || '—' }}
+                </p>
+              </div>
+              <div>
+                <p class="text-xs text-muted">
+                  Próxima data
+                </p>
+                <p v-if="row.original.subscription?.trial?.situation === 'trialing' || row.original.subscription?.trial?.situation === 'expired'" class="text-highlighted">
+                  {{ row.original.subscription.trial.situation === 'trialing' ? 'Teste termina' : 'Teste terminou' }} {{ formatOfficeDate(row.original.subscription.trial.ends_at) || '—' }}
+                </p>
+                <p v-else class="text-highlighted">
+                  {{ row.original.subscription ? `Próxima cobrança ${formatOfficeDate(row.original.subscription.next_billing_on) || 'indisponível'}` : '—' }}
+                </p>
+              </div>
+              <div v-if="row.original.subscription?.trial?.situation === 'converted'" class="text-muted">
+                {{ trialLabels.converted }}
+              </div>
+              <UButton
+                :to="clientSelectionTarget(row.original.id)"
                 color="neutral"
                 variant="ghost"
                 size="sm"
+                class="w-fit"
               >
                 Selecionar da carteira
               </UButton>
             </div>
+          </template>
+          <template #mobile="{ data }">
+            <UCollapsible v-for="client in data" :key="client.id" class="py-3">
+              <UButton
+                block
+                color="neutral"
+                variant="ghost"
+                class="h-auto min-h-11 justify-between px-0 py-1 text-left"
+              >
+                <template #leading>
+                  <span class="min-w-0 flex-1 truncate font-medium text-highlighted">{{ client.trade_name || client.name }}</span>
+                </template>
+                <template #trailing>
+                  <span class="max-w-28 truncate text-xs text-muted">{{ client.subscription?.erp_plan?.name || (client.subscription === null ? 'Sem assinatura' : 'Resumo indisponível') }}</span>
+                  <UIcon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted" />
+                </template>
+              </UButton>
+              <template #content>
+                <div class="space-y-3 pt-3 text-sm">
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <p class="text-xs text-muted">
+                        Situação
+                      </p><p>{{ client.subscription?.trial?.situation === 'trialing' ? trialLabels.trialing : client.subscription?.trial?.situation === 'expired' ? trialLabels.expired : licenceLabels[client.subscription?.licence_status || ''] || (client.subscription === null ? 'Sem assinatura' : 'Indisponível') }}</p>
+                    </div>
+                    <div>
+                      <p class="text-xs text-muted">
+                        CNPJ
+                      </p><p>{{ client.tax_id || '—' }}</p>
+                    </div>
+                    <div>
+                      <p class="text-xs text-muted">
+                        Razão social
+                      </p><p class="wrap-anywhere">
+                        {{ client.name }}
+                      </p>
+                    </div>
+                    <div>
+                      <p class="text-xs text-muted">
+                        Próxima data
+                      </p><p>{{ client.subscription?.trial?.ends_at ? formatOfficeDate(client.subscription.trial.ends_at) : client.subscription ? formatOfficeDate(client.subscription.next_billing_on) || 'Próxima cobrança indisponível' : '—' }}</p>
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <UButton
+                      v-if="client.subscription"
+                      :to="`/gestao-erp/assinaturas/${client.subscription.contract_id}`"
+                      color="neutral"
+                      variant="outline"
+                      size="sm"
+                      class="min-h-11"
+                    >
+                      Abrir contrato
+                    </UButton>
+                    <UButton
+                      v-if="client.subscription"
+                      :to="clientSelectionTarget(client.id)"
+                      color="neutral"
+                      variant="outline"
+                      size="sm"
+                      class="min-h-11"
+                    >
+                      Selecionar da carteira
+                    </UButton>
+                    <UButton
+                      v-else
+                      :to="clientSelectionTarget(client.id)"
+                      color="neutral"
+                      variant="outline"
+                      size="sm"
+                      class="min-h-11"
+                    >
+                      Ativar ERP
+                    </UButton>
+                  </div>
+                </div>
+              </template>
+            </UCollapsible>
           </template>
           <template #empty>
             <div class="py-8 text-center text-sm text-muted">

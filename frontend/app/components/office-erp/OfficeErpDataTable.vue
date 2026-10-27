@@ -8,8 +8,10 @@ const props = withDefaults(defineProps<{
   columns: TableColumn<T>[]
   loading?: boolean
   label?: string
+  compact?: boolean
+  expandable?: boolean
   ui?: TableProps<T>['ui']
-}>(), { loading: false, label: 'Registros', ui: undefined })
+}>(), { loading: false, label: 'Registros', compact: false, expandable: false, ui: undefined })
 
 const slots = useSlots()
 const visibility = ref<Record<string, boolean>>({})
@@ -32,7 +34,7 @@ const columnOptions = computed(() => tableColumns.value.flatMap((column) => {
 
 <template>
   <div class="min-w-0">
-    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div v-if="!compact" class="mb-3 flex flex-wrap items-center justify-between gap-2">
       <p class="flex items-center gap-1.5 text-xs text-muted sm:hidden">
         <UIcon name="i-lucide-arrow-left-right" class="size-3.5 shrink-0" />
         Deslize para ver todas as colunas
@@ -54,7 +56,10 @@ const columnOptions = computed(() => tableColumns.value.flatMap((column) => {
       </UDropdownMenu>
     </div>
     <div
-      class="max-w-full overflow-x-auto rounded-lg focus-visible:outline-2 focus-visible:outline-primary"
+      :class="[
+        'max-w-full rounded-lg focus-visible:outline-2 focus-visible:outline-primary',
+        compact ? 'hidden md:block overflow-x-hidden' : 'overflow-x-auto'
+      ]"
       role="region"
       :aria-label="label"
       tabindex="0"
@@ -64,12 +69,23 @@ const columnOptions = computed(() => tableColumns.value.flatMap((column) => {
         :data="data"
         :columns="tableColumns"
         :loading="loading"
-        :ui="{ ...panelTableUi, root: 'overflow-visible', base: 'w-full min-w-[36rem] table-auto', th: `${panelTableUi.th} whitespace-nowrap`, td: 'whitespace-nowrap py-2 align-middle tabular-nums', ...ui }"
+        :expanded-options="expandable ? { getRowCanExpand: () => true } : undefined"
+        :ui="{
+          ...panelTableUi,
+          root: 'overflow-visible',
+          base: compact ? 'w-full min-w-0 table-fixed' : 'w-full min-w-[36rem] table-auto',
+          th: compact ? `${panelTableUi.th} px-2 whitespace-normal text-xs sm:px-3` : `${panelTableUi.th} whitespace-nowrap`,
+          td: compact ? `${panelTableUi.td} px-2 py-2 align-middle sm:px-3` : 'whitespace-nowrap py-2 align-middle tabular-nums',
+          ...ui
+        }"
       >
         <template v-for="(_, name) in slots" #[name]="slotData">
           <slot :name="name" v-bind="slotData" />
         </template>
       </UTable>
+    </div>
+    <div v-if="compact" class="divide-y divide-default md:hidden" :aria-label="label">
+      <slot name="mobile" :data="data" />
     </div>
   </div>
 </template>

@@ -101,9 +101,9 @@ The module uses the application's default green primary and zinc neutral family 
 
 ## Layout
 
-The ERP shell uses a flexible dashboard panel with responsive padding (16px, increasing to 24px and 32px at wider breakpoints) and a centered content area capped at 100rem. Desktop exposes route navigation; mobile switches to a full-width section selector. Important actions remain available in the page header or form action row.
+The ERP shell uses a flexible dashboard panel with responsive padding (16px, increasing to 24px and 32px at wider breakpoints) and a centered content area capped at 100rem. Section navigation switches to the full-width selector below 1280px so route labels stay readable beside the sidebar. Important actions remain available in the page header or form action row.
 
-Operational lists combine a compact heading, search and optional filters, a bordered table area, and responsive pagination. The table can scroll horizontally on narrow screens and offers column visibility controls; forms and action groups wrap for mobile. Keep the existing filter panel as the place for less frequent date and advanced filters.
+Operational lists combine a compact heading, search and optional filters, a bordered table area, and responsive pagination. Client and subscription lists use compact desktop rows with expandable details and reflow into collapsible records on mobile. Other operational tables retain horizontal scrolling and column visibility controls; forms and action groups wrap for mobile. Keep the existing filter panel as the place for less frequent date and advanced filters.
 
 ## Elevation & Depth
 
@@ -137,7 +137,7 @@ Forms and controls use modest rounded corners, commonly in the 6–8px range. Ma
 
 ### Operational Tables
 - **Density:** Compact rows with 8px vertical cell padding and restrained header styling.
-- **Responsive behavior:** Place the table in a labeled horizontal scroll region on mobile, preserve row readability, and allow secondary columns to be hidden.
+- **Responsive behavior:** Clients and subscriptions reflow to collapsible mobile records, keeping operations in each record. Their desktop tables expose secondary fields through row expansion. Other tables use labeled horizontal scrolling and column visibility controls.
 - **Filters:** Keep search in the toolbar and reveal optional filters through the established filter panel.
 
 ## Do's and Don'ts

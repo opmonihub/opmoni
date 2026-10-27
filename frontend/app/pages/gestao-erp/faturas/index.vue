@@ -33,6 +33,7 @@ const sessionGeneration = useState('access-session-generation', () => 0)
 const context = useOfficeErpContext()
 const navigation = useOfficeErpListNavigation('invoices', { q: '', status: 'all' as 'all' | 'draft' | 'issued' | 'canceled', from: '', to: '', dueFrom: '', dueTo: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context, { status: ['all', 'draft', 'issued', 'canceled'] })
 const query = listNavigationField(navigation, 'q')
+const debouncedQuery = refDebounced(query, 300)
 const status = listNavigationField(navigation, 'status')
 const from = listNavigationField(navigation, 'from')
 const to = listNavigationField(navigation, 'to')
@@ -73,7 +74,7 @@ const confirmedQueryKey = ref<string | null>(null)
 let generation = 0
 const identity = useOfficeErpReadIdentity(() => [user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null], () => context.capabilities.value?.capability_key)
 const reads = useOfficeErpReads(identity)
-const queryKey = computed(() => JSON.stringify([identity.value, query.value.trim(), status.value, from.value, to.value, dueFrom.value, dueTo.value, page.value, perPage.value]))
+const queryKey = computed(() => JSON.stringify([identity.value, debouncedQuery.value.trim(), status.value, from.value, to.value, dueFrom.value, dueTo.value, page.value, perPage.value]))
 const hasConfirmedResults = computed(() => confirmedQueryKey.value !== null && confirmedQueryKey.value === queryKey.value)
 const columns: TableColumn<InvoiceRow>[] = [{ accessorKey: 'number', header: 'Fatura' }, { id: 'client', header: 'Cliente' }, { accessorKey: 'document_status', header: 'Situação' }, { accessorKey: 'due_on', header: 'Vencimento' }, { id: 'total', header: 'Cobrança ajustada' }, { id: 'balance', header: 'Em aberto' }, { id: 'actions', header: '' }]
 
@@ -116,7 +117,7 @@ async function loadInvoices() {
     }
     const token = context.capture()
     const params: Record<string, string | number> = { page: page.value, per_page: perPage.value }
-    if (query.value.trim()) params.q = query.value.trim()
+    if (debouncedQuery.value.trim()) params.q = debouncedQuery.value.trim()
     if (status.value !== 'all') params.status = status.value
     if (from.value) params.from_on = from.value
     if (to.value) params.to_on = to.value
@@ -146,10 +147,10 @@ async function loadInvoices() {
     if (read.current() && request === generation && stamp === identity.value) loading.value = false
   }
 }
-watch([query, status, from, to, dueFrom, dueTo, page, perPage], () => {
+watch([debouncedQuery, status, from, to, dueFrom, dueTo, page, perPage], () => {
   void loadInvoices()
 }, { immediate: true })
-watch([query, status, from, to, dueFrom, dueTo, perPage], () => {
+watch([debouncedQuery, status, from, to, dueFrom, dueTo, perPage], () => {
   page.value = 1
 }, { flush: 'sync' })
 watch(identity, () => {
