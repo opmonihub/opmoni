@@ -21,6 +21,7 @@
         <ini name="memory_limit" value="768M"/>
         <env name="OPENSSL_CONF" value="/etc/ssl/openssl.cnf" force="true"/>
         <env name="APP_ENV" value="testing" force="true"/>
+        <env name="ERP_REGISTRATION_ENABLED" value="false" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
         <env name="BROADCAST_CONNECTION" value="null" force="true"/>
