@@ -79,7 +79,7 @@ async function requestCreate() {
           <UButton
             v-if="canManageClients && !onDetail"
             icon="i-lucide-plus"
-            color="primary"
+            color="neutral"
             aria-label="Novo cliente"
             class="sm:hidden"
             @click="requestCreate"
@@ -88,7 +88,7 @@ async function requestCreate() {
             v-if="canManageClients && !onDetail"
             label="Novo cliente"
             icon="i-lucide-plus"
-            color="primary"
+            color="neutral"
             class="hidden sm:inline-flex"
             @click="requestCreate"
           />

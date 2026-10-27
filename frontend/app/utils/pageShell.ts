@@ -1,3 +1,10 @@
+/** Settings-style naked heading/action row used above grouped page content. */
+export const pageHeadingClass = 'mb-4' as const
+export const pageHeadingActionsClass = 'w-fit lg:ms-auto' as const
+/** Operational lists keep room for comparison while sharing the centered shell. */
+export const pageListMeasureClass = 'mx-auto w-full max-w-5xl' as const
+export const pageFormMeasureClass = 'mx-auto w-full max-w-3xl' as const
+
 /**
  * Page shell roots.
  *

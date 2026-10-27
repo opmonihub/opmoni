@@ -84,7 +84,10 @@ export function useListNavigationState<T extends { [K in keyof T]: ListNavigatio
     get: () => entry().value as T,
     set: (value) => {
       const stored = entry()
-      stored.value = normalize(value, stored.value)
+      const next = normalize(value, stored.value)
+      // SSR computed criteria can be reevaluated during a synchronous page reset.
+      // An unchanged write must not publish another criteria transition.
+      if (JSON.stringify(stored.value) !== JSON.stringify(next)) stored.value = next
     }
   })
   watch(state, (value) => {

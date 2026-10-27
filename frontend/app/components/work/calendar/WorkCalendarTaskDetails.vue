@@ -139,7 +139,7 @@ function formatDue(due: string | null) {
         <UButton
           v-if="canAdvance"
           :label="task.status === 'todo' ? 'Avançar' : 'Concluir'"
-          color="primary"
+          color="neutral"
           size="sm"
           class="flex-1"
           :loading="busy"

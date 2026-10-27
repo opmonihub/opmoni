@@ -121,7 +121,7 @@ const assignItems = computed<DropdownMenuItem[][]>(() => {
           :label="advanceLabel"
           icon="i-lucide-arrow-right"
           size="xs"
-          color="primary"
+          color="neutral"
           :loading="busy"
           :disabled="busy || locked"
           @click="emit('advance')"

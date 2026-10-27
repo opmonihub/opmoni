@@ -19,6 +19,8 @@ THESIS: A commercial operation center makes registration visible and keeps opera
 
 OWN-WORLD: Inherit Opmoni's green primary, zinc neutrals, Public Sans, Lucide icons and Nuxt UI components. Support the existing light/dark preference for office work across changing ambient light.
 
+User-approved final refinement: registration, save, activation and ordinary operational commands use native neutral buttons, including the shared default. Main commands use solid neutral and secondary actions retain outline/ghost variants. Green remains a selective brand/focus/active-state accent; success, warning and error colors preserve their meanings.
+
 STORY: Register a client and activate ERP, then follow subscriptions, invoices and receipts through explicit route navigation. Existing recovery and authorization states stay visible.
 
 FIRST VIEWPORT: A compact dashboard header places Cadastrar cliente at the right. Desktop route navigation sits below; mobile uses a section selector. Overview presents the activation entry before a restrained commercial summary. Lists use a consistent heading, search, optional filters, table and responsive pagination. Signature interaction: reveal filters without leaving the list. Motion uses Nuxt UI's built-in disclosure transition and respects reduced motion.

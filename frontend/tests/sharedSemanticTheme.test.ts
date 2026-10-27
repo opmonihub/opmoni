@@ -17,6 +17,16 @@ const config = evaluate(readFileSync(new URL('../app/app.config.ts', import.meta
 const theme = evaluate(readFileSync(new URL('../.nuxt/ui/button.ts', import.meta.url), 'utf8'))
 const button = tv({ extend: theme, ...config.ui.button })
 
+it('renders ordinary actions with the native neutral contrast pair while retaining accessible states', () => {
+  const classes: string = button().base()
+  assert.ok(classes.includes('bg-inverted'))
+  assert.ok(classes.includes('text-inverted'))
+  assert.ok(!classes.split(' ').includes('bg-primary'))
+  assert.ok(classes.includes('focus-visible:outline-3'))
+  assert.ok(classes.includes('disabled:cursor-not-allowed'))
+  assert.ok(classes.includes('disabled:opacity-75'))
+})
+
 it('retains readable solid semantic actions in hover/active states through the native shared theme', () => {
   for (const color of ['primary', 'success']) {
     const classes: string = button({ color, variant: 'solid' }).base()

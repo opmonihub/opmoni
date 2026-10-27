@@ -485,7 +485,7 @@ defineExpose({ submit, draft, selectVariant, selectUnit, useCurrentCatalog })
       />
       <UButton
         type="submit"
-        color="primary"
+        color="neutral"
         :loading="saving"
         :disabled="disabled || saving"
         :label="`Salvar ${title.toLocaleLowerCase('pt-BR')}`"

@@ -60,6 +60,33 @@ test('Fiscal URL and history override memory with one final normalized criteria 
   } finally { scope.stop() }
 })
 
+test('Fiscal sort direction follows valid URL criteria, rejects invalid history and omits backend defaults', async () => {
+  const context = harness({ sort: 'valor_total', direction: 'asc', page: '3', campaign: 'retained' })
+  const { useFiscalDocumentNavigation } = context.load<{ useFiscalDocumentNavigation: () => { filters: Vue.Ref<Record<string, unknown>>, update: (value: Record<string, unknown>) => Promise<void> } }>('composables/useFiscalDocumentNavigation.ts')
+  const scope = Vue.effectScope()
+  try {
+    const page = scope.run(useFiscalDocumentNavigation)!
+    assert.equal(page.filters.value.sort, 'valor_total')
+    assert.equal(page.filters.value.direction, 'asc')
+    assert.equal(page.filters.value.page, 3)
+
+    context.route.query = { sort: 'captured_at', direction: 'asc', campaign: 'retained' }
+    await Vue.nextTick()
+    assert.equal(page.filters.value.sort, 'captured_at')
+    assert.equal(page.filters.value.direction, 'asc')
+    assert.equal(page.filters.value.page, 1)
+
+    context.route.query = { sort: 'unsupported', direction: 'sideways', page: '0', campaign: 'retained' }
+    await Vue.nextTick()
+    assert.equal(page.filters.value.sort, 'emissao_at')
+    assert.equal(page.filters.value.direction, 'desc')
+    assert.equal(page.filters.value.page, 1)
+
+    await page.update({ ...page.filters.value, sort: 'emissao_at', direction: 'desc', page: 1 })
+    assert.deepEqual(context.route.query, { campaign: 'retained' }, 'Reset leaves the legacy endpoint order implicit')
+  } finally { scope.stop() }
+})
+
 test('Work calendar restores its date and supported filters, with URL/history date priority', async () => {
   const context = harness({ view: 'week', date: '2027-02-08', extra: 'preserved' })
   const { useWorkCalendarNavigation } = context.load<{ useWorkCalendarNavigation: () => { view: Vue.Ref<string>, focusDate: Vue.Ref<string>, processId: Vue.Ref<number | null>, priority: Vue.Ref<string>, statusVisible: Vue.Ref<Record<string, boolean>> } }>('composables/useWorkCalendarNavigation.ts')

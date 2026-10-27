@@ -84,7 +84,7 @@ function clientSummary(template: WorkTemplate): string {
             v-if="canManageWork"
             label="Novo modelo"
             icon="i-lucide-plus"
-            color="primary"
+            color="neutral"
             size="sm"
             to="/work/modelos/novo"
           />

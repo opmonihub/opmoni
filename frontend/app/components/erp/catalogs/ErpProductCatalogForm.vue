@@ -679,7 +679,7 @@ function submit() {
             <div class="flex flex-wrap gap-2">
               <UButton
                 label="Pré-visualizar tributos"
-                color="primary"
+                color="neutral"
                 variant="outline"
                 :disabled="disabled || !taxPreview.canPreview.value || taxPreview.pending.value"
                 :loading="taxPreview.pending.value"
@@ -688,7 +688,7 @@ function submit() {
               <UButton
                 v-if="canAdoptTaxPreview"
                 label="Adotar configuração revisada"
-                color="primary"
+                color="neutral"
                 :disabled="disabled"
                 @click="adoptReviewedTaxProfile"
               />

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pageListMeasureClass } from '~/utils/pageShell'
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 definePageMeta({ middleware: 'auth' })
@@ -84,7 +85,7 @@ const pageTabs = computed<NavigationMenuItem[][]>(() => [[{
       </template>
 
       <template #body>
-        <div class="mx-auto w-full max-w-[100rem]">
+        <div :class="pageListMeasureClass">
           <NuxtPage />
         </div>
       </template>

@@ -184,6 +184,41 @@ test('invalidating an obsolete safe read aborts its transport signal without fai
   assert.deepEqual(feedback, [])
 })
 
+test('rapid criteria reads supersede old responses without changing the latest loading owner', async () => {
+  const run = createLatestRequestRunner()
+  const reads: Array<{ resolve: (value: string) => void, signal?: AbortSignal }> = []
+  const loading = { value: false }
+  let rows = ''
+  const start = () => run(signal => new Promise<string>((resolve) => {
+    reads.push({ resolve, signal })
+  }), {
+    onSuccess: (value) => { rows = value },
+    onError: (error) => { throw error },
+    onSettled: () => { loading.value = false }
+  })
+
+  const oldRead = start()
+  loading.value = true
+  const latestRead = start()
+  assert.equal(reads[0]!.signal?.aborted, true)
+
+  reads[1]!.resolve('new criteria')
+  await latestRead
+  assert.equal(rows, 'new criteria')
+  assert.equal(loading.value, false)
+
+  loading.value = true
+  const pendingRead = start()
+  reads[0]!.resolve('old criteria')
+  await oldRead
+  assert.equal(rows, 'new criteria')
+  assert.equal(loading.value, true, 'a superseded finally cannot clear a newer request state')
+  reads[2]!.resolve('pending criteria')
+  await pendingRead
+  assert.equal(rows, 'pending criteria')
+  assert.equal(loading.value, false)
+})
+
 test('adjacent settings updates preserve a dirty company field and its named validation feedback', async () => {
   const state = Vue.ref<Record<string, unknown> | null>({ razao_social: 'Original', cst_pis_padrao: '01' })
   const settings = {

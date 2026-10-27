@@ -78,7 +78,7 @@ const canShowXml = computed(() => !!props.document && (props.document.artifact_r
       </UButton>
       <UButton
         v-if="['queued', 'indeterminate', 'submitting', 'contingency_local'].includes(document.status) && canTransmit"
-        color="primary"
+        color="neutral"
         :disabled="busy"
         @click="emit('transmit', document)"
       >

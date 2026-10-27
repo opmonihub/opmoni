@@ -639,7 +639,7 @@ void loadPlans()
               />
               <div class="flex flex-wrap gap-3">
                 <UButton
-                  color="primary"
+                  color="neutral"
                   :disabled="ownerName.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.trim()) || commandBusy || commandPending"
                   :loading="ownerSetupBusy"
                   @click="setupOwner"
@@ -964,7 +964,7 @@ void loadPlans()
           />
           <div class="mt-6 flex flex-col gap-3 border-t border-default pt-5 sm:flex-row sm:flex-wrap">
             <UButton
-              color="primary"
+              color="neutral"
               :disabled="!canSubmit"
               :loading="commandBusy"
               @click="enroll"

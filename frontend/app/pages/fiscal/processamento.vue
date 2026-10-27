@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pageScrollClass, pageHeadingActionsClass } from '~/utils/pageShell'
 import type { FiscalProcessingPage, FiscalProcessingRow } from '~/types/fiscal'
 import { createLatestRequestRunner } from '~/utils/adminListFilters'
 import { formatFiscalDateTime } from '~/utils/fiscalPresentation'
@@ -150,15 +151,16 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="min-h-0 flex-1 overflow-y-auto space-y-4 p-4">
-    <div class="flex flex-wrap items-center justify-between gap-4">
-      <h1 class="text-xl font-semibold">
-        Processamento fiscal
-      </h1>
-      <NuxtLink to="/fiscal/documentos" class="text-sm underline">
-        Documentos prontos
-      </NuxtLink>
-    </div>
+  <div :class="pageScrollClass">
+    <UPageCard title="Processamento fiscal" variant="naked" orientation="horizontal">
+      <UButton
+        to="/fiscal/documentos"
+        label="Documentos prontos"
+        color="neutral"
+        variant="outline"
+        :class="pageHeadingActionsClass"
+      />
+    </UPageCard>
 
     <p class="text-sm text-muted">
       A ciência da emissão (210210) e a disponibilidade do XML não confirmam a operação.

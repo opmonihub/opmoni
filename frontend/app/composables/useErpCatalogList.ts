@@ -1,8 +1,8 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
-import { useListNavigationState } from '~/composables/useListNavigationState'
+import { listNavigationField, useListNavigationState } from '~/composables/useListNavigationState'
 import type { ErpPaginated } from '#shared/types/erpCatalogs'
 import { apiFailure } from '#shared/utils/access'
-import { erpCatalogListQuery, erpCatalogRoutes } from '#shared/utils/erpCatalogs'
+import { erpCatalogListQuery, erpCatalogRoutes, erpCatalogSortFields } from '#shared/utils/erpCatalogs'
 import { useErpAdministrationContext } from '~/composables/useErpAdministrationContext'
 import { erpCompanyHasPermission } from '~/utils/erpModulesNav'
 
@@ -39,21 +39,49 @@ export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<stri
   ))
   const fixedQueryKey = computed(() => JSON.stringify(normalizedFixedQuery.value))
   const { key: contextKey, capture, isCurrent } = useErpAdministrationContext(() => fixedQueryKey.value)
+  const sortableFields = erpCatalogSortFields(path)
+  const route = rememberNavigation && sortableFields.length ? useRoute() : null
+  const defaults = () => ({ search: '', page: 1, sort: '', direction: 'asc' })
+  function normalizeCriteria(value: unknown) {
+    const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    const sort = typeof source.sort === 'string' && sortableFields.includes(source.sort) ? source.sort : ''
+    return {
+      search: typeof source.search === 'string' && source.search.length <= 500 ? source.search : '',
+      page: typeof source.page === 'number' && Number.isSafeInteger(source.page) && source.page > 0 ? source.page : 1,
+      sort,
+      direction: sort && source.direction === 'desc' ? 'desc' : 'asc'
+    }
+  }
+  let hadExplicitQuery = false
+  function readQueryCriteria() {
+    const query = route?.query ?? {}
+    if (['search', 'page', 'sort', 'direction'].some(key => Object.hasOwn(query, key))) {
+      hadExplicitQuery = true
+      return normalizeCriteria({ ...query, page: typeof query.page === 'string' && /^[1-9]\d*$/.test(query.page) ? Number(query.page) : 1 })
+    }
+    return hadExplicitQuery ? defaults() : null
+  }
   const navigation = rememberNavigation
     ? useListNavigationState(`erp-catalog:${path}:${fixedQueryKey.value}`, {
-        defaults: () => ({ search: '', page: 1 }),
+        defaults,
         authority: () => contextKey.value,
-        normalize(value: unknown) {
-          const source = typeof value === 'object' && value !== null ? value as { search?: unknown, page?: unknown } : {}
-          return {
-            search: typeof source.search === 'string' && source.search.length <= 500 ? source.search : '',
-            page: typeof source.page === 'number' && Number.isSafeInteger(source.page) && source.page > 0 ? source.page : 1
-          }
-        }
+        normalize: normalizeCriteria,
+        fromQuery: readQueryCriteria
       })
-    : ref({ search: '', page: 1 })
-  const search = ref(navigation.value.search)
-  const page = ref(navigation.value.page)
+    : ref(defaults())
+  const page = listNavigationField(navigation, 'page')
+  const search = computed({
+    get: () => navigation.value.search,
+    set: (value: string) => { navigation.value = { ...navigation.value, search: value, page: 1 } }
+  })
+  const sort = computed({
+    get: () => navigation.value.sort,
+    set: (value: string) => { navigation.value = normalizeCriteria({ ...navigation.value, sort: value, page: 1 }) }
+  })
+  const direction = computed({
+    get: () => navigation.value.direction,
+    set: (value: string) => { navigation.value = normalizeCriteria({ ...navigation.value, direction: value, page: 1 }) }
+  })
   const pending = ref(false)
   const searchPending = ref(false)
   const state = ref<ErpPaginated<T> | null>(null)
@@ -87,7 +115,6 @@ export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<stri
   let activeController: AbortController | null = null
   let searchTimer: ReturnType<typeof setTimeout> | null = null
   let resettingForContext = false
-  let resettingPageForSearch = false
   let disposed = false
 
   function accessError(): string {
@@ -159,6 +186,10 @@ export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<stri
     try {
       const query = new URLSearchParams(normalizedFixedQuery.value)
       new URLSearchParams(erpCatalogListQuery(search.value, page.value)).forEach((value, key) => query.set(key, value))
+      if (sort.value) {
+        query.set('sort', sort.value)
+        query.set('direction', direction.value)
+      }
       const result = await api<ErpPaginated<T>>(`${path}?${query}`, { signal: controller.signal })
       if (requestIsCurrent(sequence, token)) {
         const availablePage = Math.max(1, result.meta.last_page)
@@ -226,55 +257,50 @@ export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<stri
     }
   }
 
-  watch(search, (nextSearch, previousSearch) => {
-    if (disposed || resettingForContext || nextSearch === previousSearch)
-      return
-    if (page.value !== 1) {
-      resettingPageForSearch = true
-      page.value = 1
-      resettingPageForSearch = false
-    }
+  let orderingQueued = false
+  let navigationContextKey = contextKey.value
+  watch(navigation, (value, previous) => {
+    if (disposed || resettingForContext || contextKey.value !== navigationContextKey || JSON.stringify(value) === JSON.stringify(previous)) return
     clearSearchTimer()
     invalidateRequest()
     if (authorityBlocked.value) {
       error.value = accessError()
       return
     }
-    searchPending.value = true
-    searchTimer = setTimeout(() => {
-      searchTimer = null
-      searchPending.value = false
-      void requestPage()
-    }, searchDebounceMs)
+    if (value.search !== previous.search) {
+      searchPending.value = true
+      searchTimer = setTimeout(() => {
+        searchTimer = null
+        searchPending.value = false
+        void requestPage()
+      }, searchDebounceMs)
+    } else {
+      // Coalesce paired ordering changes while retaining synchronous page navigation.
+      if (value.sort !== previous.sort || value.direction !== previous.direction) {
+        if (!orderingQueued) {
+          orderingQueued = true
+          const key = contextKey.value
+          queueMicrotask(() => {
+            orderingQueued = false
+            if (!disposed && key === contextKey.value) void requestPage()
+          })
+        }
+      } else {
+        void requestPage()
+      }
+    }
   }, { flush: 'sync' })
 
-  watch(page, (nextPage, previousPage) => {
-    if (disposed || resettingForContext || resettingPageForSearch || nextPage === previousPage)
-      return
-    clearSearchTimer()
-    void refresh()
-  }, { flush: 'sync' })
-
-  watch([search, page], () => {
-    if (!resettingForContext) navigation.value = { search: search.value, page: page.value }
-  }, { flush: 'sync' })
-  watch(navigation, (value) => {
-    resettingForContext = true
-    search.value = value.search
-    page.value = value.page
-    resettingForContext = false
-  }, { flush: 'sync' })
-
-  watch(contextKey, (_next, previous) => {
+  watch(contextKey, (next, previous) => {
     clearSearchTimer()
     invalidateRequest()
     blockedContextKey.value = null
     state.value = null
     error.value = ''
     resettingForContext = true
+    navigationContextKey = next
     if (previous !== undefined) {
-      search.value = ''
-      page.value = 1
+      navigation.value = normalizeCriteria(readQueryCriteria())
     }
     resettingForContext = false
     if (canRead.value)
@@ -291,5 +317,5 @@ export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<stri
     error.value = ''
   })
 
-  return { search, page, pending, searchPending, state, error, hasLoaded, stale, canRead, authorityBlocked, blockAuthority, refresh, retry }
+  return { search, page, sort, direction, sortableFields, pending, searchPending, state, error, hasLoaded, stale, canRead, authorityBlocked, blockAuthority, refresh, retry }
 }

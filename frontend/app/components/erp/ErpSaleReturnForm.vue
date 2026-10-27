@@ -97,7 +97,7 @@ defineExpose({ reason, quantities, submit })
       />
       <UButton
         type="submit"
-        color="primary"
+        color="neutral"
         label="Salvar rascunho de devolução"
         :loading="saving"
         :disabled="disabled || saving || !ready || sale.returnability?.needs_reconciliation || sale.finance?.needs_reconciliation"

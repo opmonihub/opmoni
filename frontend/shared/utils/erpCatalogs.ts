@@ -25,6 +25,16 @@ export const erpCatalogRoutes = {
   printerProfiles: '/erp/catalog/printer-profiles'
 } as const satisfies Record<string, string>
 
+/** Only endpoints using the shared catalog ordering validator expose these fields. */
+export function erpCatalogSortFields(path: string): readonly string[] {
+  if (path === erpCatalogRoutes.units) return ['id', 'actual_name', 'short_name', 'status']
+  if (path === erpCatalogRoutes.carriers) return ['id', 'legal_name', 'status']
+  if (path === erpCatalogRoutes.vehicles) return ['id', 'plate', 'status']
+  if (path === erpCatalogRoutes.operationNatures) return ['id', 'cfop', 'status']
+  const named: readonly string[] = [erpCatalogRoutes.contacts, erpCatalogRoutes.products, erpCatalogRoutes.categories, erpCatalogRoutes.brands, erpCatalogRoutes.priceGroups, erpCatalogRoutes.customerGroups, erpCatalogRoutes.discountRules, erpCatalogRoutes.taxRates, erpCatalogRoutes.drivers]
+  return named.includes(path) ? ['id', 'name', 'status'] : []
+}
+
 export function erpCatalogListQuery(search: string, page = 1) {
   const params = new URLSearchParams({ page: String(page) })
   if (search.trim())

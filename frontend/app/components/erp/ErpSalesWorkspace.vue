@@ -623,7 +623,7 @@ onMounted(() => {
     <template #actions>
       <UButton
         v-if="newAllowed"
-        color="primary"
+        color="neutral"
         icon="i-lucide-plus"
         label="Novo registro"
         :disabled="sales.mutating.value || Boolean(sales.selectedOperation.value)"
@@ -638,7 +638,7 @@ onMounted(() => {
         ]"
       >
         <UButton
-          color="primary"
+          color="neutral"
           icon="i-lucide-plus"
           label="Novo registro"
           :disabled="sales.mutating.value || Boolean(sales.selectedOperation.value)"
@@ -767,7 +767,7 @@ onMounted(() => {
             v-if="sales.canRetryExact.value"
             type="button"
             size="sm"
-            color="primary"
+            color="neutral"
             label="Repetir exatamente a mesma operação"
             :loading="sales.mutating.value"
             @click="retryOriginal"
@@ -786,7 +786,7 @@ onMounted(() => {
           <UButton
             type="button"
             size="sm"
-            color="primary"
+            color="neutral"
             label="Reaplicar minhas alterações"
             @click="reapplyDraftToCurrentRevision"
           />
@@ -811,7 +811,7 @@ onMounted(() => {
       <template #actions>
         <UButton
           type="button"
-          color="primary"
+          color="neutral"
           size="sm"
           label="Atualizar detalhe"
           :loading="sales.detailLoading.value"
@@ -838,7 +838,7 @@ onMounted(() => {
             <template #actions>
               <UButton
                 type="button"
-                color="primary"
+                color="neutral"
                 size="sm"
                 label="Atualizar detalhe"
                 :loading="sales.detailLoading.value"
@@ -867,7 +867,7 @@ onMounted(() => {
                   v-if="sales.canRetryExact.value"
                   type="button"
                   size="sm"
-                  color="primary"
+                  color="neutral"
                   label="Repetir exatamente"
                   :loading="sales.mutating.value"
                   @click="retryOriginal"
@@ -1020,7 +1020,7 @@ onMounted(() => {
                 @click="modalKind = 'detail'"
               /><UButton
                 type="button"
-                color="primary"
+                color="neutral"
                 :label="detailArea === 'quotes' ? 'Confirmar conversão para pedido' : 'Confirmar conversão para venda'"
                 :loading="sales.mutating.value"
                 :disabled="sales.needsReconciliation.value || selectedNeedsRefresh"
@@ -1085,7 +1085,7 @@ onMounted(() => {
                 @click="modalKind = 'detail'"
               /><UButton
                 type="button"
-                color="primary"
+                color="neutral"
                 label="Confirmar lançamento da venda"
                 :loading="sales.mutating.value"
                 :disabled="sales.needsReconciliation.value"
@@ -1108,7 +1108,7 @@ onMounted(() => {
                 @click="modalKind = 'detail'"
               /><UButton
                 type="button"
-                color="primary"
+                color="neutral"
                 label="Confirmar lançamento da devolução"
                 :loading="sales.mutating.value"
                 :disabled="sales.needsReconciliation.value"

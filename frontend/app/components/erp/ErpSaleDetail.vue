@@ -344,7 +344,7 @@ const statusLabel = computed(() => isReturn.value
       <UButton
         v-if="canPostSale"
         type="button"
-        color="primary"
+        color="neutral"
         label="Lançar venda"
         :disabled="busy || commercial.needs_reconciliation === true"
         @click="emit('postSale')"
@@ -361,7 +361,7 @@ const statusLabel = computed(() => isReturn.value
       <UButton
         v-if="canPostReturn"
         type="button"
-        color="primary"
+        color="neutral"
         label="Confirmar lançamento da devolução"
         :disabled="busy"
         @click="emit('postReturn')"

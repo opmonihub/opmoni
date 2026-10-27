@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs'
 import * as Vue from 'vue'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
+import * as pageShell from '../app/utils/pageShell.ts'
+import * as formPresentation from '../app/utils/formPresentation.ts'
 import { apiFailure } from '../shared/utils/access.ts'
 import { createSettingsFieldDraft } from '../app/utils/settingsFieldDraft.ts'
 import { erpSettingsBusinessFields, erpSettingsSystemFields } from '../app/utils/erpCompanySettingsFields.ts'
@@ -49,7 +51,7 @@ function settingsHarness(api: (path: string, options?: Record<string, unknown>) 
   const source = compileScript(parse(readFileSync(new URL(pagePath, import.meta.url), 'utf8')).descriptor, { id: 'settings-native', inlineTemplate: true })
   const instrumented = source.content.replace('return (_ctx:', 'captureSettingsForm(form)\nreturn (_ctx:')
   assert.notEqual(instrumented, source.content, 'capture the actual reactive form before its compiled render closure')
-  const component = compile(instrumented, { 'vue': Vue, '#shared/utils/access': { apiFailure }, '~/utils/settingsFieldDraft': { createSettingsFieldDraft } }).default as Vue.Component
+  const component = compile(instrumented, { 'vue': Vue, '#shared/utils/access': { apiFailure }, '~/utils/settingsFieldDraft': { createSettingsFieldDraft }, '~/utils/formPresentation': formPresentation, '~/utils/pageShell': pageShell }).default as Vue.Component
   type Node = { tag?: string, text?: string, children: Node[], parent: Node | null, props: Record<string, unknown> }
   const root: Node = { tag: 'root', children: [], parent: null, props: {} }
   const renderer = Vue.createRenderer<Node>({

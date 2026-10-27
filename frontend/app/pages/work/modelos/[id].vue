@@ -4,6 +4,7 @@ import { apiMessage } from '~/composables/useApiError'
 import type { ClientTag, TaxRegime } from '~/types/client'
 import type { WorkPreviewRow, WorkTaskPriority, WorkTemplate, WorkTemplatePayload } from '~/types/work'
 import { taxRegimeLabel } from '~/utils/portfolioLabels'
+import { settingsFieldRowClass } from '~/utils/formPresentation'
 import { pageScrollClass } from '~/utils/pageShell'
 
 definePageMeta({ middleware: 'auth' })
@@ -349,7 +350,7 @@ async function onGenerate() {
         v-if="canManageWork"
         label="Salvar"
         icon="i-lucide-check"
-        color="primary"
+        color="neutral"
         size="sm"
         :loading="saving"
         :disabled="saving"
@@ -370,7 +371,7 @@ async function onGenerate() {
       aria-label="Carregando modelo"
     >
       <UCard variant="subtle" :ui="{ body: 'p-3 sm:p-4' }">
-        <div class="grid min-w-0 gap-2 sm:grid-cols-2">
+        <div class="min-w-0 divide-y divide-default">
           <div class="flex flex-col gap-1.5">
             <USkeleton class="h-3 w-14" />
             <USkeleton class="h-9 w-full rounded-md" />
@@ -421,7 +422,12 @@ async function onGenerate() {
 
       <UCard variant="subtle" :ui="{ body: 'p-3 sm:p-4' }">
         <div class="grid min-w-0 gap-2 sm:grid-cols-2">
-          <UFormField label="Título" name="name" required>
+          <UFormField
+            label="Título"
+            name="name"
+            required
+            :class="settingsFieldRowClass"
+          >
             <UInput
               v-model="form.name"
               placeholder="Ex.: PGDAS"
@@ -429,7 +435,7 @@ async function onGenerate() {
               :disabled="!canManageWork"
             />
           </UFormField>
-          <UFormField label="Descrição" name="description">
+          <UFormField label="Descrição" name="description" :class="settingsFieldRowClass">
             <UInput
               v-model="form.description"
               placeholder="Opcional"
@@ -750,7 +756,7 @@ async function onGenerate() {
                 v-if="canManageWork && !isNew"
                 label="Gerar mês"
                 icon="i-lucide-play"
-                color="primary"
+                color="neutral"
                 :loading="generating"
                 :disabled="!canGenerate || generating"
                 @click="onGenerate"

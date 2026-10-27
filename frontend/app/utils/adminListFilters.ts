@@ -25,13 +25,20 @@ export function adminListParams(
   page: number,
   search: string,
   filterKey: string,
-  filterValue: string
+  filterValue: string,
+  sort = '',
+  direction = 'asc',
+  sortFields: readonly string[] = []
 ): Record<string, string | number> {
   const params: Record<string, string | number> = { page }
   const query = search.trim()
 
   if (query) params.q = query
   if (filterValue !== 'all') params[filterKey] = filterValue
+  if (sortFields.includes(sort)) {
+    params.sort = sort
+    params.direction = direction === 'desc' ? 'desc' : 'asc'
+  }
 
   return params
 }
@@ -82,17 +89,34 @@ export function createLatestRequestRunner() {
   return runLatest
 }
 
-/** Local Admin lists do not add query parameters; only these criteria are remembered. */
-export function adminListNavigationOptions(filters: readonly string[] = ['all']) {
-  return {
-    defaults: () => ({ q: '', page: 1, filter: 'all' }),
-    normalize(value: unknown) {
-      const input = value as Record<string, unknown> | null | undefined
-      return {
-        q: typeof input?.q === 'string' ? input.q : '',
-        page: Number.isSafeInteger(input?.page) && Number(input?.page) > 0 ? Number(input?.page) : 1,
-        filter: typeof input?.filter === 'string' && filters.includes(input.filter) ? input.filter : 'all'
-      }
+/** Only supported list criteria travel through the existing authority registry. */
+export function adminListNavigationOptions(filters: readonly string[] = ['all'], sortFields: readonly string[] = [], query?: () => Record<string, unknown>) {
+  const defaults = () => ({ q: '', page: 1, filter: 'all', sort: '', direction: 'asc' })
+  function normalize(value: unknown) {
+    const input = value as Record<string, unknown> | null | undefined
+    const sort = typeof input?.sort === 'string' && sortFields.includes(input.sort) ? input.sort : ''
+    return {
+      q: typeof input?.q === 'string' ? input.q : '',
+      page: Number.isSafeInteger(input?.page) && Number(input?.page) > 0 ? Number(input?.page) : 1,
+      filter: typeof input?.filter === 'string' && filters.includes(input.filter) ? input.filter : 'all',
+      sort,
+      direction: sort && input?.direction === 'desc' ? 'desc' : 'asc'
     }
+  }
+  let hadQuery = false
+  return {
+    defaults,
+    normalize,
+    fromQuery: query
+      ? () => {
+          const input = query()
+          if (['q', 'page', 'filter', 'status', 'type', 'sort', 'direction'].some(key => Object.hasOwn(input, key))) {
+            hadQuery = true
+            return normalize({ ...input, filter: input.filter ?? input.status ?? input.type,
+              page: typeof input.page === 'string' && /^[1-9]\d*$/.test(input.page) ? Number(input.page) : 1 })
+          }
+          return hadQuery ? defaults() : null
+        }
+      : undefined
   }
 }

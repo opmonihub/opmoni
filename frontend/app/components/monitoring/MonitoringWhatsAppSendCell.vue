@@ -78,7 +78,7 @@ const blockedReason = computed(() =>
     <UButton
       v-else
       icon="i-lucide-send"
-      color="primary"
+      color="neutral"
       variant="soft"
       size="xs"
       :disabled="!availability.available || !canSend || whatsappContactCount === undefined"

@@ -131,7 +131,7 @@ const columns = [
         <UButton
           v-if="workspace.review.value"
           label="Aplicar configuração"
-          color="primary"
+          color="neutral"
           :disabled="!workspace.canApply.value"
           :loading="workspace.busy.value"
           @click="workspace.apply()"

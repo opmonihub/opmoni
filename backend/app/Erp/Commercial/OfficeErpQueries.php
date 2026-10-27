@@ -13,6 +13,7 @@ use App\Models\Erp\Commercial\OfficeErpReceipt;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\User;
 use App\Support\LiteralSearch;
+use App\Support\ValidatedListOrdering;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -119,7 +120,17 @@ final class OfficeErpQueries
             });
         }
 
-        return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query->orderBy('name'), $filters));
+        $sort = $filters['sort'] ?? null;
+        if ($sort === null) {
+            $query->orderBy('name');
+        } else {
+            ValidatedListOrdering::apply($query, $sort, $filters['direction'] ?? null, [
+                'id' => 'clients.id',
+                'name' => 'clients.name',
+            ], 'clients.id');
+        }
+
+        return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query, $filters));
     }
 
     /** @param array<string, mixed> $filters */
@@ -132,7 +143,18 @@ final class OfficeErpQueries
             LiteralSearch::whereContains($query, 'name', $filters['search']);
         }
 
-        return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query->orderBy('name'), $filters));
+        $sort = $filters['sort'] ?? null;
+        if ($sort === null) {
+            $query->orderBy('name');
+        } else {
+            ValidatedListOrdering::apply($query, $sort, $filters['direction'] ?? null, [
+                'id' => 'office_erp_sales_plans.id',
+                'name' => 'office_erp_sales_plans.name',
+                'status' => 'office_erp_sales_plans.status',
+            ], 'office_erp_sales_plans.id');
+        }
+
+        return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query, $filters));
     }
 
     /** @param array<string, mixed> $filters */
@@ -153,7 +175,26 @@ final class OfficeErpQueries
                 ->orWhere(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'trade_name', $search)));
         }
 
-        return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query->orderByDesc('id'), $filters));
+        $sort = $filters['sort'] ?? null;
+        if ($sort === null) {
+            $query->orderByDesc('id');
+        } else {
+            ValidatedListOrdering::apply($query, $sort, $filters['direction'] ?? null, [
+                'id' => 'office_erp_contracts.id',
+                'client' => static function (Builder $builder, string $direction) use ($ctx): void {
+                    $clientName = Client::query()
+                        ->select('name')
+                        ->whereColumn('clients.id', 'office_erp_contracts.client_id')
+                        ->where('clients.account_id', $ctx->accountId);
+
+                    $builder->orderByRaw('('.$clientName->toSql().') IS NULL ASC', $clientName->getBindings())
+                        ->orderBy($clientName, $direction);
+                },
+                'agreement_status' => 'office_erp_contracts.agreement_status',
+            ], 'office_erp_contracts.id');
+        }
+
+        return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query, $filters));
     }
 
     /** @param array<string, mixed> $filters */
@@ -186,7 +227,19 @@ final class OfficeErpQueries
             $query->whereDate('due_on', '<=', $filters['due_to']);
         }
 
-        return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query->orderByDesc('issued_at')->orderByDesc('id'), $filters));
+        $sort = $filters['sort'] ?? null;
+        if ($sort === null) {
+            $query->orderByDesc('issued_at')->orderByDesc('id');
+        } else {
+            ValidatedListOrdering::apply($query, $sort, $filters['direction'] ?? null, [
+                'id' => 'office_erp_invoices.id',
+                'number' => 'office_erp_invoices.number',
+                'due_on' => 'office_erp_invoices.due_on',
+                'document_status' => 'office_erp_invoices.document_status',
+            ], 'office_erp_invoices.id');
+        }
+
+        return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query, $filters));
     }
 
     /** @param array<string, mixed> $filters */
@@ -209,7 +262,18 @@ final class OfficeErpQueries
             $query->whereDate('received_on', '<=', $filters['to_on']);
         }
 
-        return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query->orderByDesc('received_on')->orderByDesc('id'), $filters));
+        $sort = $filters['sort'] ?? null;
+        if ($sort === null) {
+            $query->orderByDesc('received_on')->orderByDesc('id');
+        } else {
+            ValidatedListOrdering::apply($query, $sort, $filters['direction'] ?? null, [
+                'id' => 'office_erp_receipts.id',
+                'received_on' => 'office_erp_receipts.received_on',
+                'reference' => 'office_erp_receipts.reference',
+            ], 'office_erp_receipts.id');
+        }
+
+        return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query, $filters));
     }
 
     /** @param array<string, mixed> $filters

@@ -509,7 +509,7 @@ watch(identityStamp, () => {
             </p>
           </div>
           <UButton
-            color="primary"
+            color="neutral"
             :loading="conversionLoading"
             :disabled="conversionLoading || !canMaintain || command.pending.value"
             @click="prepareTrialConversion"
@@ -570,7 +570,7 @@ watch(identityStamp, () => {
           </p>
           <div class="flex flex-wrap gap-3">
             <UButton
-              color="primary"
+              color="neutral"
               :loading="command.pending.value"
               :disabled="command.pending.value || !canMaintain"
               @click="confirmTrialConversion"

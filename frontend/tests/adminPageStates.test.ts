@@ -844,3 +844,48 @@ it('mounted Usuarios invalidates through the actual API 401 plugin and auth flow
   assert.equal(view.state.loading.value, false)
   view.stop()
 })
+
+for (const [name, endpoint, field] of [['contas', '/admin/accounts', 'name'], ['usuarios', '/admin/users', 'name'], ['assinaturas', '/admin/subscriptions', 'account']]) {
+  it(`${name} requests authoritative ordering once and restores its exact omitted default`, async () => {
+    const calls: Array<{ path: string, params: Record<string, unknown> }> = []
+    const view = await page(name!, async (path, options) => {
+      calls.push({ path, params: options?.params ?? options?.query ?? {} })
+      return resource([], 60, 4)
+    })
+    try {
+      await view.start()
+      assert.ok(view.state.sort)
+      view.state.page.value = 3
+      await flush()
+      const before = calls.filter(call => call.path === endpoint).length
+      view.state.sort.value = field
+      view.state.direction.value = 'desc'
+      await flush()
+      const reads = calls.filter(call => call.path === endpoint)
+      assert.equal(reads.length, before + 1)
+      assert.equal(reads.at(-1)!.params.sort, field)
+      assert.equal(reads.at(-1)!.params.direction, 'desc')
+      assert.equal(reads.at(-1)!.params.page, 1)
+      view.state.sort.value = ''
+      await flush()
+      const reset = calls.filter(call => call.path === endpoint).at(-1)!.params
+      assert.equal(Object.hasOwn(reset, 'sort'), false)
+      assert.equal(Object.hasOwn(reset, 'direction'), false)
+    } finally { view.stop() }
+  })
+}
+
+it('plan ordering is bounded to the complete local directory and preserves the raw API array', async () => {
+  const source = [{ id: 1, name: 'Zulu', slug: 'zulu' }, { id: 2, name: 'Alpha', slug: 'alpha' }]
+  const view = await page('planos', async () => source)
+  try {
+    await view.start()
+    assert.ok(view.state.sort)
+    view.state.sort.value = 'name'
+    view.state.direction.value = 'asc'
+    assert.deepEqual(view.state.rows.value.map((plan: { id: number }) => plan.id), [2, 1])
+    assert.deepEqual(source.map(plan => plan.id), [1, 2])
+    view.state.sort.value = ''
+    assert.deepEqual(view.state.rows.value.map((plan: { id: number }) => plan.id), [1, 2])
+  } finally { view.stop() }
+})

@@ -74,6 +74,7 @@ function mount(component: Vue.Component) {
     UButton: { props: ['disabled', 'loading', 'type'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, 'disabled': props.disabled, 'data-loading': props.loading }, context.slots.default?.()) },
     UAlert: { props: ['title', 'description'], setup: (props, context) => () => Vue.h('aside', {}, [String(props.title ?? ''), String(props.description ?? ''), context.slots.default?.(), context.slots.description?.()]) },
     UCard: { setup: (_props, context) => () => Vue.h('section', {}, [context.slots.header?.(), context.slots.default?.()]) },
+    UPageCard: { props: ['title', 'description'], setup: (props, context) => () => Vue.h('section', {}, [Vue.h('h3', props.title), Vue.h('p', props.description), context.slots.header?.(), context.slots.default?.(), context.slots.footer?.()]) },
     UModal: { props: ['open'], setup: (props, context) => () => props.open ? Vue.h('section', { role: 'dialog' }, [context.slots.body?.(), context.slots.footer?.()]) : null },
     UBadge: { setup: (_props, context) => () => Vue.h('span', {}, context.slots.default?.()) },
     UFormField: { props: ['name', 'label', 'error'], setup: (props, context) => () => Vue.h('div', { 'data-field': props.name, 'aria-label': props.label }, [context.slots.default?.(), props.error ? String(props.error) : '']) },

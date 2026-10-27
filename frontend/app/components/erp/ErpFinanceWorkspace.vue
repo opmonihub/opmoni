@@ -777,7 +777,7 @@ function downloadReceipt() {
             @click="close(); clearActionTarget()"
           />
           <UButton
-            :color="action === 'allocate' ? 'primary' : 'error'"
+            :color="action === 'allocate' ? 'neutral' : 'error'"
             :label="action === 'allocate' ? 'Confirmar alocação' : 'Confirmar correção'"
             :loading="finance.mutating.value"
             @click="confirmAction"

@@ -205,7 +205,7 @@ watch(isOpen, (open) => {
         />
         <UButton
           label="Enviar certificado"
-          color="primary"
+          color="neutral"
           variant="solid"
           type="button"
           :loading="uploading"

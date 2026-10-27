@@ -186,3 +186,23 @@ test('scalar field-lens edits preserve equivalent multiselect identity and never
   scope.stop()
   app.scope.stop()
 })
+
+test('SSR list normalization does not recursively publish an unchanged page when criteria change', async () => {
+  const Vue = await import('vue')
+  const { renderToString } = await import('vue/server-renderer')
+  const app = application()
+  try {
+    const root = Vue.createSSRApp({ setup() {
+      const state = useListNavigationState('ssr-criteria', options)
+      const q = listNavigationField(state, 'q')
+      const page = listNavigationField(state, 'page')
+      const params = Vue.computed(() => ({ q: q.value }))
+      Vue.watch(params, () => {
+        page.value = 1
+      }, { flush: 'sync' })
+      q.value = 'current criteria'
+      return () => Vue.h('p', q.value)
+    } })
+    assert.equal(await renderToString(root), '<p>current criteria</p>')
+  } finally { app.scope.stop() }
+})

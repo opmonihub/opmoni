@@ -256,10 +256,12 @@ Several cross-layer backend tests read the root Compose file and sibling fronten
 
 ```bash
 cd backend
-FISCAL_ENVIRONMENT=producao vendor/bin/phpunit
+OPENSSL_CONF=/etc/ssl/openssl.cnf FISCAL_ENVIRONMENT=producao vendor/bin/phpunit
 ```
 
 The PHPUnit bootstrap still forces SQLite in memory, array sessions/cache, and fake provider contracts. This setting controls test expectations; it does not change the running development stack's homologation setting. The backend-only development container does not mount the sibling files those tests inspect.
+
+On this Linux host, pass `OPENSSL_CONF` before starting PHP so certificate fixtures can create and sign their CSRs. OpenSSL initializes before PHPUnit loads its XML environment or test bootstrap; setting this variable there is too late. The command uses the system OpenSSL configuration without changing PHP configuration, application keys or development environments.
 
 ## Earlier access verification — 2026-10-12
 

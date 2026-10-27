@@ -33,6 +33,10 @@ class ErpOperationNatureResolutionTest extends TestCase
         $choice = $this->choice($nature['id'], '5101', 1);
         $exception = $this->exception($nature['id'], $product, $choice['id'], 2);
         $payload = $this->previewPayload($product, $nature['id'], $establishment);
+        ErpOperationNature::factory()->create(['erp_company_id' => $company->id, 'cfop' => '6102']);
+        $this->getJson('/api/v1/erp/tax-settings/operation-natures?sort=cfop&direction=desc')
+            ->assertOk()
+            ->assertJsonPath('data.0.cfop', '6102');
         $exceptionResponse = $this->postJson(self::PREVIEW, $payload)->assertOk()
             ->assertJsonPath('data.cfop_resolution.version', 'cfop-resolution-v1')
             ->assertJsonPath('data.cfop_resolution.effective_cfop', '5101')->assertJsonPath('data.cfop_resolution.source', 'product_exception')

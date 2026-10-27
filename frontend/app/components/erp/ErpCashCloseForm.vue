@@ -60,7 +60,7 @@ defineExpose({ state, submit, clear })
         type="submit"
         :loading="busy"
         :disabled="busy || !props.session.can_operate || props.session.status !== 'open' || props.session.needs_reconciliation"
-        color="primary"
+        color="neutral"
         label="Confirmar fechamento"
       />
     </UForm>

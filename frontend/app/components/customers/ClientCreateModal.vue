@@ -729,7 +729,7 @@ async function confirmModules() {
         />
         <UButton
           label="Confirmar obrigações"
-          color="primary"
+          color="neutral"
           variant="solid"
           :loading="modulesSubmitting"
           :disabled="!modules || modulesLoading"

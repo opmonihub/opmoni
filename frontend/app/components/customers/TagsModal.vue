@@ -403,7 +403,7 @@ async function apply(action: 'attach' | 'detach') {
         />
         <UButton
           label="Aplicar na seleção"
-          color="primary"
+          color="neutral"
           icon="i-lucide-tags"
           :loading="applying === 'attach'"
           :disabled="!picked.length || applying !== null"

@@ -75,8 +75,8 @@ it('reads canonical platform account pagination without changing Laravel resourc
 it('normalizes supported Admin list criteria without retaining records or unsupported filter values', async () => {
   const { adminListNavigationOptions } = await import('../app/utils/adminListFilters.ts')
   const options = adminListNavigationOptions(['all', 'active', 'canceled'])
-  assert.deepEqual(options.normalize({ q: 'Needle', page: 3, filter: 'active', records: [{ id: 1 }] }), { q: 'Needle', page: 3, filter: 'active' })
-  assert.deepEqual(options.normalize({ q: null, page: 0, filter: 'unsupported' }), { q: '', page: 1, filter: 'all' })
+  assert.deepEqual(options.normalize({ q: 'Needle', page: 3, filter: 'active', records: [{ id: 1 }] }), { q: 'Needle', page: 3, filter: 'active', sort: '', direction: 'asc' })
+  assert.deepEqual(options.normalize({ q: null, page: 0, filter: 'unsupported' }), { q: '', page: 1, filter: 'all', sort: '', direction: 'asc' })
 })
 
 it('invalidates an active read signal without settling the departed view', async () => {
@@ -93,4 +93,16 @@ it('invalidates an active read signal without settling the departed view', async
   pending.resolve('obsolete')
   await read
   assert.deepEqual(events, [])
+})
+
+it('admin ordering is allowlisted, restores omitted defaults and normalizes explicit URL criteria', async () => {
+  const { adminListNavigationOptions } = await import('../app/utils/adminListFilters.ts')
+  const query = { q: 'Office', sort: 'name', direction: 'desc', page: '3' }
+  const options = adminListNavigationOptions(['all', 'active'], ['id', 'name'], () => query)
+  assert.deepEqual(options.normalize({ sort: 'name', direction: 'desc', page: 4 }),
+    { q: '', filter: 'all', page: 4, sort: 'name', direction: 'desc' })
+  assert.deepEqual(options.normalize({ sort: 'balance', direction: 'desc' }), options.defaults())
+  assert.deepEqual(options.fromQuery?.(), { q: 'Office', filter: 'all', page: 3, sort: 'name', direction: 'desc' })
+  assert.deepEqual(adminListParams(2, 'A', 'status', 'all', 'name', 'desc', ['name']), { page: 2, q: 'A', sort: 'name', direction: 'desc' })
+  assert.deepEqual(adminListParams(1, '', 'status', 'all', '', 'desc', ['name']), { page: 1 })
 })

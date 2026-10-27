@@ -15,6 +15,7 @@ use App\Support\AccessTransaction;
 use App\Support\ErpIdentity;
 use App\Support\ErpSession;
 use App\Support\LiteralSearch;
+use App\Support\ValidatedListOrdering;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -158,7 +159,16 @@ class AccessController extends Controller
             });
         }
 
-        $page = $query->orderByDesc('id')->paginate(15, ['*'], 'page', (int) ($data['page'] ?? 1));
+        if (isset($data['sort'])) {
+            ValidatedListOrdering::apply($query, $data['sort'], $data['direction'] ?? null, [
+                'id' => 'accounts.id',
+                'name' => 'accounts.name',
+                'status' => 'accounts.status',
+            ], 'accounts.id');
+        } else {
+            $query->orderByDesc('id');
+        }
+        $page = $query->paginate(15, ['*'], 'page', (int) ($data['page'] ?? 1));
 
         return response()->json(['data' => $page->getCollection()->map(fn ($a) => $this->actions->projection($a))->all(), 'meta' => ['page' => $page->currentPage(), 'per_page' => 15, 'total' => $page->total(), 'last_page' => $page->lastPage()]]);
     }

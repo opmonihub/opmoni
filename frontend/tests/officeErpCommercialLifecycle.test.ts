@@ -375,3 +375,56 @@ it('portfolio history applies q and pagina atomically with the real VueUse debou
   assert.deepEqual(manualReads[0]!.options?.params, { q: 'Manual', page: 1, per_page: 25 })
   page.stop()
 })
+
+for (const [path, endpoint, field] of [
+  ['planos.vue', 'plans', 'name'],
+  ['clientes/index.vue', 'clients', 'name'],
+  ['assinaturas/index.vue', 'contracts', 'client'],
+  ['faturas/index.vue', 'invoices', 'due_on'],
+  ['recebimentos.vue', 'receipts', 'received_on']
+] as const) {
+  it(`${endpoint} applies authoritative ordering with one page reset and restores the omitted default`, async (t) => {
+    const h = harness(async url => url === '/erp-commercial/context'
+      ? { data: caps() }
+      : { data: [], meta: { total: 75, current_page: 1, last_page: 3, per_page: 25 } })
+    const page = h.mount(path)
+    t.after(page.stop)
+    await flush()
+    assert.ok(page.state.sort, 'The page exposes its remembered ordering criterion')
+    const initial = h.calls.filter(call => call.path === `/erp-commercial/${endpoint}`).length
+    ;(page.state.sort as Vue.Ref).value = field
+    ;(page.state.direction as Vue.Ref).value = 'desc'
+    await flush()
+    const reads = h.calls.filter(call => call.path === `/erp-commercial/${endpoint}`)
+    assert.equal(reads.length, initial + 1)
+    const params = reads.at(-1)!.options!.params as Record<string, unknown>
+    assert.deepEqual({ sort: params.sort, direction: params.direction, page: params.page }, { sort: field, direction: 'desc', page: 1 })
+    ;(page.state.sort as Vue.Ref).value = ''
+    await flush()
+    const reset = h.calls.filter(call => call.path === `/erp-commercial/${endpoint}`).at(-1)!.options!.params as Record<string, unknown>
+    assert.equal(Object.hasOwn(reset, 'sort'), false)
+    assert.equal(Object.hasOwn(reset, 'direction'), false)
+  })
+}
+
+it('commercial URL ordering wins over memory and invalid history restores legacy defaults', async (t) => {
+  const h = harness(async (url, options) => url === '/erp-commercial/context'
+    ? { data: caps() }
+    : { data: [], meta: { total: 150, current_page: (options?.params as Record<string, number>)?.page ?? 1, last_page: 6, per_page: 25 } })
+  h.route.query = { sort: 'name', direction: 'desc', pagina: '3' }
+  const page = h.mount('clientes/index.vue')
+  t.after(page.stop)
+  await flush()
+  assert.deepEqual(h.calls.filter(call => call.path === '/erp-commercial/clients').at(-1)?.options?.params,
+    { page: 3, per_page: 25, sort: 'name', direction: 'desc' })
+  const before = h.calls.length
+  h.route.query = { sort: 'id', direction: 'asc', pagina: '2' }
+  await flush()
+  const reads = h.calls.slice(before).filter(call => call.path === '/erp-commercial/clients')
+  assert.equal(reads.length, 1)
+  assert.deepEqual(reads[0]!.options?.params, { page: 2, per_page: 25, sort: 'id', direction: 'asc' })
+  h.route.query = { sort: 'amount', direction: 'invalid' }
+  await flush()
+  assert.deepEqual(h.calls.filter(call => call.path === '/erp-commercial/clients').at(-1)?.options?.params,
+    { page: 1, per_page: 25 })
+})

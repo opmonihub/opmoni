@@ -13,6 +13,8 @@ export function loadAppComposable<T extends Record<string, unknown>>(
   path: string,
   bindings: Record<string, unknown> = {}
 ): T {
+  // Nuxt supplies a route even when a test exercises a canonical, queryless entry.
+  bindings = { useRoute: () => ({ query: {} }), ...bindings }
   const modules = new Map<string, { exports: Record<string, unknown> }>()
 
   function resolveFile(from: string, specifier: string): string {

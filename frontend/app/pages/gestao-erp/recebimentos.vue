@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { officeErpSortParams } from '~/utils/officeErpListSort'
 import OfficeErpDataTable from '~/components/office-erp/OfficeErpDataTable.vue'
 import OfficeErpPagination from '~/components/office-erp/OfficeErpPagination.vue'
 import OfficeErpPanel from '~/components/office-erp/OfficeErpPanel.vue'
@@ -17,6 +18,8 @@ interface Receipt { id: number, amount: string, received_on: string, reference: 
 interface ListResponse<T> { data: T[], meta: { current_page: number, last_page: number, per_page: number, total: number } }
 const { api } = useAccessApi(), context = useOfficeErpContext(), command = useOfficeErpCommand()
 const navigation = useOfficeErpListNavigation('receipts', { from: '', to: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context)
+const sort = listNavigationField(navigation, 'sort')
+const direction = listNavigationField(navigation, 'direction')
 const { user, currentAccount } = useAuth(), sessionGeneration = useState('access-session-generation', () => 0)
 const rows = ref<Receipt[]>([]), invoices = ref<InvoiceChoice[]>([]), total = ref(0), lastPage = ref(1), page = listNavigationField(navigation, 'page'), perPage = listNavigationField(navigation, 'perPage')
 const from = listNavigationField(navigation, 'from'), to = listNavigationField(navigation, 'to'), loading = ref(false), loadError = ref(''), empty = ref(false), open = ref(false), busy = ref(false), pending = ref(false), unknown = ref(false), recovering = ref(false), error = ref(''), errors = ref<Record<string, string[]>>({}), proofId = ref<string | null>(null), proofName = ref(''), proofError = ref('')
@@ -55,7 +58,7 @@ async function load() {
   }
   const token = context.capture()
   try {
-    const params: Record<string, string | number> = { page: page.value, per_page: perPage.value }
+    const params: Record<string, string | number> = { page: page.value, per_page: perPage.value, ...officeErpSortParams('receipts', sort.value, direction.value) }
     if (from.value)params.received_from = from.value
     if (to.value)params.received_to = to.value
     const r = await api<ListResponse<Receipt>>('/erp-commercial/receipts', { signal: read.signal, params })
@@ -221,8 +224,8 @@ async function recover() {
     } else if (r.status === 'failed')error.value = r.failure.message
   } finally { if (context.isCurrent(token)) recovering.value = false }
 }
-watch([page, from, to, perPage], () => void load(), { immediate: true })
-watch([from, to, perPage], () => {
+watch([page, from, to, perPage, sort, direction], () => void load(), { immediate: true })
+watch([from, to, perPage, sort, direction], () => {
   page.value = 1
 }, { flush: 'sync' })
 watch(identity, () => {
@@ -260,6 +263,13 @@ watch(identity, () => {
       </template>
       <template #toolbar>
         <DataTableFilterPanel v-model="receiptFilters" :columns="receiptFilterColumns" />
+
+        <DataTableSortMenu
+          :sort="sort"
+          :direction="direction"
+          :fields="[{ value: 'received_on', label: 'Data' }, { value: 'reference', label: 'Referência' }, { value: 'id', label: 'Cadastro' }]"
+          @change="ordering => navigation = { ...navigation, ...ordering, page: 1 }"
+        />
       </template>
       <div class="flex min-w-0 flex-col gap-4 p-4 sm:p-6">
         <UAlert
@@ -282,6 +292,20 @@ watch(identity, () => {
           :description="error"
         /><UAlert v-else-if="empty" title="Nenhum recebimento encontrado" /><div v-else class="overflow-x-auto">
           <OfficeErpDataTable :data="rows" :columns="columns" :loading="loading">
+            <template #received_on-header>
+              <DataTableSortButton
+                label="Data"
+                :sorted="sort === 'received_on' ? direction === 'desc' ? 'desc' : 'asc' : false"
+                @toggle="navigation = { ...navigation, sort: sort === 'received_on' && direction === 'desc' ? '' : 'received_on', direction: sort === 'received_on' && direction === 'asc' ? 'desc' : 'asc', page: 1 }"
+              />
+            </template>
+            <template #reference-header>
+              <DataTableSortButton
+                label="Referência"
+                :sorted="sort === 'reference' ? direction === 'desc' ? 'desc' : 'asc' : false"
+                @toggle="navigation = { ...navigation, sort: sort === 'reference' && direction === 'desc' ? '' : 'reference', direction: sort === 'reference' && direction === 'asc' ? 'desc' : 'asc', page: 1 }"
+              />
+            </template>
             <template #received_on-cell="{ row }">
               {{ row.original.received_on.split('-').reverse().join('/') }}
             </template>

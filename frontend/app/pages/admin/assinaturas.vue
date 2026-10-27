@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
+import { focusFormError } from '~/utils/formPresentation'
+import { nextTick } from 'vue'
+import { useDirtyModal } from '~/composables/useDirtyModal'
 import type { Subscription, Plan, ResourceListResponse } from '#shared/types/admin'
 import * as z from 'zod'
 import { apiFailure } from '#shared/utils/access'
@@ -48,8 +52,12 @@ function loadCatalog() {
   })
 }
 const total = ref(0)
-const navigation = useListNavigationState('admin:assinaturas', adminListNavigationOptions(['all', 'active', 'past_due', 'canceled']))
+const route = useRoute()
+const sortFields = ['id', 'account', 'status']
+const navigation = useListNavigationState('admin:assinaturas', adminListNavigationOptions(['all', 'active', 'past_due', 'canceled'], sortFields, () => route.query ?? {}))
 const page = listNavigationField(navigation, 'page')
+const sort = listNavigationField(navigation, 'sort')
+const direction = listNavigationField(navigation, 'direction')
 const perPage = 15
 const loading = ref(true)
 const q = listNavigationField(navigation, 'q')
@@ -70,7 +78,7 @@ const hideableColumns = [
   { id: 'plan', label: 'Plano' },
   { id: 'status', label: 'Status' }
 ]
-const listParams = computed(() => adminListParams(page.value, debouncedQ.value, 'status', statusFilter.value))
+const listParams = computed(() => adminListParams(page.value, debouncedQ.value, 'status', statusFilter.value, sort.value, direction.value, sortFields))
 const loadError = ref<unknown>(null)
 const hasLoaded = ref(false)
 const { isLoading, showError, retry } = useRetryableLoad({
@@ -113,7 +121,7 @@ onBeforeUnmount(() => {
   runLatestLoad.invalidate()
   runCatalog.invalidate()
 })
-watch([debouncedQ, statusFilter], () => {
+watch([debouncedQ, statusFilter, sort, direction], () => {
   page.value = 1
 }, { flush: 'sync' })
 const editOpen = ref(false)
@@ -131,11 +139,16 @@ type EditSchema = z.output<typeof editSchema>
 const editTarget = ref<Subscription | null>(null)
 const editState = reactive<Partial<EditSchema>>({ plan_id: undefined, status: undefined })
 const saving = ref(false)
+const { modelOpen: editorModelOpen, discardOpen, requestClose: requestEditorClose, confirmDiscard } = useDirtyModal(editOpen, () => editState, () => saving.value)
+const restoreEditorFocus = useModalFocusReturn(editOpen)
 let active = true
 onBeforeUnmount(() => {
   active = false
 })
 const fieldErrors = ref<Record<string, string[]>>({})
+watch(fieldErrors, (errors) => {
+  if (editOpen.value && Object.keys(errors).length) void nextTick(() => focusFormError(undefined, 'edit-subscription-form'))
+})
 function openEdit(subscription: Subscription) {
   if (saving.value)
     return
@@ -208,6 +221,12 @@ watch([listParams, readAuthority], load)
     description="Plano e situação comercial de cada conta. Assinaturas inativas permitem leitura e bloqueiam alterações nos dados da conta."
   >
     <template #toolbar>
+      <DataTableSortMenu
+        :sort="sort"
+        :direction="direction"
+        :fields="[{ value: 'id', label: 'ID' }, { value: 'account', label: 'Conta' }, { value: 'status', label: 'Situação' }]"
+        @change="ordering => navigation = { ...navigation, ...ordering, page: 1 }"
+      />
       <UInput
         v-model="q"
         class="max-w-sm"
@@ -251,10 +270,21 @@ watch([listParams, readAuthority], load)
           v-model:column-visibility="columnVisibility"
           :data="subscriptions"
           :columns="columns"
+          :get-row-id="row => String(row.id)"
+          :sorting-options="{ manualSorting: true }"
           :loading="loading"
           class="shrink-0"
           :ui="panelTableUi"
         >
+          <template #id-header>
+            <DataTableSortButton label="ID" :sorted="sort === 'id' ? direction === 'desc' ? 'desc' : 'asc' : false" @toggle="navigation = { ...navigation, sort: sort === 'id' && direction === 'desc' ? '' : 'id', direction: sort === 'id' && direction === 'asc' ? 'desc' : 'asc', page: 1 }" />
+          </template>
+          <template #account-header>
+            <DataTableSortButton label="Conta" :sorted="sort === 'account' ? direction === 'desc' ? 'desc' : 'asc' : false" @toggle="navigation = { ...navigation, sort: sort === 'account' && direction === 'desc' ? '' : 'account', direction: sort === 'account' && direction === 'asc' ? 'desc' : 'asc', page: 1 }" />
+          </template>
+          <template #status-header>
+            <DataTableSortButton label="Situação" :sorted="sort === 'status' ? direction === 'desc' ? 'desc' : 'asc' : false" @toggle="navigation = { ...navigation, sort: sort === 'status' && direction === 'desc' ? '' : 'status', direction: sort === 'status' && direction === 'asc' ? 'desc' : 'asc', page: 1 }" />
+          </template>
           <template #account-cell="{ row }">
             <p class="font-medium text-highlighted">
               {{ row.original.account?.name ?? `#${row.original.id}` }}
@@ -300,13 +330,14 @@ watch([listParams, readAuthority], load)
     </div>
   </DataTablePanelList>
 
-  <USlideover
-    v-model:open="editOpen"
+  <UModal
+    v-model:open="editorModelOpen"
     :dismissible="!saving"
     :close="!saving"
     title="Editar assinatura"
     :description="editTarget?.account?.name"
-    :ui="{ footer: 'justify-end' }"
+    :ui="{ content: 'max-w-2xl', footer: 'flex-col-reverse sm:flex-row sm:justify-end' }"
+    @after:leave="restoreEditorFocus"
   >
     <template #body>
       <ErrorRetryAlert
@@ -327,6 +358,7 @@ watch([listParams, readAuthority], load)
         :state="editState"
         class="space-y-4"
         @submit="onSave"
+        @error="focusFormError"
       >
         <UFormField label="Plano" name="plan_id" :error="fieldErrors.plan_id?.[0]">
           <USelect
@@ -351,13 +383,13 @@ watch([listParams, readAuthority], load)
       </UForm>
     </template>
 
-    <template #footer="{ close }">
+    <template #footer>
       <UButton
         label="Cancelar"
         color="neutral"
         variant="outline"
         :disabled="saving"
-        @click="close"
+        @click="requestEditorClose"
       />
       <UButton
         label="Salvar"
@@ -367,5 +399,21 @@ watch([listParams, readAuthority], load)
         :disabled="saving || !catalogLoaded || catalogLoading || !!catalogError || !plans.some(plan => plan.id === editState.plan_id)"
       />
     </template>
-  </USlideover>
+  </UModal>
+  <UModal
+    v-model:open="discardOpen"
+    title="Descartar alterações?"
+    description="As alterações não salvas serão perdidas."
+    @after:leave="restoreEditorFocus"
+  >
+    <template #footer>
+      <UButton
+        label="Continuar editando"
+        color="neutral"
+        variant="outline"
+        @click="discardOpen = false"
+      />
+      <UButton label="Descartar alterações" color="error" @click="confirmDiscard" />
+    </template>
+  </UModal>
 </template>
