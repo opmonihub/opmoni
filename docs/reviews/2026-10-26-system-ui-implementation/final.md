@@ -1,6 +1,14 @@
 # Standardize system UI patterns: final implementation
 
-Implemented in `/home/obsidian/dev/opmoni/.worktrees/erp-management-density`, branch `codex/erp-management-density`, baseline `dac7293`. OpenSpec tasks55/55 completed, including the user-reviewed neutral-button refinement. Work is uncommitted, unmerged and not archived; explicit finalization/integration remains a separate step.
+Implemented from baseline `dac7293` and integrated locally into `main` as `1188900` (`refactor(ui): standardize system patterns and neutral actions`). OpenSpec tasks55/55 completed, including the user-reviewed neutral-button refinement. The user selected local integration; no push or OpenSpec archive was performed.
+
+## Local integration acceptance
+
+The merged `main` frontend passed2284/2284 tests in267 suites, with zero failures/cancellations/skips (802776ms). The regular backend passed3829 cases, with6 skipped,35217 assertions and zero failures/errors (3835 total cases,774348ms). Both processes exited0. Logs: `/tmp/opmoni-merged-frontend.log` and `/tmp/opmoni-merged-backend-corrected.log`.
+
+An initial merged-backend run exposed development-environment leakage: the main checkout's existing `.env` enables ERP registration, while the regular test profile expects the closed-registration default. Reproduced that case as failing, then fixed only `backend/phpunit.xml` to force `ERP_REGISTRATION_ENABLED=false` for the regular SQLite suite. Initialization/registration tests passed23/23 with181 assertions before the successful complete rerun. The PostgreSQL profile retains its intentional setting; the development `.env` was not changed. Correction: `e78fa8c`; OpenSpec whitespace cleanup: `fcf32a0`.
+
+Before cleanup, preserved26 overlapping untracked planning/report files under `.superpowers/integration-backups/20261027T201515Z`. Preserved the task's complete `.superpowers` evidence directory and163 additional ignored local files under `.superpowers/archived-worktrees/erp-management-density-20261027T204439Z`; its manifest records the source worktree and paths. The existing unrelated `reference/sistema/` remains untouched. Source-file hashes confirmed that the test-profile fix was the only implementation/configuration change after the merged-suite snapshot. Remaining final documentation changes describe this verified result.
 
 ## Final user-reviewed button refinement
 
