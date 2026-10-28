@@ -44,7 +44,7 @@ An unchanged logical read SHALL have one initialization owner, and concurrent co
 - **THEN** the existing command identifier and recovery flow remain authoritative and navigation does not blindly resend or declare rollback
 
 ### Requirement: Existing list navigation state survives same-authority round trips
-Real portfolio, Fiscal, Monitoring, Work, office-commercial, Admin and company ERP list surfaces SHALL retain their supported search, filters, page size and selected page when the user leaves and returns within the same authority and browser application session. Explicit valid URL parameters and browser history SHALL take precedence over remembered state. A changed filter SHALL reset pagination once, and server metadata SHALL bound the restored page. Invalid query values SHALL use existing validated defaults. Remembered state SHALL NOT restore bulk selections, financial commands, credentials or mutation drafts, and SHALL be discarded on authority changes or logout.
+Real portfolio, Fiscal, Monitoring, Work, office-commercial, Admin and company ERP list surfaces SHALL retain their supported search, filters, sorting field/direction, page size and selected page when the user leaves and returns within the same authority and browser application session. Explicit valid URL parameters and browser history SHALL take precedence over remembered state. A changed filter or supported ordering SHALL reset pagination once, and server metadata SHALL bound the restored page. Invalid query values SHALL use existing validated defaults. Remembered state SHALL NOT restore bulk selections, financial commands, credentials or mutation drafts, and SHALL be discarded on authority changes or logout.
 
 #### Scenario: Return to a filtered list
 - **WHEN** an office administrator filters Clientes ERP, visits Planos and returns under the same authority
@@ -61,6 +61,14 @@ Real portfolio, Fiscal, Monitoring, Work, office-commercial, Admin and company E
 #### Scenario: Another authority opens the same list
 - **WHEN** the actor, session, Account, Company or effective permissions change
 - **THEN** previous private list state and results are cleared before the new authority can display or act on them
+
+#### Scenario: Return to an explicitly sorted list
+- **WHEN** an authorized operator changes supported ordering, visits a detail and returns under the same authority
+- **THEN** the controls and authoritative query retain that ordering, explicit valid URL/history criteria take precedence, and bulk selections or mutation drafts are not restored
+
+#### Scenario: Ordering changes while an earlier read is pending
+- **WHEN** a new supported ordering supersedes a pending list read
+- **THEN** pagination resets once and the older response cannot replace the new ordered result or clear its loading state
 
 ### Requirement: Unrelated same-context updates preserve editor drafts
 An unchanged editor SHALL retain unsaved fields and named validation feedback through unrelated same-context resource updates and query/hash changes that do not change its edited entity. A successful save SHALL reconcile the fields it owns without overwriting another editor's dirty fields. Conflicting updates to dirty fields SHALL retain the draft and require an explicit review rather than silently accepting a remote value. Authority loss SHALL still clear private drafts and prevent stale feedback or writes.

@@ -1,6 +1,6 @@
 # Standardize system UI patterns: final implementation
 
-Implemented from baseline `dac7293` and integrated locally into `main` as `1188900` (`refactor(ui): standardize system patterns and neutral actions`). OpenSpec tasks55/55 completed, including the user-reviewed neutral-button refinement. The user selected local integration; no push or OpenSpec archive was performed.
+Implemented from baseline `dac7293` and integrated locally into `main` as `1188900` (`refactor(ui): standardize system patterns and neutral actions`). OpenSpec tasks55/55 completed, including the user-reviewed neutral-button refinement. The user selected local integration; that checkpoint did not include push or archival. Canonical synchronization and archival completed separately on 2026-10-28; see the [archive record](archive-record.md).
 
 ## Local integration acceptance
 

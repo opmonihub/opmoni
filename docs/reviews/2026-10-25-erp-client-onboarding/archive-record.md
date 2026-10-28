@@ -26,3 +26,7 @@ Global strict validation reports 33 passing canonical specifications and one fai
 The [acceptance record](acceptance.md) and [scenario crosswalk](scenario-crosswalk.csv) retain the implementation's historical backend, frontend, PostgreSQL, browser and migration/recovery results with their source identities and limits. Application tests were not rerun for this documentation-only operation; no new runtime, PostgreSQL/concurrency or live-provider acceptance is claimed.
 
 Only canonical specifications, archive paths and associated documentation changed. Application code, schemas, environment files, keys, identities, development stores and production/registration/trial/fiscal/provider/payment gates remain unchanged. No remote push or production rollout is included.
+
+## Subsequent UI archive reconciliation
+
+Later on 2026-10-28, the user authorized reconciliation, synchronization and archival of `standardize-system-ui-patterns`. Its commercial MODIFIED block now preserves the complete onboarding description and both previously omitted scenarios, alongside its UI additions. The earlier global-validation failure above remains historical evidence and is resolved by that scoped reconciliation; see the [UI archive record](../2026-10-26-system-ui-implementation/archive-record.md). All 16 onboarding requirements and 54 scenarios remain represented in the canonical specifications.
