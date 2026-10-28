@@ -53,6 +53,7 @@ function catalogRuntime() {
   const bindings = {
     useAuth,
     useState,
+    useRoute: () => ({ query: {} }),
     useAccessApi: () => ({ api, refreshCsrf: async () => undefined }),
     apiFailure,
     ref: Vue.ref,
@@ -270,10 +271,15 @@ function mountCatalogPage(path: string) {
       }, slots.default?.())
     }
   }))
+  app.component('DataTablePanelList', Vue.defineComponent({
+    props: ['title', 'hideHeading'],
+    setup: (props, { slots }) => () => Vue.h('div', [props.hideHeading ? null : Vue.h('h2', String(props.title)), slots.toolbar?.(), slots.default?.()])
+  }))
+  app.component('DataTableColumnMenu', Vue.defineComponent({ setup: () => () => Vue.h('button') }))
   app.component('UModal', Vue.defineComponent({
-    props: ['open'],
+    props: ['open', 'title', 'description'],
     setup(props, { slots }) {
-      return () => props.open ? Vue.h('dialog', {}, [slots.body?.(), slots.footer?.()]) : null
+      return () => props.open ? Vue.h('dialog', { 'data-modal-open': 'true' }, [Vue.h('h2', String(props.title ?? '')), slots.body?.(), slots.footer?.()]) : null
     }
   }))
   app.component('USlideover', Vue.defineComponent({
@@ -457,7 +463,7 @@ describe('ERP catalog list SFC states', () => {
     page.click(createGroup)
     await settle()
     assert.equal(findHostNodes(page.root, node => node.props['data-menu-action'] === 'Adicionar grupo de preço').includes(createGroup), false, 'selecting the focused menu item disconnects it as a native menu would')
-    const openEditor = findHostNodes(page.root, node => node.props['data-slideover-open'] === 'true').find(node => node.tag === 'aside')
+    const openEditor = findHostNodes(page.root, node => node.props['data-modal-open'] === 'true').find(node => node.tag === 'dialog')
     assert.ok(openEditor, 'selecting a granted resource opens its editor')
     const editorRegion = findHostNodes(openEditor, node => node.tag === 'section' && node.props.tabindex === '-1')[0]
     assert.ok(editorRegion)

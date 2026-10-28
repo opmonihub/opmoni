@@ -118,6 +118,98 @@ class AdminListFiltersTest extends BusinessTestCase
             ->assertUnprocessable();
     }
 
+    public function test_admin_resource_lists_apply_requested_sort_and_keep_their_pagination_envelopes(): void
+    {
+        $superAdmin = $this->superAdminWithOwnAccount();
+        Account::factory()->create(['name' => 'Sort Admin Zulu', 'status' => 'active']);
+        Account::factory()->create(['name' => 'Sort Admin Alpha', 'status' => 'suspended']);
+        User::factory()->create(['name' => 'Order User', 'email' => 'z-order@example.test']);
+        User::factory()->create(['name' => 'Order User', 'email' => 'a-order@example.test']);
+        $accountZ = Account::factory()->create(['name' => 'Zulu subscription']);
+        $accountA = Account::factory()->create(['name' => 'Alpha subscription']);
+        $accountZ->subscription()->update(['status' => 'active']);
+        $accountA->subscription()->update(['status' => 'past_due']);
+
+        $this->actingAs($superAdmin, 'web')
+            ->getJson('/api/v1/admin/accounts?q=Sort%20Admin&sort=name&direction=asc&page=1')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Sort Admin Alpha')
+            ->assertJsonPath('meta.page', 1)
+            ->assertJsonPath('meta.per_page', 15)
+            ->assertJsonPath('meta.last_page', 1);
+        $this->getJson('/api/v1/admin/accounts?q=Sort%20Admin')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Sort Admin Alpha');
+
+        $this->getJson('/api/v1/admin/users?sort=email&direction=asc')
+            ->assertOk()
+            ->assertJsonPath('data.0.email', 'a-order@example.test')
+            ->assertJsonPath('meta.current_page', 1);
+        $this->getJson('/api/v1/admin/users?q=order')
+            ->assertOk()
+            ->assertJsonPath('data.0.email', 'a-order@example.test');
+
+        $this->getJson('/api/v1/admin/subscriptions?sort=account&direction=asc')
+            ->assertOk()
+            ->assertJsonPath('data.0.account.name', 'Alpha subscription')
+            ->assertJsonPath('meta.current_page', 1);
+        $this->getJson('/api/v1/admin/subscriptions?q=subscription')
+            ->assertOk()
+            ->assertJsonPath('data.0.account.name', 'Alpha subscription');
+    }
+
+    public function test_admin_resource_sort_validation_rejects_unknown_fields_and_orphan_direction(): void
+    {
+        $superAdmin = $this->superAdminWithOwnAccount();
+
+        $this->actingAs($superAdmin, 'web')
+            ->getJson('/api/v1/admin/accounts?sort=created_at')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('sort');
+
+        $this->getJson('/api/v1/admin/users?direction=desc')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('direction');
+
+        $this->getJson('/api/v1/admin/subscriptions?sort=id&direction=sideways')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('direction');
+    }
+
+    public function test_admin_sorting_is_stable_across_resource_pages(): void
+    {
+        $superAdmin = $this->superAdminWithOwnAccount();
+        $accounts = [];
+        $users = [];
+        $subscriptions = [];
+        for ($index = 0; $index < 16; $index++) {
+            $accounts[] = Account::factory()->create([
+                'name' => sprintf('Sort Page Account %02d', $index),
+                'status' => 'active',
+            ]);
+            $users[] = User::factory()->create(['name' => 'Sort Page User']);
+            $subscriptionAccount = Account::factory()->create(['name' => sprintf('Sort Page Subscription %02d', $index)]);
+            $subscriptions[] = $subscriptionAccount->subscription()->firstOrFail();
+        }
+
+        $this->actingAs($superAdmin, 'web')
+            ->getJson('/api/v1/admin/accounts?q=Sort%20Page%20Account&sort=status&direction=desc&page=2')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 16)
+            ->assertJsonPath('meta.page', 2)
+            ->assertJsonPath('data.0.id', $accounts[0]->id);
+        $this->getJson('/api/v1/admin/users?q=Sort%20Page%20User&sort=name&direction=desc&page=2')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 16)
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('data.0.id', $users[0]->id);
+        $this->getJson('/api/v1/admin/subscriptions?q=Sort%20Page%20Subscription&sort=status&direction=desc&page=2')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 16)
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('data.0.id', $subscriptions[0]->id);
+    }
+
     public function test_admin_search_treats_like_wildcards_as_literal_characters(): void
     {
         $superAdmin = $this->superAdminWithOwnAccount();

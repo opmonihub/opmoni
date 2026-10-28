@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
+import { focusFormError } from '~/utils/formPresentation'
+import { nextTick } from 'vue'
+import { useDirtyModal } from '~/composables/useDirtyModal'
 import type { Plan } from '#shared/types/admin'
 import * as z from 'zod'
 import { defaultOfficeErpAllowance, officeErpModuleOptions } from '#shared/utils/officeErpCommercial'
@@ -17,10 +21,16 @@ const toast = useToast()
 const plans = ref<Plan[]>([])
 const loading = ref(true)
 const navigation = useListNavigationState('admin:planos', {
-  defaults: () => ({ q: '' }),
-  normalize: value => ({ q: typeof (value as { q?: unknown })?.q === 'string' ? (value as { q: string }).q : '' })
+  defaults: () => ({ q: '', sort: '', direction: 'asc' }),
+  normalize(value) {
+    const source = value as Record<string, unknown> | undefined
+    const sort = source?.sort === 'name' || source?.sort === 'id' ? source.sort : ''
+    return { q: typeof source?.q === 'string' ? source.q : '', sort, direction: sort && source?.direction === 'desc' ? 'desc' : 'asc' }
+  }
 })
 const q = listNavigationField(navigation, 'q')
+const sort = listNavigationField(navigation, 'sort')
+const direction = listNavigationField(navigation, 'direction')
 const columns: TableColumn<Plan>[] = [
   { accessorKey: 'name', header: 'Plano' },
   { id: 'users', header: 'Usuários' },
@@ -37,9 +47,13 @@ const hideableColumns = [
 ]
 const rows = computed(() => {
   const term = q.value.trim().toLowerCase()
-  if (!term)
-    return plans.value
-  return plans.value.filter(plan => plan.name.toLowerCase().includes(term) || plan.slug.toLowerCase().includes(term))
+  const matches = term ? plans.value.filter(plan => plan.name.toLowerCase().includes(term) || plan.slug.toLowerCase().includes(term)) : plans.value
+  if (!sort.value) return matches
+  const order = direction.value === 'desc' ? -1 : 1
+  return [...matches].sort((left, right) => {
+    const identity = left.id < right.id ? -1 : left.id > right.id ? 1 : 0
+    return order * (sort.value === 'name' ? left.name.localeCompare(right.name, 'pt-BR') || identity : identity)
+  })
 })
 function limitValue(plan: Plan, key: 'users' | 'clients' | 'monitorings') {
   const value = plan.limits?.[key]
@@ -91,11 +105,16 @@ type EditSchema = z.output<typeof editSchema>
 const editTarget = ref<Plan | null>(null)
 const editState = reactive<EditSchema>({ name: '', users: null, clients: null, monitorings: null, erp_commercial: defaultOfficeErpAllowance() })
 const saving = ref(false)
+const { modelOpen: editorModelOpen, discardOpen, requestClose: requestEditorClose, confirmDiscard } = useDirtyModal(editOpen, () => editState, () => saving.value)
+const restoreEditorFocus = useModalFocusReturn(editOpen)
 let active = true
 onBeforeUnmount(() => {
   active = false
 })
 const fieldErrors = ref<Record<string, string[]>>({})
+watch(fieldErrors, (errors) => {
+  if (editOpen.value && Object.keys(errors).length) void nextTick(() => focusFormError(undefined, 'edit-plan-form'))
+})
 function openEdit(plan: Plan) {
   if (saving.value)
     return
@@ -167,6 +186,12 @@ watch(readAuthority, load)
     description="Limites de usuários, clientes, monitoramentos e revenda ERP."
   >
     <template #toolbar>
+      <DataTableSortMenu
+        :sort="sort"
+        :direction="direction"
+        :fields="[{ value: 'name', label: 'Plano' }, { value: 'id', label: 'Cadastro' }]"
+        @change="ordering => navigation = { ...navigation, ...ordering }"
+      />
       <UInput
         v-model="q"
         class="max-w-sm"
@@ -273,13 +298,14 @@ watch(readAuthority, load)
     </div>
   </DataTablePanelList>
 
-  <USlideover
-    v-model:open="editOpen"
+  <UModal
+    v-model:open="editorModelOpen"
+    @after:leave="restoreEditorFocus"
     :dismissible="!saving"
     :close="!saving"
     title="Editar plano"
     :description="editTarget?.slug"
-    :ui="{ footer: 'justify-end' }"
+    :ui="{ content: 'max-w-2xl', footer: 'flex-col-reverse sm:flex-row sm:justify-end' }"
   >
     <template #body>
       <UForm
@@ -288,6 +314,7 @@ watch(readAuthority, load)
         :state="editState"
         class="space-y-4"
         @submit="onSave"
+        @error="focusFormError"
       >
         <UFormField label="Nome" name="name" :error="fieldErrors['name']?.[0]">
           <UInput v-model="editState.name" class="w-full" />
@@ -375,13 +402,13 @@ watch(readAuthority, load)
       </UForm>
     </template>
 
-    <template #footer="{ close }">
+    <template #footer>
       <UButton
         label="Cancelar"
         color="neutral"
         variant="outline"
         :disabled="saving"
-        @click="close"
+        @click="requestEditorClose"
       />
       <UButton
         label="Salvar"
@@ -391,5 +418,16 @@ watch(readAuthority, load)
         :disabled="saving"
       />
     </template>
-  </USlideover>
+  </UModal>
+  <UModal v-model:open="discardOpen" title="Descartar alterações?" description="As alterações não salvas serão perdidas." @after:leave="restoreEditorFocus">
+    <template #footer>
+      <UButton
+        label="Continuar editando"
+        color="neutral"
+        variant="outline"
+        @click="discardOpen = false"
+      />
+      <UButton label="Descartar alterações" color="error" @click="confirmDiscard" />
+    </template>
+  </UModal>
 </template>

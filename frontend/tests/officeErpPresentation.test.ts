@@ -36,3 +36,26 @@ test('column visibility preserves identity and actions while allowing secondary 
   assert.doesNotThrow(() => options[0]!.onUpdateChecked(false))
   assert.doesNotThrow(() => options[0]!.onUpdateChecked(true))
 })
+
+test('expandable commercial rows use the supplied stable domain identity', async () => {
+  const table = compileVueComponent('components/office-erp/OfficeErpDataTable.vue')
+  let getRowId: ((row: { id: number }, index: number) => string) | undefined
+  const app = Vue.createSSRApp(table, {
+    data: [{ id: 804, name: 'Cliente de teste' }],
+    columns: [{ accessorKey: 'name', header: 'Cliente' }],
+    expandable: true,
+    getRowId: (row: { id: number }) => String(row.id)
+  })
+  app.component('UDropdownMenu', Vue.defineComponent({ setup: () => () => Vue.h('div') }))
+  app.component('UTable', Vue.defineComponent({
+    props: ['getRowId'],
+    setup(props) {
+      getRowId = props.getRowId as typeof getRowId
+      return () => Vue.h('table')
+    }
+  }))
+  app.component('UButton', Vue.defineComponent({ setup: () => () => Vue.h('button') }))
+  app.component('UIcon', Vue.defineComponent({ setup: () => () => Vue.h('span') }))
+  await renderToString(app)
+  assert.equal(getRowId?.({ id: 804 }, 0), '804')
+})

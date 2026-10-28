@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { panelCardUi, panelToolbarClass } from '~/components/data-table/panel'
+import { pageHeadingActionsClass, pageHeadingClass } from '~/utils/pageShell'
 
 /**
  * The panel list page shell: a naked horizontal header card (title, description,
@@ -43,9 +44,11 @@ withDefaults(defineProps<{
     :description="hideHeading ? undefined : description"
     variant="naked"
     orientation="horizontal"
-    class="mb-4"
+    :class="pageHeadingClass"
   >
-    <slot name="action" />
+    <div v-if="$slots.action" :class="pageHeadingActionsClass">
+      <slot name="action" />
+    </div>
   </UPageCard>
 
   <UPageCard

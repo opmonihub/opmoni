@@ -1,5 +1,7 @@
 <script setup lang="ts" generic="T extends object">
-import { computed, ref, useSlots } from 'vue'
+import { computed, onMounted, ref, useSlots, watch } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
+import type { ExpandedState } from '@tanstack/table-core'
 import type { TableColumn, TableProps } from '@nuxt/ui'
 import { panelTableUi } from '~/components/data-table/panel'
 
@@ -10,11 +12,33 @@ const props = withDefaults(defineProps<{
   label?: string
   compact?: boolean
   expandable?: boolean
+  mobileColumns?: string[]
+  getRowId?: TableProps<T>['getRowId']
   ui?: TableProps<T>['ui']
 }>(), { loading: false, label: 'Registros', compact: false, expandable: false, ui: undefined })
 
 const slots = useSlots()
 const visibility = ref<Record<string, boolean>>({})
+const expanded = ref<ExpandedState>({})
+const mounted = ref(false)
+const narrow = useMediaQuery('(max-width: 767px)')
+onMounted(() => {
+  mounted.value = true
+})
+const responsiveVisibility = computed({
+  get: () => {
+    if (!props.compact || !props.mobileColumns || !mounted.value || !narrow.value) return visibility.value
+    return Object.fromEntries(props.columns.map((column) => {
+      const id = column.id ?? ('accessorKey' in column ? String(column.accessorKey) : '')
+      return [id, props.mobileColumns!.includes(id)]
+    }))
+  },
+  set: (value: Record<string, boolean>) => { visibility.value = value }
+})
+watch(() => props.data, (rows) => {
+  const ids = new Set(rows.map((row, index) => props.getRowId?.(row, index) ?? String(index)))
+  expanded.value = expanded.value === true ? {} : Object.fromEntries(Object.entries(expanded.value).filter(([id]) => ids.has(id)))
+})
 const tableColumns = computed(() => props.columns.map((column, index) => ({
   ...column,
   enableHiding: index !== 0 && column.id !== 'actions' && column.enableHiding !== false
@@ -58,16 +82,18 @@ const columnOptions = computed(() => tableColumns.value.flatMap((column) => {
     <div
       :class="[
         'max-w-full rounded-lg focus-visible:outline-2 focus-visible:outline-primary',
-        compact ? 'hidden md:block overflow-x-hidden' : 'overflow-x-auto'
+        compact ? 'overflow-x-hidden' : 'overflow-x-auto'
       ]"
       role="region"
       :aria-label="label"
       tabindex="0"
     >
       <UTable
-        v-model:column-visibility="visibility"
+        v-model:column-visibility="responsiveVisibility"
+        v-model:expanded="expanded"
         :data="data"
         :columns="tableColumns"
+        :get-row-id="getRowId"
         :loading="loading"
         :expanded-options="expandable ? { getRowCanExpand: () => true } : undefined"
         :ui="{
@@ -75,7 +101,7 @@ const columnOptions = computed(() => tableColumns.value.flatMap((column) => {
           root: 'overflow-visible',
           base: compact ? 'w-full min-w-0 table-fixed' : 'w-full min-w-[36rem] table-auto',
           th: compact ? `${panelTableUi.th} px-2 whitespace-normal text-xs sm:px-3` : `${panelTableUi.th} whitespace-nowrap`,
-          td: compact ? `${panelTableUi.td} px-2 py-2 align-middle sm:px-3` : 'whitespace-nowrap py-2 align-middle tabular-nums',
+          td: compact ? `${panelTableUi.td} px-2 py-2 align-middle whitespace-normal wrap-anywhere sm:px-3` : 'whitespace-nowrap py-2 align-middle tabular-nums',
           ...ui
         }"
       >
@@ -83,9 +109,6 @@ const columnOptions = computed(() => tableColumns.value.flatMap((column) => {
           <slot :name="name" v-bind="slotData" />
         </template>
       </UTable>
-    </div>
-    <div v-if="compact" class="divide-y divide-default md:hidden" :aria-label="label">
-      <slot name="mobile" :data="data" />
     </div>
   </div>
 </template>

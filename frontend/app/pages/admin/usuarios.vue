@@ -12,8 +12,12 @@ const adminReadAllowed = useAdminReadAllowed()
 const { $api } = useNuxtApp()
 const users = ref<PlatformUser[]>([])
 const total = ref(0)
-const navigation = useListNavigationState('admin:usuarios', adminListNavigationOptions(['all', 'super', 'user']))
+const route = useRoute()
+const sortFields = ['id', 'name', 'email']
+const navigation = useListNavigationState('admin:usuarios', adminListNavigationOptions(['all', 'super', 'user'], sortFields, () => route.query ?? {}))
 const page = listNavigationField(navigation, 'page')
+const sort = listNavigationField(navigation, 'sort')
+const direction = listNavigationField(navigation, 'direction')
 const perPage = 15
 const loading = ref(true)
 const q = listNavigationField(navigation, 'q')
@@ -41,7 +45,7 @@ const roleLabel: Record<string, string> = {
 function accountRoleLabel(role: string) {
   return roleLabel[role] ?? role
 }
-const listParams = computed(() => adminListParams(page.value, debouncedQ.value, 'type', typeFilter.value))
+const listParams = computed(() => adminListParams(page.value, debouncedQ.value, 'type', typeFilter.value, sort.value, direction.value, sortFields))
 const loadError = ref<unknown>(null)
 const hasLoaded = ref(false)
 const { isLoading, showError, retry } = useRetryableLoad({
@@ -79,7 +83,7 @@ function load() {
 }
 onMounted(load)
 onBeforeUnmount(runLatestLoad.invalidate)
-watch([debouncedQ, typeFilter], () => {
+watch([debouncedQ, typeFilter, sort, direction], () => {
   page.value = 1
 }, { flush: 'sync' })
 const readAuthority = useAdminReadAuthority(() => {
@@ -99,6 +103,12 @@ watch([listParams, readAuthority], load)
     hide-heading
   >
     <template #toolbar>
+      <DataTableSortMenu
+        :sort="sort"
+        :direction="direction"
+        :fields="[{ value: 'id', label: 'ID' }, { value: 'name', label: 'Nome' }, { value: 'email', label: 'Email' }]"
+        @change="ordering => navigation = { ...navigation, ...ordering, page: 1 }"
+      />
       <UInput
         v-model="q"
         class="max-w-sm"
@@ -142,10 +152,18 @@ watch([listParams, readAuthority], load)
           aria-label="Usuários"
           :data="users"
           :columns="columns"
+          :get-row-id="row => String(row.id)"
+          :sorting-options="{ manualSorting: true }"
           :loading="loading"
           class="shrink-0"
           :ui="panelTableUi"
         >
+          <template #id-header>
+            <DataTableSortButton label="ID" :sorted="sort === 'id' ? direction === 'desc' ? 'desc' : 'asc' : false" @toggle="navigation = { ...navigation, sort: sort === 'id' && direction === 'desc' ? '' : 'id', direction: sort === 'id' && direction === 'asc' ? 'desc' : 'asc', page: 1 }" />
+          </template>
+          <template #name-header>
+            <DataTableSortButton label="Nome" :sorted="sort === 'name' ? direction === 'desc' ? 'desc' : 'asc' : false" @toggle="navigation = { ...navigation, sort: sort === 'name' && direction === 'desc' ? '' : 'name', direction: sort === 'name' && direction === 'asc' ? 'desc' : 'asc', page: 1 }" />
+          </template>
           <template #name-cell="{ row }">
             <p class="font-medium text-highlighted">
               {{ row.original.name }}

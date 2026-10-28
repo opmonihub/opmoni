@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { panelBodyClass } from '~/components/data-table/panel'
 import { erpOperationalTableUi } from '~/components/erp/erpPresentation'
 import { h, nextTick, onScopeDispose, resolveComponent, useSlots } from 'vue'
 import type { Component, ComponentPublicInstance } from 'vue'
 import type { TableColumn, DropdownMenuItem } from '@nuxt/ui'
+import DataTableSortButton from '~/components/data-table/SortButton.vue'
 import ErpCatalogPagination from '~/components/erp/ErpCatalogPagination.vue'
 import { formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
 import { useErpCatalogEditor } from '~/composables/useErpCatalogEditor'
@@ -32,7 +34,7 @@ const slots = useSlots()
 
 const list = useErpCatalogList<CatalogRow>(props.path)
 const editor = useErpCatalogEditor(props.path, list.refresh)
-const { search, page, pending, searchPending, state, error, hasLoaded, stale, authorityBlocked } = list
+const { search, page, sort, direction, pending, searchPending, state, error, hasLoaded, stale, authorityBlocked } = list
 const { record, mode, open, loadingDetail, archiving, error: editorError, fieldErrors } = editor
 const archiveTarget = ref<CatalogRow | null>(null)
 const editorRegion = ref<HTMLElement | null>(null)
@@ -42,6 +44,11 @@ const editorDirty = ref(false)
 const discardConfirmationOpen = ref(false)
 const rowActionTriggers = new Map<number, FocusTarget>()
 const rows = computed(() => state.value?.data ?? [])
+const columnVisibility = ref<Record<string, boolean>>({})
+const hideableColumns = computed(() => props.columns.slice(1).flatMap((column) => {
+  const id = column.id ?? ('accessorKey' in column ? String(column.accessorKey) : '')
+  return id && typeof column.header === 'string' ? [{ id, label: column.header }] : []
+}))
 const createLabel = computed(() => ({
   '/erp/contacts': 'Adicionar contato',
   '/erp/products': 'Adicionar produto',
@@ -105,6 +112,8 @@ const archiveOpen = computed({
       archiveTarget.value = null
   }
 })
+const UModal = resolveComponent('UModal')
+const USlideover = resolveComponent('USlideover')
 const UButton = resolveComponent('UButton')
 const UDropdownMenu = resolveComponent('UDropdownMenu')
 const UBadge = resolveComponent('UBadge')
@@ -128,7 +137,23 @@ function renderRowActions({ row }: { row: { original: CatalogRow } }) {
 }
 
 const tableColumns = computed<TableColumn<CatalogRow>[]>(() => [
-  ...props.columns.map((column) => {
+  ...props.columns.map((source): TableColumn<CatalogRow> => {
+    const id = source.id ?? ('accessorKey' in source ? String(source.accessorKey) : '')
+    const column: TableColumn<CatalogRow> = list.sortableFields.includes(id)
+      ? {
+          ...source,
+          id,
+          header: () => h(DataTableSortButton, {
+            label: typeof source.header === 'string' ? source.header : id,
+            sorted: sort.value === id ? direction.value === 'desc' ? 'desc' : 'asc' : false,
+            onToggle: () => {
+              const next = sort.value !== id ? 'asc' : direction.value === 'asc' ? 'desc' : ''
+              sort.value = next ? id : ''
+              direction.value = next || 'asc'
+            }
+          })
+        }
+      : source
     if (!('accessorKey' in column) || column.accessorKey !== 'status')
       return column
     return {
@@ -435,45 +460,50 @@ defineExpose({ createAction })
 </script>
 
 <template>
-  <div class="space-y-4">
-    <h2 v-if="showHeading" class="text-highlighted text-lg font-semibold">
-      {{ title }}
-    </h2>
-    <div class="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
-      <UFormField :label="`Buscar ${title.toLocaleLowerCase()}`" class="min-w-0 w-full flex-1 sm:max-w-md">
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          :placeholder="searchPlaceholder ?? `Buscar ${title.toLocaleLowerCase()}`"
-          class="w-full"
+  <DataTablePanelList :title="title" :hide-heading="!showHeading">
+    <template #toolbar>
+      <div class="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
+        <UFormField :label="`Buscar ${title.toLocaleLowerCase()}`" class="min-w-0 w-full flex-1 sm:max-w-md">
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            :placeholder="searchPlaceholder ?? `Buscar ${title.toLocaleLowerCase()}`"
+            class="w-full"
+          />
+        </UFormField>
+        <DataTableColumnMenu v-if="hideableColumns.length" v-model="columnVisibility" :columns="hideableColumns" />
+      </div>
+    </template>
+    <div :class="panelBodyClass">
+      <div class="space-y-4">
+        <UTable
+          v-if="hasLoaded && rows.length"
+          v-model:column-visibility="columnVisibility"
+          :ui="erpOperationalTableUi"
+          :data="rows"
+          :columns="tableColumns"
+          :get-row-id="row => String(row.id)"
+          :sorting-options="{ manualSorting: true }"
+          :loading="pending"
+          class="flex-1"
         />
-      </UFormField>
-    </div>
-    <div class="space-y-4">
-      <UTable
-        v-if="hasLoaded && rows.length"
-        :ui="erpOperationalTableUi"
-        :data="rows"
-        :columns="tableColumns"
-        :loading="pending"
-        class="flex-1"
-      />
 
-      <ErpCatalogPagination
-        v-model:page="page"
-        :meta="state?.meta"
-        :pending="pending"
-        :error="error"
-        :loaded="hasLoaded"
-        :has-rows="rows.length > 0"
-        :stale="stale"
-        :search-pending="searchPending"
-        :authority-blocked="authorityBlocked"
-        :search="search"
-        @retry="retryResource"
-      />
+        <ErpCatalogPagination
+          v-model:page="page"
+          :meta="state?.meta"
+          :pending="pending"
+          :error="error"
+          :loaded="hasLoaded"
+          :has-rows="rows.length > 0"
+          :stale="stale"
+          :search-pending="searchPending"
+          :authority-blocked="authorityBlocked"
+          :search="search"
+          @retry="retryResource"
+        />
+      </div>
     </div>
-  </div>
+  </DataTablePanelList>
 
   <div v-if="resourceAuthorityBlocked" role="alert" class="border-error/30 bg-error/5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
     <p class="text-error text-sm">
@@ -489,14 +519,15 @@ defineExpose({ createAction })
     />
   </div>
 
-  <USlideover
+  <component
+    :is="mode === 'detail' ? USlideover : UModal"
     v-model:open="editorOpen"
     :title="mode === 'detail' ? `Detalhes · ${record ? labelFor(record) : title}` : mode === 'edit' ? `Editar · ${record ? labelFor(record) : title}` : `Novo cadastro · ${title}`"
     :description="mode === 'detail' ? 'Consulta do cadastro.' : 'Preencha os dados e salve para atualizar o cadastro.'"
     :dismissible="false"
     :unmount-on-hide="true"
     :content="{ onCloseAutoFocus: preventNativeEditorFocusRestore }"
-    :ui="{ content: 'w-full sm:max-w-3xl', description: 'sr-only' }"
+    :ui="{ content: mode === 'detail' ? 'w-full sm:max-w-3xl' : 'max-w-3xl', description: 'sr-only' }"
     @close:prevent="requestEditorClose"
   >
     <template #body>
@@ -574,7 +605,7 @@ defineExpose({ createAction })
         />
       </div>
     </template>
-  </USlideover>
+  </component>
 
   <UModal
     v-model:open="discardConfirmationOpen"

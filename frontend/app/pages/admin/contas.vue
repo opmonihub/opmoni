@@ -14,7 +14,7 @@ const switching = ref(false)
 const adminReadAllowed = useAdminReadAllowed()
 const { api } = useAccessApi()
 const readAuthority = useAdminReadAuthority(invalidateAuthority)
-const { q, status, page, filter, clearFilters } = useAccountFilters(load, readAuthority)
+const { q, status, page, sort, direction, navigation, filter, clearFilters } = useAccountFilters(load, readAuthority)
 const result = ref<AccountPage | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -84,7 +84,7 @@ async function load() {
     return
   loading.value = true
   error.value = ''
-  return runList(signal => api<AccountPage>('/admin/accounts', { signal, query: { q: q.value, status: status.value === 'all' ? undefined : status.value, page: page.value } }), {
+  return runList(signal => api<AccountPage>('/admin/accounts', { signal, query: { q: q.value, status: status.value === 'all' ? undefined : status.value, page: page.value, ...(sort.value ? { sort: sort.value, direction: direction.value } : {}) } }), {
     onSuccess: (data) => {
       const nextPage = pageWithinLastPage(page.value, readPaginatedMeta(data).last_page)
       if (nextPage !== page.value) {
@@ -233,6 +233,12 @@ function invalidateAuthority() {
 <template>
   <DataTablePanelList title="Contas da plataforma" description="Escritórios e acesso de seus responsáveis.">
     <template #toolbar>
+      <DataTableSortMenu
+        :sort="sort"
+        :direction="direction"
+        :fields="[{ value: 'id', label: 'ID' }, { value: 'name', label: 'Conta' }, { value: 'status', label: 'Situação' }]"
+        @change="ordering => navigation = { ...navigation, ...ordering, page: 1 }"
+      />
       <form class="flex flex-wrap items-center gap-3" @submit.prevent="filter">
         <UInput v-model="q" placeholder="Buscar nome ou ID" aria-label="Buscar nome ou ID" />
         <USelect
@@ -272,9 +278,20 @@ function invalidateAuthority() {
           v-model:column-visibility="columnVisibility"
           :data="result?.data ?? []"
           :columns="columns"
+          :get-row-id="row => String(row.id)"
+          :sorting-options="{ manualSorting: true }"
           :loading="loading"
           :ui="panelTableUi"
         >
+          <template #id-header>
+            <DataTableSortButton label="ID" :sorted="sort === 'id' ? direction === 'desc' ? 'desc' : 'asc' : false" @toggle="navigation = { ...navigation, sort: sort === 'id' && direction === 'desc' ? '' : 'id', direction: sort === 'id' && direction === 'asc' ? 'desc' : 'asc', page: 1 }" />
+          </template>
+          <template #name-header>
+            <DataTableSortButton label="Conta" :sorted="sort === 'name' ? direction === 'desc' ? 'desc' : 'asc' : false" @toggle="navigation = { ...navigation, sort: sort === 'name' && direction === 'desc' ? '' : 'name', direction: sort === 'name' && direction === 'asc' ? 'desc' : 'asc', page: 1 }" />
+          </template>
+          <template #status-header>
+            <DataTableSortButton label="Situação" :sorted="sort === 'status' ? direction === 'desc' ? 'desc' : 'asc' : false" @toggle="navigation = { ...navigation, sort: sort === 'status' && direction === 'desc' ? '' : 'status', direction: sort === 'status' && direction === 'asc' ? 'desc' : 'asc', page: 1 }" />
+          </template>
           <template #name-cell="{ row }">
             <p class="font-medium text-highlighted">
               {{ row.original.name }}

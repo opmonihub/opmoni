@@ -24,6 +24,11 @@ class ErpVehicleController extends ErpCatalogController
         return ['plate', 'model', 'brand'];
     }
 
+    protected function sortableColumns(): array
+    {
+        return ['id', 'plate', 'status'];
+    }
+
     protected function serialize(Model $model): array
     {
         /** @var ErpVehicle $model */

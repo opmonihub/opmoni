@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { settingsFieldRowClass } from '~/utils/formPresentation'
+import { pageFormMeasureClass } from '~/utils/pageShell'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import type { TableColumn } from '@nuxt/ui'
@@ -477,7 +479,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto flex w-full max-w-5xl flex-col gap-6">
+  <div :class="[pageFormMeasureClass, 'flex flex-col gap-6']">
     <header class="space-y-1">
       <h2 class="text-base font-semibold text-highlighted">
         Configurações comerciais
@@ -516,7 +518,7 @@ onMounted(() => {
       </template>
     </UAlert>
 
-    <UCard v-if="canManageTrialLink || trialLinkLoading">
+    <UPageCard v-if="canManageTrialLink || trialLinkLoading" variant="subtle">
       <template #header>
         <div class="flex items-center justify-between gap-2">
           <h2 class="font-semibold text-highlighted">
@@ -616,7 +618,7 @@ onMounted(() => {
           </UButton>
         </div>
       </div>
-    </UCard>
+    </UPageCard>
     <UAlert
       v-if="recoveryKey && recoveryAction === 'trial-link'"
       color="warning"
@@ -669,7 +671,7 @@ onMounted(() => {
         role="alert"
       />
 
-      <UCard>
+      <UPageCard variant="subtle">
         <template #header>
           <div class="flex items-center justify-between gap-2">
             <h2 class="font-semibold text-highlighted">
@@ -706,7 +708,12 @@ onMounted(() => {
             />
           </div>
 
-          <UFormField name="grace_days" label="Dias de tolerância" :error="fieldErrors.grace_days">
+          <UFormField
+            name="grace_days"
+            label="Dias de tolerância"
+            :class="settingsFieldRowClass"
+            :error="fieldErrors.grace_days"
+          >
             <UInput
               v-model.number="settings.grace_days"
               type="number"
@@ -722,7 +729,12 @@ onMounted(() => {
               <span id="grace-help">Prazo contado em dias corridos após o vencimento.</span>
             </template>
           </UFormField>
-          <UFormField name="billing_timezone" label="Fuso horário de cobrança" :error="fieldErrors.billing_timezone">
+          <UFormField
+            name="billing_timezone"
+            label="Fuso horário de cobrança"
+            :class="settingsFieldRowClass"
+            :error="fieldErrors.billing_timezone"
+          >
             <UInput
               v-model="settings.billing_timezone"
               autocomplete="off"
@@ -752,7 +764,7 @@ onMounted(() => {
             </UButton>
           </div>
         </div>
-      </UCard>
+      </UPageCard>
 
       <UAlert
         v-if="previewError"
@@ -775,7 +787,7 @@ onMounted(() => {
         </template>
       </UAlert>
 
-      <UCard v-if="preview">
+      <UPageCard v-if="preview" variant="subtle">
         <template #header>
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="space-y-1">
@@ -830,7 +842,7 @@ onMounted(() => {
             </div>
           </footer>
         </div>
-      </UCard>
+      </UPageCard>
     </template>
 
     <UModal v-model:open="confirmOpen" title="Confirmar política automática" description="A suspensão por atraso será aplicada aos contratos que atendam às condições da pré-visualização.">

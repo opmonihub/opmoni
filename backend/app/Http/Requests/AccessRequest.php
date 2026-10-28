@@ -30,6 +30,9 @@ class AccessRequest extends FormRequest
             if ($id !== null && (! ctype_digit((string) $id) || strlen((string) $id) > 16 || (int) $id < 1 || (int) $id > 9007199254740991)) {
                 $validator->errors()->add('id', 'Identificador inválido.');
             }
+            if ($this->route()->getName() === 'access.admin-list' && $this->query->has('direction') && ! $this->query->has('sort')) {
+                $validator->errors()->add('direction', 'A direção exige um campo de ordenação.');
+            }
         });
     }
 
@@ -47,7 +50,13 @@ class AccessRequest extends FormRequest
             'access.admin-create' => ['name' => $name, 'owner_name' => $name, 'login_email' => $email, ...UpdatePlatformAccountContact::rules()],
             'access.admin-reissue' => ['owner_name' => $name, 'login_email' => $email],
             'access.admin-update' => ['name' => ['sometimes', 'required', 'string', 'min:2', 'max:255'], 'status' => ['sometimes', 'required', Rule::in(['active', 'suspended'])], ...UpdatePlatformAccountContact::rules()],
-            'access.admin-list' => ['q' => ['sometimes', 'nullable', 'string', 'max:255'], 'status' => ['sometimes', 'nullable', Rule::in(['active', 'suspended'])], 'page' => ['sometimes', 'integer', 'min:1', 'max:9007199254740991']],
+            'access.admin-list' => [
+                'q' => ['sometimes', 'nullable', 'string', 'max:255'],
+                'status' => ['sometimes', 'nullable', Rule::in(['active', 'suspended'])],
+                'page' => ['sometimes', 'integer', 'min:1', 'max:9007199254740991'],
+                'sort' => ['sometimes', 'string', Rule::in(['id', 'name', 'status'])],
+                'direction' => ['sometimes', 'string', Rule::in(['asc', 'desc'])],
+            ],
             default => []
         };
         foreach (array_diff(array_keys($this->all()), array_keys($rules)) as $key) {

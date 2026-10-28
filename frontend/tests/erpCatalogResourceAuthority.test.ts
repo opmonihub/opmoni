@@ -124,6 +124,7 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
   const bindings = {
     useAuth,
     useState,
+    useRoute: () => ({ query: {} }),
     useAccessApi: () => ({ api, refreshCsrf: async () => undefined }),
     computed: Vue.computed,
     onScopeDispose: Vue.onScopeDispose,
@@ -224,9 +225,13 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
     }
   })
   const modal = Vue.defineComponent({
-    props: ['open'],
+    props: ['open', 'title', 'description', 'unmountOnHide'],
     setup(props, { slots }) {
-      return () => Vue.h('div', { 'data-modal-open': String(props.open) }, props.open ? [slots.body?.(), slots.footer?.()] : [])
+      return () => Vue.h('dialog', { 'data-modal-open': String(props.open), 'data-modal-unmount-on-hide': String(props.unmountOnHide) }, [
+        Vue.h('h2', String(props.title ?? '')),
+        Vue.h('p', String(props.description ?? '')),
+        ...(props.open ? [slots.body?.(), slots.footer?.()] : [])
+      ])
     }
   })
   const slideover = Vue.defineComponent({
@@ -256,6 +261,11 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
       }, [slots.left?.(), slots.right?.()])
     }
   }))
+  app.component('DataTablePanelList', Vue.defineComponent({
+    props: ['title', 'hideHeading'],
+    setup: (props, { slots }) => () => Vue.h('div', [props.hideHeading ? null : Vue.h('h2', String(props.title)), slots.toolbar?.(), slots.default?.()])
+  }))
+  app.component('DataTableColumnMenu', Vue.defineComponent({ setup: () => () => Vue.h('button') }))
   app.component('UDropdownMenu', Vue.defineComponent({
     props: ['items', 'content'],
     setup(props, { attrs, slots }) {
@@ -430,14 +440,14 @@ describe('ERP catalog shared resource authority', () => {
     resource.instance.createAction.trigger()
     await resource.settle()
     assert.equal(resource.editor.open.value, true, 'the explicit navbar action opens create mode')
-    assert.equal(descendants(resource.root).some(node => node.props['data-slideover-unmount-on-hide'] === 'true'), true, 'the resource opts into native closed-body unmounting')
+    assert.equal(descendants(resource.root).some(node => node.props['data-modal-unmount-on-hide'] === 'true'), true, 'the resource opts into native closed-body unmounting')
     assert.equal(resource.editor.mode.value, 'create')
     assert.equal(resource.referenceMountCount, 1, 'opening creates one editor-session reference selector')
     assert.equal(isAttachedTo(resource.root, list), true, 'the list remains mounted while the editor is open')
     const listRegion = descendants(resource.root).find(node => node.props.class === 'space-y-4' && descendants(node).includes(list))
     assert.ok(listRegion)
     assert.equal(String(listRegion.props.class).includes('hidden'), false, 'the list stays visible behind the native overlay')
-    assert.equal(descendants(resource.root).some(node => node.props['data-slideover-open'] === 'true'), true)
+    assert.equal(descendants(resource.root).some(node => node.props['data-modal-open'] === 'true'), true)
 
     const close = descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Cancelar')
     assert.ok(close)

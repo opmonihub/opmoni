@@ -497,32 +497,13 @@ describe('Office ERP seller onboarding SFC', () => {
     const contractLink = findAll(page.root, node => node.tag === 'button' && textOf(node).includes('Abrir contrato'))[0]
     assert.deepEqual(contractLink?.props.to, '/gestao-erp/assinaturas/42')
 
-    const selectedLinksBeforeMobile = findAll(page.root, node => node.tag === 'button'
+    const selectedLinks = findAll(page.root, node => node.tag === 'button'
       && typeof node.props.to === 'object'
       && (node.props.to as { query?: { cliente?: number } }).query?.cliente === 18)
-    const mobileTrigger = findButton(page.root, 'ERP Varejo')
-    assert.ok(mobileTrigger)
-    ;(mobileTrigger.props.onClick as (() => void) | undefined)?.()
-    await flush()
-    const selectedLinksAfterMobile = findAll(page.root, node => node.tag === 'button'
-      && typeof node.props.to === 'object'
-      && (node.props.to as { query?: { cliente?: number } }).query?.cliente === 18)
-    assert.equal(selectedLinksBeforeMobile.length, 1)
-    assert.equal(selectedLinksAfterMobile.length, 2)
-
-    const noSubscriptionTrigger = findButton(page.root, 'Sem assinatura')
-    assert.ok(noSubscriptionTrigger)
-    ;(noSubscriptionTrigger.props.onClick as (() => void) | undefined)?.()
-    await flush()
-    const mobileClientList = findAll(page.root, node => node.tag === 'div'
-      && node.props['aria-label'] === 'Clientes ERP'
-      && !node.props.role)[0]
-    assert.ok(mobileClientList)
-    const mobileClientRecord = noSubscriptionTrigger.parent
-    assert.ok(mobileClientRecord)
-    const mobileActivationLink = findButton(mobileClientRecord, 'Ativar ERP')
-    assert.deepEqual(mobileActivationLink?.props.to, { path: '/gestao-erp/clientes/novo', query: { cliente: 20, pagina: 1 } })
-    assert.equal(Boolean(findButton(mobileClientRecord, 'Selecionar da carteira')), false)
+    assert.equal(selectedLinks.length, 1, 'one native expansion owns the actions at every viewport')
+    assert.equal(findAll(page.root, node => node.tag === 'button' && node.props['aria-label'] === 'Ocultar detalhes do cliente').length, 7)
+    assert.equal(findAll(page.root, node => node.props['aria-label'] === 'Clientes ERP' && !node.props.role).length, 0,
+      'there is no second mobile list with duplicated actions')
     page.app.unmount()
   })
 

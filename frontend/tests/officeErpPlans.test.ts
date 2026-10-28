@@ -30,8 +30,10 @@ function compileSfcSetup(path: string, globals: Record<string, unknown>) {
   const exports = {} as { default: { setup: (props: Record<string, unknown>, context: Record<string, unknown>) => unknown } }
   new Function('require', 'exports', ...Object.keys(globals), compiled.outputText)(
     (specifier: string) => {
+      if (specifier === '~/composables/useModalFocusReturn') return loadAppComposable('composables/useModalFocusReturn.ts', globals)
       if (specifier === '~/composables/useOfficeErpListNavigation') return loadAppComposable('composables/useOfficeErpListNavigation.ts', globals)
       if (specifier === '~/composables/useListNavigationState') return loadAppComposable('composables/useListNavigationState.ts', globals)
+      if (specifier === '~/utils/officeErpListSort') return loadAppComposable('utils/officeErpListSort.ts', globals)
       if (specifier === 'vue') return Vue
       if (specifier.endsWith('.vue')) return { __esModule: true, default: {} }
       if (specifier === '~/composables/useOfficeErpReadIdentity') return loadAppComposable('composables/useOfficeErpReadIdentity.ts', globals)
@@ -174,7 +176,7 @@ function mountPlansPage(command: Record<string, unknown>) {
       props: ['open'],
       setup: (props, setupContext) => () => Vue.h('section', {}, props.open ? setupContext.slots.body?.() : [])
     },
-    UModal: { props: ['open'], setup: (props, setupContext) => () => Vue.h('section', {}, props.open ? setupContext.slots.footer?.() : []) },
+    UModal: { props: ['open'], setup: (props, setupContext) => () => Vue.h('section', {}, props.open ? [setupContext.slots.body?.(), setupContext.slots.footer?.()] : []) },
     DataTablePanelList: { setup: (_props, setupContext) => () => Vue.h('main', {}, [setupContext.slots.action?.(), setupContext.slots.toolbar?.(), setupContext.slots.default?.()]) },
     UTable: { props: ['data'], setup: (props, setupContext) => () => Vue.h('div', {}, (props.data as unknown[]).length ? [] : setupContext.slots.empty?.()) },
     UPagination: { setup: () => () => Vue.h('nav') },
@@ -315,6 +317,34 @@ describe('Office ERP navigation and access', () => {
 })
 
 describe('Office ERP offer editor SFC', () => {
+  it('uses a modal whose footer submits the existing validated form', async () => {
+    const component = compileVueComponent(editorPath, {
+      parseOfficeErpMoney: officeErpMoney.parseOfficeErpMoney,
+      officeErpModuleOptions: officeErpMoney.officeErpModuleOptions
+    })
+    const components: Record<string, Vue.Component> = {
+      UModal: {
+        setup: (_props, context) => () => Vue.h('section', { 'data-modal': true }, [context.slots.body?.(), context.slots.footer?.()])
+      },
+      UButton: { setup: (_props, context) => () => Vue.h('button', context.attrs, context.slots.default?.()) },
+      UAlert: { setup: (_props, context) => () => Vue.h('aside', context.slots.default?.()) },
+      UFormField: { setup: (_props, context) => () => Vue.h('div', context.slots.default?.()) },
+      UInput: { setup: () => () => Vue.h('input') },
+      UTextarea: { setup: () => () => Vue.h('textarea') },
+      USelect: { setup: () => () => Vue.h('select') },
+      UCheckbox: { setup: () => () => Vue.h('input') }
+    }
+    const { app, root } = mountRenderedComponent(component, components)
+    await Vue.nextTick()
+    assert.ok(findRendered(root, node => node.props['data-modal'] === true)[0])
+    const form = findRendered(root, node => node.tag === 'form')[0]
+    const submit = findRendered(root, node => node.tag === 'button' && renderedText(node).includes('Salvar plano'))[0]
+    assert.equal(form?.props.id, 'office-erp-plan-form')
+    assert.equal(submit?.props.type, 'submit')
+    assert.equal(submit?.props.form, 'office-erp-plan-form')
+    app.unmount()
+  })
+
   it('submits the exact large BRL amount as a canonical string', () => {
     const emitted: unknown[] = []
     const component = compileVueComponent(editorPath, {
@@ -371,6 +401,32 @@ describe('Office ERP offer editor SFC', () => {
 })
 
 describe('Office ERP offers list SFC', () => {
+  it('sends one allowlisted ordering request after resetting the current page', async () => {
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const harness = plansSetup(async (path, options) => {
+      calls.push({ path, options })
+      return listResponse()
+    })
+    await flushVue()
+    const state = harness.state as Record<string, unknown>
+    const page = state.page as Vue.Ref<number>
+    const sort = state.sort as Vue.Ref<string>
+    const direction = state.direction as Vue.Ref<'asc' | 'desc'>
+    page.value = 3
+    await flushVue()
+    const before = calls.length
+    sort.value = 'name'
+    direction.value = 'desc'
+    await flushVue()
+
+    assert.equal(page.value, 1)
+    assert.equal(calls.length, before + 1)
+    assert.deepEqual(calls.at(-1)?.options?.params, {
+      page: 1, per_page: 25, status: 'active', sort: 'name', direction: 'desc'
+    })
+    harness.scope.stop()
+  })
+
   it('keeps the status filter available when an empty list replaces the table', async () => {
     const harness = mountPlansPage(recoveryCommand())
     try {

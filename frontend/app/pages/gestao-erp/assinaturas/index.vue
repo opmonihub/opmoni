@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { officeErpSortParams } from '~/utils/officeErpListSort'
 import OfficeErpDataTable from '~/components/office-erp/OfficeErpDataTable.vue'
 import OfficeErpPagination from '~/components/office-erp/OfficeErpPagination.vue'
 import OfficeErpPanel from '~/components/office-erp/OfficeErpPanel.vue'
@@ -17,7 +18,7 @@ interface OfficeErpContractRow {
   id: number
   erp_plan_id?: number | null
   erp_plan?: { id: number, name: string } | null
-  client: { id: number, name: string }
+  client: { id: number, name: string } | null
   company: { id: number, name: string, owner_setup_status?: 'unclaimed' | 'claimed' } | null
   trial?: { id: number, started_at: string, ends_at: string, converted_at: string | null, expired_at: string | null, situation: 'trialing' | 'expired' | 'converted' } | null
   next_billing_on?: string | null
@@ -32,6 +33,8 @@ const { user, currentAccount } = useAuth()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const context = useOfficeErpContext()
 const navigation = useOfficeErpListNavigation('contracts', { q: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context)
+const sort = listNavigationField(navigation, 'sort')
+const direction = listNavigationField(navigation, 'direction')
 const query = listNavigationField(navigation, 'q')
 const debouncedQuery = refDebounced(query, 300)
 const page = listNavigationField(navigation, 'page')
@@ -100,7 +103,7 @@ async function loadContracts() {
       return
     }
     const token = context.capture()
-    const params: Record<string, string | number> = { page: page.value, per_page: perPage.value }
+    const params: Record<string, string | number> = { page: page.value, per_page: perPage.value, ...officeErpSortParams('contracts', sort.value, direction.value) }
     if (debouncedQuery.value.trim()) params.q = debouncedQuery.value.trim()
     const response = await api<{ data: OfficeErpContractRow[], meta: { current_page: number, last_page: number, per_page: number, total: number } }>('/erp-commercial/contracts', { signal: read.signal, params })
     if (!read.current() || request !== requestGeneration || identity !== identityStamp.value || !context.isCurrent(token)) return
@@ -124,10 +127,10 @@ async function loadContracts() {
   }
 }
 
-watch([debouncedQuery, perPage], () => {
+watch([debouncedQuery, perPage, sort, direction], () => {
   page.value = 1
 }, { flush: 'sync' })
-watch([page, debouncedQuery, perPage, identityStamp], () => {
+watch([page, debouncedQuery, perPage, identityStamp, sort, direction], () => {
   void loadContracts()
 }, { immediate: true, flush: 'post' })
 watch(identityStamp, () => {
@@ -152,6 +155,13 @@ watch(identityStamp, () => {
             class="w-full"
           />
         </UFormField>
+
+        <DataTableSortMenu
+          :sort="sort"
+          :direction="direction"
+          :fields="[{ value: 'client', label: 'Cliente' }, { value: 'agreement_status', label: 'Contrato' }, { value: 'id', label: 'Cadastro' }]"
+          @change="ordering => navigation = { ...navigation, ...ordering, page: 1 }"
+        />
       </template>
       <div :class="panelBodyClass">
         <UAlert
@@ -183,12 +193,21 @@ watch(identityStamp, () => {
         <div v-else class="min-w-0">
           <OfficeErpDataTable
             :columns="columns"
+            :get-row-id="row => String(row.id)"
+            :mobile-columns="['details', 'client']"
             :data="contracts"
             :loading="loading"
             compact
             expandable
             label="Assinaturas"
           >
+            <template #client-header>
+              <DataTableSortButton
+                label="Cliente"
+                :sorted="sort === 'client' ? direction === 'desc' ? 'desc' : 'asc' : false"
+                @toggle="navigation = { ...navigation, sort: sort === 'client' && direction === 'desc' ? '' : 'client', direction: sort === 'client' && direction === 'asc' ? 'desc' : 'asc', page: 1 }"
+              />
+            </template>
             <template #details-cell="{ row }">
               <UButton
                 color="neutral"
@@ -203,7 +222,7 @@ watch(identityStamp, () => {
             <template #client-cell="{ row }">
               <div class="min-w-0">
                 <p class="max-w-56 wrap-anywhere font-medium text-highlighted">
-                  {{ row.original.client.name }}
+                  {{ row.original.client?.name ?? 'Cliente excluído' }}
                 </p>
               </div>
             </template>
@@ -236,6 +255,23 @@ watch(identityStamp, () => {
             </template>
             <template #expanded="{ row }">
               <div class="grid gap-x-6 gap-y-3 px-4 py-3 text-sm sm:grid-cols-3">
+                <div class="md:hidden">
+                  <p class="text-xs text-muted">
+                    Plano e valor
+                  </p>
+                  <p class="wrap-anywhere text-highlighted">
+                    {{ row.original.erp_plan?.name ?? 'Plano indisponível' }}
+                  </p>
+                  <p v-if="row.original.current_revision" class="tabular-nums">
+                    {{ formatOfficeErpMoney(row.original.current_revision.price) }} · {{ row.original.current_revision.interval_months === 1 ? 'Mensal' : `A cada ${row.original.current_revision.interval_months} meses` }}
+                  </p>
+                </div>
+                <div class="md:hidden">
+                  <p class="text-xs text-muted">
+                    Licença
+                  </p>
+                  <p>{{ row.original.trial?.situation === 'trialing' ? 'Em teste' : row.original.trial?.situation === 'expired' ? 'Teste encerrado' : licenceStatusLabels[row.original.licence_status ?? ''] ?? 'Situação não reconhecida' }}</p>
+                </div>
                 <div>
                   <p class="text-xs text-muted">
                     Empresa ERP
@@ -294,75 +330,7 @@ watch(identityStamp, () => {
                 </UButton>
               </div>
             </template>
-            <template #mobile="{ data }">
-              <UCollapsible v-for="contract in data" :key="contract.id" class="py-3">
-                <UButton
-                  block
-                  color="neutral"
-                  variant="ghost"
-                  class="h-auto min-h-11 justify-between px-0 py-1 text-left"
-                >
-                  <template #leading>
-                    <span class="min-w-0 flex-1">
-                      <span class="block truncate font-medium text-highlighted">{{ contract.client.name }}</span>
-                      <span class="block truncate text-xs text-muted">{{ contract.erp_plan?.name ?? (contract.erp_plan_id ? `Plano #${contract.erp_plan_id}` : 'Plano indisponível') }}</span>
-                    </span>
-                  </template>
-                  <template #trailing>
-                    <UBadge :color="contract.licence_status === 'active' ? 'success' : 'warning'" variant="subtle" class="max-w-28 truncate">
-                      {{ contract.trial?.situation === 'trialing' ? 'Em teste' : contract.trial?.situation === 'expired' ? 'Teste encerrado' : licenceStatusLabels[contract.licence_status ?? ''] ?? 'Situação indisponível' }}
-                    </UBadge>
-                    <UIcon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted" />
-                  </template>
-                </UButton>
-                <template #content>
-                  <div class="space-y-3 pt-3 text-sm">
-                    <div class="grid grid-cols-2 gap-3">
-                      <div>
-                        <p class="text-xs text-muted">
-                          Empresa ERP
-                        </p><p class="wrap-anywhere">
-                          {{ contract.company?.name ?? 'Indisponível' }}
-                        </p>
-                      </div>
-                      <div>
-                        <p class="text-xs text-muted">
-                          Contrato
-                        </p><p>{{ agreementStatusLabels[contract.agreement_status] ?? 'Situação não reconhecida' }}</p>
-                      </div>
-                      <div>
-                        <p class="text-xs text-muted">
-                          Valor
-                        </p><p>{{ contract.current_revision ? formatOfficeErpMoney(contract.current_revision.price) : 'Indisponível' }}</p>
-                      </div>
-                      <div>
-                        <p class="text-xs text-muted">
-                          Próxima cobrança
-                        </p><p>{{ formatDate(contract.next_billing_on ?? '') }}</p>
-                      </div>
-                      <div>
-                        <p class="text-xs text-muted">
-                          Saldo em aberto
-                        </p><p>{{ formatOfficeErpMoney(contract.balance.outstanding) }}</p>
-                      </div>
-                      <div>
-                        <p class="text-xs text-muted">
-                          Acesso do responsável
-                        </p><p>{{ contract.company?.owner_setup_status === 'claimed' ? 'Configurado' : contract.company?.owner_setup_status === 'unclaimed' ? 'Aguardando configuração' : 'Indisponível' }}</p>
-                      </div>
-                    </div>
-                    <UButton
-                      :to="`/gestao-erp/assinaturas/${contract.id}`"
-                      variant="outline"
-                      size="sm"
-                      class="min-h-11"
-                    >
-                      Abrir contrato
-                    </UButton>
-                  </div>
-                </template>
-              </UCollapsible>
-            </template>
+
             <template #empty>
               <div class="py-8 text-center text-sm text-muted">
                 Nenhum contrato nesta página.

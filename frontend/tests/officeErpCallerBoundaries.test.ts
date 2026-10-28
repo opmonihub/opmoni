@@ -118,7 +118,7 @@ function mountRenderer(componentToMount: Vue.Component) {
   app.component('UPageCard', component((props, ctx) => () => Vue.h('article', {}, [
     Vue.h('h3', {}, String(props.title ?? '')),
     Vue.h('p', {}, String(props.description ?? '')),
-    ctx.slots.default?.()
+    ctx.slots.header?.(), ctx.slots.default?.(), ctx.slots.footer?.()
   ]), ['title', 'description']))
   app.component('UAlert', component((props, ctx) => () => Vue.h('aside', { role: props.role ?? 'alert' }, [
     Vue.h('strong', {}, String(props.title ?? '')),

@@ -37,6 +37,11 @@ class ErpUnitController extends ErpCatalogController
         return ['short_name', 'actual_name'];
     }
 
+    protected function sortableColumns(): array
+    {
+        return ['id', 'actual_name', 'short_name', 'status'];
+    }
+
     protected function serialize(Model $model): array
     {
         /** @var ErpUnit $model */

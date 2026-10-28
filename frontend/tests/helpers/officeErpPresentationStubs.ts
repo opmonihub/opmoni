@@ -3,6 +3,17 @@ import type { DataTableFilterModel } from '../../app/components/data-table/filte
 
 /** Presentation-only Nuxt UI components; operating controls keep each suite's own stubs. */
 export function registerOfficeErpPresentationStubs(app: App) {
+  if (!app.component('UCheckboxGroup')) app.component('UCheckboxGroup', { setup: () => () => h('div') })
+  if (!app.component('UPageCard')) app.component('UPageCard', {
+    props: ['title', 'description'],
+    setup: (props, { slots }) => () => h('section', [
+      props.title ? h('h3', props.title) : null,
+      props.description ? h('p', props.description) : null,
+      slots.header?.(), slots.default?.(), slots.footer?.()
+    ])
+  })
+  if (!app.component('DataTableSortMenu')) app.component('DataTableSortMenu', { setup: () => () => h('button', { 'aria-label': 'Ordenar resultados' }) })
+  if (!app.component('DataTableSortButton')) app.component('DataTableSortButton', { setup: () => () => h('button') })
   app.component('UIcon', { setup: () => () => h('span') })
   app.component('UDropdownMenu', { setup: (_props, { slots }) => () => h('div', slots.default?.()) })
   app.component('UCollapsible', {

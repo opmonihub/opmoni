@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { officeErpSortParams } from '~/utils/officeErpListSort'
 import OfficeErpDataTable from '~/components/office-erp/OfficeErpDataTable.vue'
 import OfficeErpPagination from '~/components/office-erp/OfficeErpPagination.vue'
 import OfficeErpPanel from '~/components/office-erp/OfficeErpPanel.vue'
@@ -27,6 +28,8 @@ function explicitCriteria() {
   return { q: typeof query.q === 'string' ? query.q : '', page: Number.isSafeInteger(requestedPage) ? requestedPage : 1, perPage: ([25, 50, 100].includes(requestedSize) ? requestedSize : 25) as 25 | 50 | 100 }
 }
 const navigation = useOfficeErpListNavigation('clients', { q: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context, {}, explicitCriteria)
+const sort = listNavigationField(navigation, 'sort')
+const direction = listNavigationField(navigation, 'direction')
 const query = listNavigationField(navigation, 'q')
 const delayedQuery = refDebounced(query, 300)
 const debouncedQuery = ref(query.value)
@@ -81,6 +84,7 @@ function clientSelectionTarget(clientId: number) {
     path: '/gestao-erp/clientes/novo',
     query: {
       cliente: clientId,
+      ...officeErpSortParams('clients', sort.value, direction.value),
       pagina: page.value,
       ...(perPage.value !== 25 ? { porPagina: perPage.value } : {}),
       ...(debouncedQuery.value.trim() ? { q: debouncedQuery.value.trim() } : {})
@@ -105,7 +109,7 @@ async function loadClients() {
       return
     }
     const token = context.capture()
-    const params: Record<string, string | number> = { page: page.value, per_page: perPage.value }
+    const params: Record<string, string | number> = { page: page.value, per_page: perPage.value, ...officeErpSortParams('clients', sort.value, direction.value) }
     const search = debouncedQuery.value.trim()
     if (search) params.q = search
     const response = await api<OfficeErpPortfolioClientListResponse>('/erp-commercial/clients', { signal: read.signal, params })
@@ -163,10 +167,10 @@ async function copyTrialLink() {
   }
 }
 
-watch([debouncedQuery, page, perPage], () => {
+watch([debouncedQuery, page, perPage, sort, direction], () => {
   void loadClients()
 }, { immediate: true })
-watch([debouncedQuery, perPage], () => {
+watch([debouncedQuery, perPage, sort, direction], () => {
   const explicit = explicitCriteria()
   if (explicit && debouncedQuery.value === explicit.q && page.value === explicit.page && perPage.value === explicit.perPage) return
   page.value = 1
@@ -212,6 +216,13 @@ watch(identityStamp, () => {
             class="w-full"
           />
         </UFormField>
+
+        <DataTableSortMenu
+          :sort="sort"
+          :direction="direction"
+          :fields="[{ value: 'name', label: 'Cliente' }, { value: 'id', label: 'Cadastro' }]"
+          @change="ordering => navigation = { ...navigation, ...ordering, page: 1 }"
+        />
       </template>
       <div :class="panelBodyClass">
         <UAlert
@@ -244,11 +255,20 @@ watch(identityStamp, () => {
           v-else
           :data="clients"
           :columns="columns"
+          :get-row-id="row => String(row.id)"
+          :mobile-columns="['details', 'name']"
           :loading="loading"
           compact
           expandable
           label="Clientes ERP"
         >
+          <template #name-header>
+            <DataTableSortButton
+              label="Cliente"
+              :sorted="sort === 'name' ? direction === 'desc' ? 'desc' : 'asc' : false"
+              @toggle="navigation = { ...navigation, sort: sort === 'name' && direction === 'desc' ? '' : 'name', direction: sort === 'name' && direction === 'asc' ? 'desc' : 'asc', page: 1 }"
+            />
+          </template>
           <template #details-cell="{ row }">
             <UButton
               color="neutral"
@@ -333,6 +353,30 @@ watch(identityStamp, () => {
               <div v-if="row.original.subscription?.trial?.situation === 'converted'" class="text-muted">
                 {{ trialLabels.converted }}
               </div>
+              <div class="md:hidden">
+                <p class="text-xs text-muted">
+                  Plano e situação
+                </p>
+                <p class="wrap-anywhere">
+                  {{ row.original.subscription?.erp_plan?.name || 'Sem assinatura' }} · {{ row.original.subscription?.trial?.situation === 'trialing' ? trialLabels.trialing : row.original.subscription?.trial?.situation === 'expired' ? trialLabels.expired : licenceLabels[row.original.subscription?.licence_status || ''] || 'Sem assinatura' }}
+                </p>
+              </div>
+              <UButton
+                v-if="row.original.subscription"
+                :to="`/gestao-erp/assinaturas/${row.original.subscription.contract_id}`"
+                label="Abrir contrato"
+                color="neutral"
+                variant="outline"
+                class="w-fit md:hidden"
+              />
+              <UButton
+                v-else
+                :to="clientSelectionTarget(row.original.id)"
+                label="Ativar ERP"
+                color="neutral"
+                variant="outline"
+                class="w-fit md:hidden"
+              />
               <UButton
                 :to="clientSelectionTarget(row.original.id)"
                 color="neutral"
@@ -344,84 +388,7 @@ watch(identityStamp, () => {
               </UButton>
             </div>
           </template>
-          <template #mobile="{ data }">
-            <UCollapsible v-for="client in data" :key="client.id" class="py-3">
-              <UButton
-                block
-                color="neutral"
-                variant="ghost"
-                class="h-auto min-h-11 justify-between px-0 py-1 text-left"
-              >
-                <template #leading>
-                  <span class="min-w-0 flex-1 truncate font-medium text-highlighted">{{ client.trade_name || client.name }}</span>
-                </template>
-                <template #trailing>
-                  <span class="max-w-28 truncate text-xs text-muted">{{ client.subscription?.erp_plan?.name || (client.subscription === null ? 'Sem assinatura' : 'Resumo indisponível') }}</span>
-                  <UIcon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted" />
-                </template>
-              </UButton>
-              <template #content>
-                <div class="space-y-3 pt-3 text-sm">
-                  <div class="grid grid-cols-2 gap-3">
-                    <div>
-                      <p class="text-xs text-muted">
-                        Situação
-                      </p><p>{{ client.subscription?.trial?.situation === 'trialing' ? trialLabels.trialing : client.subscription?.trial?.situation === 'expired' ? trialLabels.expired : licenceLabels[client.subscription?.licence_status || ''] || (client.subscription === null ? 'Sem assinatura' : 'Indisponível') }}</p>
-                    </div>
-                    <div>
-                      <p class="text-xs text-muted">
-                        CNPJ
-                      </p><p>{{ client.tax_id || '—' }}</p>
-                    </div>
-                    <div>
-                      <p class="text-xs text-muted">
-                        Razão social
-                      </p><p class="wrap-anywhere">
-                        {{ client.name }}
-                      </p>
-                    </div>
-                    <div>
-                      <p class="text-xs text-muted">
-                        Próxima data
-                      </p><p>{{ client.subscription?.trial?.ends_at ? formatOfficeDate(client.subscription.trial.ends_at) : client.subscription ? formatOfficeDate(client.subscription.next_billing_on) || 'Próxima cobrança indisponível' : '—' }}</p>
-                    </div>
-                  </div>
-                  <div class="flex flex-wrap gap-2">
-                    <UButton
-                      v-if="client.subscription"
-                      :to="`/gestao-erp/assinaturas/${client.subscription.contract_id}`"
-                      color="neutral"
-                      variant="outline"
-                      size="sm"
-                      class="min-h-11"
-                    >
-                      Abrir contrato
-                    </UButton>
-                    <UButton
-                      v-if="client.subscription"
-                      :to="clientSelectionTarget(client.id)"
-                      color="neutral"
-                      variant="outline"
-                      size="sm"
-                      class="min-h-11"
-                    >
-                      Selecionar da carteira
-                    </UButton>
-                    <UButton
-                      v-else
-                      :to="clientSelectionTarget(client.id)"
-                      color="neutral"
-                      variant="outline"
-                      size="sm"
-                      class="min-h-11"
-                    >
-                      Ativar ERP
-                    </UButton>
-                  </div>
-                </div>
-              </template>
-            </UCollapsible>
-          </template>
+
           <template #empty>
             <div class="py-8 text-center text-sm text-muted">
               Nenhum resultado nesta página.

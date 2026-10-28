@@ -108,7 +108,7 @@ test('account status changes reset pagination and clear filters loads only once'
     'composables/useListNavigationState.ts', { useState }
   )
   const { useAccountFilters } = loadAppComposable<typeof import('./app/composables/useAccountFilters.ts')>(
-    'composables/useAccountFilters.ts', navigation
+    'composables/useAccountFilters.ts', { ...navigation, useRoute: () => ({ query: {} }) }
   )
   const scope = effectScope()
   const requests: { q: string, status: string, page: number }[] = []

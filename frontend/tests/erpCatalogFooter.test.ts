@@ -145,6 +145,9 @@ function mountCatalogResource() {
   const authorityBlocked = Vue.ref(false)
   const list = {
     search: Vue.ref(''),
+    sort: Vue.ref(''),
+    direction: Vue.ref('asc'),
+    sortableFields: ['id', 'name', 'status'],
     page: Vue.ref(1),
     pending: Vue.ref(false),
     searchPending: Vue.ref(false),
@@ -221,6 +224,11 @@ function mountCatalogResource() {
     columns: [],
     recordLabel: (row: { id: number }) => `Unidade ${row.id}`
   })
+  app.component('DataTablePanelList', Vue.defineComponent({
+    props: ['title', 'hideHeading'],
+    setup: (props, { slots }) => () => Vue.h('div', [props.hideHeading ? null : Vue.h('h2', String(props.title)), slots.toolbar?.(), slots.default?.()])
+  }))
+  app.component('DataTableColumnMenu', Vue.defineComponent({ setup: () => () => Vue.h('button') }))
   app.component('UButton', Vue.defineComponent({
     props: ['label', 'type', 'form', 'disabled', 'loading'],
     setup(props, { attrs }) {
@@ -246,10 +254,13 @@ function mountCatalogResource() {
     }
   }))
   app.component('UModal', Vue.defineComponent({
-    props: ['open', 'title', 'description'],
-    setup(props, { slots }) {
+    props: ['open', 'title', 'description', 'dismissible'],
+    emits: ['update:open', 'close:prevent'],
+    setup(props, { slots, emit }) {
+      const isEditor = () => /^(Novo cadastro|Editar)/.test(String(props.title))
+      if (isEditor()) attemptDrawerClose = () => emit('close:prevent')
       return () => props.open
-        ? Vue.h('section', { 'data-overlay': 'confirmation' }, [
+        ? Vue.h('dialog', { 'data-overlay': isEditor() ? 'editor' : 'confirmation', 'data-dismissible': String(props.dismissible) }, [
             Vue.h('h2', String(props.title ?? '')),
             Vue.h('p', String(props.description ?? '')),
             ...(slots.body?.() ?? []), ...(slots.footer?.({}) ?? [])
@@ -322,6 +333,7 @@ describe('ERP catalog shared editor footer', () => {
 
     const form = resource.nodes().find(node => node.tag === 'form')
     const save = resource.nodes().find(node => node.tag === 'button' && node.props.type === 'submit')
+    assert.ok(resource.nodes().some(node => node.tag === 'dialog' && node.props['data-overlay'] === 'editor'), 'bounded creation uses the native modal host')
     assert.ok(form, 'the catalog editor mounts one form')
     assert.ok(form.props.id, 'the mounted form has a stable native id')
     assert.ok(save, 'the shared footer exposes the primary action')

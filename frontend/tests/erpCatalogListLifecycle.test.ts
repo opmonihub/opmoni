@@ -65,7 +65,9 @@ function setupList(path = '/erp/products', initial: {
   actorId?: number | null
   sessionGeneration?: number
   memory?: Map<string, Vue.Ref>
+  query?: Record<string, unknown>
 } = {}) {
+  const route = Vue.reactive({ query: initial.query ?? {} as Record<string, unknown> })
   const user = Vue.ref<{ id: number } | null>(initial.actorId === null ? null : { id: initial.actorId ?? 5 })
   const currentCompany = Vue.ref<Company | null>(initial.company === undefined ? company() : initial.company)
   const currentAccount = Vue.ref<Account | null>(initial.account ?? null)
@@ -95,6 +97,7 @@ function setupList(path = '/erp/products', initial: {
     'composables/useErpCatalogList.ts',
     {
       useAuth,
+      useRoute: () => route,
       useState,
       useAccessApi: () => ({ api }),
       apiFailure,
@@ -109,6 +112,7 @@ function setupList(path = '/erp/products', initial: {
 
   return {
     list,
+    route,
     memory,
     requests,
     user,
@@ -461,4 +465,55 @@ describe('catalog navigation memory', () => {
       assert.equal(returned.list.state.value?.meta.total, 1)
     } finally { returned.stop() }
   })
+})
+
+it('catalog ordering supersedes the old page read, resets once and keeps the omitted default', async () => {
+  const app = setupList()
+  try {
+    app.requests[0]!.resolve(response('Initial'))
+    await app.settle()
+    app.list.page.value = 3
+    const previous = app.requests.at(-1)!
+    const count = app.requests.length
+    const ordered = app.list as CatalogList & { sort: Vue.Ref<string>, direction: Vue.Ref<string> }
+    assert.ok(ordered.sort)
+    ordered.sort.value = 'name'
+    ordered.direction.value = 'desc'
+    await app.settle()
+    assert.equal(previous.options.signal?.aborted, true)
+    assert.equal(app.requests.length, count + 1)
+    assert.equal(app.list.page.value, 1)
+    assert.equal(app.requests.at(-1)!.url, '/erp/products?page=1&sort=name&direction=desc')
+    previous.resolve(response('Obsolete page', 3))
+    await app.settle()
+    assert.equal(app.list.pending.value, true)
+    app.requests.at(-1)!.resolve(response('Ordered'))
+    await app.settle()
+    assert.equal(app.list.state.value?.data[0]?.name, 'Ordered')
+    ordered.sort.value = ''
+    await app.settle()
+    assert.equal(app.requests.at(-1)!.url, '/erp/products?page=1')
+  } finally { app.stop() }
+})
+
+it('catalog URL and history order override memory and remain public criteria after an authority change', async () => {
+  const app = setupList('/erp/products', { query: { page: '2', sort: 'name', direction: 'desc' } })
+  try {
+    assert.equal(app.requests[0]!.url, '/erp/products?page=2&sort=name&direction=desc')
+    app.requests[0]!.resolve(response('First', 2))
+    await app.settle()
+    const before = app.requests.length
+    app.route.query = { page: '3', sort: 'id', direction: 'asc' }
+    await app.settle()
+    assert.equal(app.requests.length, before + 1)
+    assert.equal(app.requests.at(-1)!.url, '/erp/products?page=3&sort=id&direction=asc')
+    const beforeAuthority = app.requests.length
+    app.currentCompany.value = company({ id: 42 })
+    await app.settle()
+    assert.equal(app.requests.length, beforeAuthority + 1, 'one read owns the replacement authority')
+    assert.equal(app.requests.at(-1)!.url, '/erp/products?page=3&sort=id&direction=asc')
+    app.route.query = { sort: 'money', direction: 'sideways' }
+    await app.settle()
+    assert.equal(app.requests.at(-1)!.url, '/erp/products?page=1')
+  } finally { app.stop() }
 })

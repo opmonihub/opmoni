@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { officeErpSortParams } from '~/utils/officeErpListSort'
 import OfficeErpDataTable from '~/components/office-erp/OfficeErpDataTable.vue'
 import OfficeErpPagination from '~/components/office-erp/OfficeErpPagination.vue'
 import OfficeErpPanel from '~/components/office-erp/OfficeErpPanel.vue'
@@ -32,6 +33,8 @@ const { user, currentAccount } = useAuth()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const context = useOfficeErpContext()
 const navigation = useOfficeErpListNavigation('invoices', { q: '', status: 'all' as 'all' | 'draft' | 'issued' | 'canceled', from: '', to: '', dueFrom: '', dueTo: '', page: 1, perPage: 25 as 25 | 50 | 100 }, context, { status: ['all', 'draft', 'issued', 'canceled'] })
+const sort = listNavigationField(navigation, 'sort')
+const direction = listNavigationField(navigation, 'direction')
 const query = listNavigationField(navigation, 'q')
 const debouncedQuery = refDebounced(query, 300)
 const status = listNavigationField(navigation, 'status')
@@ -74,7 +77,7 @@ const confirmedQueryKey = ref<string | null>(null)
 let generation = 0
 const identity = useOfficeErpReadIdentity(() => [user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null], () => context.capabilities.value?.capability_key)
 const reads = useOfficeErpReads(identity)
-const queryKey = computed(() => JSON.stringify([identity.value, debouncedQuery.value.trim(), status.value, from.value, to.value, dueFrom.value, dueTo.value, page.value, perPage.value]))
+const queryKey = computed(() => JSON.stringify([identity.value, debouncedQuery.value.trim(), status.value, from.value, to.value, dueFrom.value, dueTo.value, page.value, perPage.value, sort.value, direction.value]))
 const hasConfirmedResults = computed(() => confirmedQueryKey.value !== null && confirmedQueryKey.value === queryKey.value)
 const columns: TableColumn<InvoiceRow>[] = [{ accessorKey: 'number', header: 'Fatura' }, { id: 'client', header: 'Cliente' }, { accessorKey: 'document_status', header: 'Situação' }, { accessorKey: 'due_on', header: 'Vencimento' }, { id: 'total', header: 'Cobrança ajustada' }, { id: 'balance', header: 'Em aberto' }, { id: 'actions', header: '' }]
 
@@ -116,7 +119,7 @@ async function loadInvoices() {
       throw new Error('A conta selecionada não tem permissão para consultar faturas.')
     }
     const token = context.capture()
-    const params: Record<string, string | number> = { page: page.value, per_page: perPage.value }
+    const params: Record<string, string | number> = { page: page.value, per_page: perPage.value, ...officeErpSortParams('invoices', sort.value, direction.value) }
     if (debouncedQuery.value.trim()) params.q = debouncedQuery.value.trim()
     if (status.value !== 'all') params.status = status.value
     if (from.value) params.from_on = from.value
@@ -147,10 +150,10 @@ async function loadInvoices() {
     if (read.current() && request === generation && stamp === identity.value) loading.value = false
   }
 }
-watch([debouncedQuery, status, from, to, dueFrom, dueTo, page, perPage], () => {
+watch([debouncedQuery, status, from, to, dueFrom, dueTo, page, perPage, sort, direction], () => {
   void loadInvoices()
 }, { immediate: true })
-watch([debouncedQuery, status, from, to, dueFrom, dueTo, perPage], () => {
+watch([debouncedQuery, status, from, to, dueFrom, dueTo, perPage, sort, direction], () => {
   page.value = 1
 }, { flush: 'sync' })
 watch(identity, () => {
@@ -191,6 +194,13 @@ watch(identity, () => {
             class="w-full min-w-0 sm:max-w-sm"
           />
         </DataTableFilterPanel>
+
+        <DataTableSortMenu
+          :sort="sort"
+          :direction="direction"
+          :fields="[{ value: 'number', label: 'Fatura' }, { value: 'due_on', label: 'Vencimento' }, { value: 'document_status', label: 'Situação' }, { value: 'id', label: 'Cadastro' }]"
+          @change="ordering => navigation = { ...navigation, ...ordering, page: 1 }"
+        />
       </template>
       <div :class="panelBodyClass">
         <UAlert
@@ -230,6 +240,27 @@ watch(identity, () => {
             :columns="columns"
             :loading="loading"
           >
+            <template #number-header>
+              <DataTableSortButton
+                label="Fatura"
+                :sorted="sort === 'number' ? direction === 'desc' ? 'desc' : 'asc' : false"
+                @toggle="navigation = { ...navigation, sort: sort === 'number' && direction === 'desc' ? '' : 'number', direction: sort === 'number' && direction === 'asc' ? 'desc' : 'asc', page: 1 }"
+              />
+            </template>
+            <template #document_status-header>
+              <DataTableSortButton
+                label="Situação"
+                :sorted="sort === 'document_status' ? direction === 'desc' ? 'desc' : 'asc' : false"
+                @toggle="navigation = { ...navigation, sort: sort === 'document_status' && direction === 'desc' ? '' : 'document_status', direction: sort === 'document_status' && direction === 'asc' ? 'desc' : 'asc', page: 1 }"
+              />
+            </template>
+            <template #due_on-header>
+              <DataTableSortButton
+                label="Vencimento"
+                :sorted="sort === 'due_on' ? direction === 'desc' ? 'desc' : 'asc' : false"
+                @toggle="navigation = { ...navigation, sort: sort === 'due_on' && direction === 'desc' ? '' : 'due_on', direction: sort === 'due_on' && direction === 'asc' ? 'desc' : 'asc', page: 1 }"
+              />
+            </template>
             <template #client-cell="{ row }">
               <span class="block max-w-72 min-w-56 whitespace-normal wrap-anywhere">{{ row.original.bill_to_snapshot.client?.name || row.original.bill_to_snapshot.company?.name || 'Cliente' }}</span>
             </template>

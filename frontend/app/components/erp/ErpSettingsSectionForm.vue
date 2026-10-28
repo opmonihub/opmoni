@@ -2,6 +2,8 @@
 import { apiFailure } from '#shared/utils/access'
 import type { ErpSettingsField } from '~/utils/erpCompanySettingsFields'
 import { createSettingsFieldDraft } from '~/utils/settingsFieldDraft'
+import { formErrorSummaryClass, settingsFieldRowClass } from '~/utils/formPresentation'
+import { pageFormMeasureClass, pageHeadingActionsClass, pageHeadingClass } from '~/utils/pageShell'
 
 const props = defineProps<{
   title: string
@@ -157,98 +159,100 @@ function selectOptions(field: (typeof props.fields)[number]) {
 
 <template>
   <UForm :state="form" :disabled="!canWrite || pending || !state" @submit="onSubmit">
-    <UPageCard
-      :title="title"
-      :description="description"
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
-    >
-      <UButton
-        v-if="canWrite"
-        type="submit"
-        :disabled="pending || !state || conflictingFields.length > 0"
-        label="Salvar"
-        color="primary"
-        :loading="pending"
-        class="w-fit lg:ms-auto"
-      />
-    </UPageCard>
-    <p v-if="!canWrite" class="mb-4 text-sm text-muted">
-      {{ canRead ? 'Seu acesso permite apenas consultar estas configurações.' : 'Seu acesso não permite consultar ou alterar estas configurações.' }}
-    </p>
-    <div v-if="!state && canRead" class="mb-4 space-y-2">
-      <p class="text-sm text-muted" role="status">
-        {{ loadError || (pending ? 'Carregando configurações…' : 'As configurações ainda não foram confirmadas.') }}
+    <div :class="pageFormMeasureClass">
+      <UPageCard
+        :title="title"
+        :description="description"
+        variant="naked"
+        orientation="horizontal"
+        :class="pageHeadingClass"
+      >
+        <UButton
+          v-if="canWrite"
+          type="submit"
+          :disabled="pending || !state || conflictingFields.length > 0"
+          label="Salvar"
+          color="primary"
+          :loading="pending"
+          :class="pageHeadingActionsClass"
+        />
+      </UPageCard>
+      <p v-if="!canWrite" class="mb-4 text-sm text-muted">
+        {{ canRead ? 'Seu acesso permite apenas consultar estas configurações.' : 'Seu acesso não permite consultar ou alterar estas configurações.' }}
       </p>
-      <UButton
-        v-if="!pending"
-        type="button"
-        color="neutral"
-        variant="outline"
-        label="Atualizar configurações"
-        @click="refreshSettings"
+      <div v-if="!state && canRead" class="mb-4 space-y-2">
+        <p class="text-sm text-muted" role="status">
+          {{ loadError || (pending ? 'Carregando configurações…' : 'As configurações ainda não foram confirmadas.') }}
+        </p>
+        <UButton
+          v-if="!pending"
+          type="button"
+          color="neutral"
+          variant="outline"
+          label="Atualizar configurações"
+          @click="refreshSettings"
+        />
+      </div>
+      <p v-if="saveError" role="alert" :class="[formErrorSummaryClass, 'text-sm text-error']">
+        {{ saveError }}
+      </p>
+      <UAlert
+        v-if="conflictingFields.length"
+        color="warning"
+        title="Configurações alteradas em outra atualização"
+        description="Seu rascunho foi mantido. Confira os valores atuais antes de salvar."
+        class="mb-4"
+        :actions="[{ label: 'Descartar rascunho e usar valores atuais', color: 'warning', variant: 'outline', onClick: discardDraft }]"
       />
+      <UPageCard
+        v-for="group in fieldGroups"
+        :key="group.label ?? title"
+        :as="group.label ? 'section' : undefined"
+        variant="subtle"
+        class="space-y-0"
+      >
+        <template v-if="group.label" #title>
+          <h3>{{ group.label }}</h3>
+        </template>
+        <template v-for="(field, index) in group.fields" :key="field.key">
+          <USeparator v-if="index > 0" />
+          <UFormField
+            :name="String(field.key)"
+            :label="field.label"
+            :required="field.required"
+            :description="field.description"
+            :hint="fieldHint(field)"
+            :error="fieldErrors[String(field.key)]?.[0]"
+            :class="settingsFieldRowClass"
+          >
+            <UCheckbox
+              v-if="field.type === 'checkbox'"
+              :disabled="!canWrite || pending || !state"
+              :model-value="Boolean(Number(form[field.key as string] ?? 0))"
+              @update:model-value="form[field.key as string] = $event ? 1 : 0"
+            />
+            <USelect
+              v-else-if="field.type === 'select'"
+              :disabled="!canWrite || pending || !state"
+              :model-value="selectModelValue(field.key as string)"
+              :items="selectOptions(field)"
+              value-key="value"
+              label-key="label"
+              class="w-full sm:max-w-xs"
+              @update:model-value="form[field.key as string] = $event"
+            />
+            <UInput
+              v-else
+              :disabled="!canWrite || pending || !state"
+              :model-value="String(form[field.key as string] ?? '')"
+              :type="field.type === 'number' ? 'number' : 'text'"
+              :inputmode="field.type === 'code' ? 'numeric' : undefined"
+              class="w-full sm:max-w-md"
+              @update:model-value="form[field.key as string] = field.type === 'number' ? Number($event) : $event"
+            />
+          </UFormField>
+        </template>
+      </UPageCard>
     </div>
-    <p v-if="saveError" role="alert" class="mb-4 text-sm text-error">
-      {{ saveError }}
-    </p>
-    <UAlert
-      v-if="conflictingFields.length"
-      color="warning"
-      title="Configurações alteradas em outra atualização"
-      description="Seu rascunho foi mantido. Confira os valores atuais antes de salvar."
-      class="mb-4"
-      :actions="[{ label: 'Descartar rascunho e usar valores atuais', color: 'warning', variant: 'outline', onClick: discardDraft }]"
-    />
-    <UPageCard
-      v-for="group in fieldGroups"
-      :key="group.label ?? title"
-      :as="group.label ? 'section' : undefined"
-      variant="subtle"
-      class="space-y-0"
-    >
-      <template v-if="group.label" #title>
-        <h3>{{ group.label }}</h3>
-      </template>
-      <template v-for="(field, index) in group.fields" :key="field.key">
-        <USeparator v-if="index > 0" />
-        <UFormField
-          :name="String(field.key)"
-          :label="field.label"
-          :required="field.required"
-          :description="field.description"
-          :hint="fieldHint(field)"
-          :error="fieldErrors[String(field.key)]?.[0]"
-          class="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <UCheckbox
-            v-if="field.type === 'checkbox'"
-            :disabled="!canWrite || pending || !state"
-            :model-value="Boolean(Number(form[field.key as string] ?? 0))"
-            @update:model-value="form[field.key as string] = $event ? 1 : 0"
-          />
-          <USelect
-            v-else-if="field.type === 'select'"
-            :disabled="!canWrite || pending || !state"
-            :model-value="selectModelValue(field.key as string)"
-            :items="selectOptions(field)"
-            value-key="value"
-            label-key="label"
-            class="w-full sm:max-w-xs"
-            @update:model-value="form[field.key as string] = $event"
-          />
-          <UInput
-            v-else
-            :disabled="!canWrite || pending || !state"
-            :model-value="String(form[field.key as string] ?? '')"
-            :type="field.type === 'number' ? 'number' : 'text'"
-            :inputmode="field.type === 'code' ? 'numeric' : undefined"
-            class="w-full sm:max-w-md"
-            @update:model-value="form[field.key as string] = field.type === 'number' ? Number($event) : $event"
-          />
-        </UFormField>
-      </template>
-    </UPageCard>
   </UForm>
 </template>

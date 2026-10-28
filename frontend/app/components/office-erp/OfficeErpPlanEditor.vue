@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, toRef, watch } from 'vue'
+import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
 import type { OfficeErpOffer, OfficeErpOfferTerms } from '#shared/types/officeErpCommercial'
 import { officeErpModuleOptions, parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
@@ -36,6 +37,10 @@ const form = reactive({
   moduleKeys: [] as string[],
   published: false
 })
+const formElement = ref<HTMLFormElement | null>(null)
+const initialDraft = ref('')
+const discardOpen = ref(false)
+const restoreEditorFocus = useModalFocusReturn(toRef(props, 'open'))
 const localErrors = ref<Record<string, string[]>>({})
 const moneyError = computed(() => localErrors.value.price?.[0] ?? props.fieldErrors.price?.[0] ?? '')
 const visibleModules = computed(() => officeErpModuleOptions.filter(option => props.moduleKeys.includes(option.value)))
@@ -57,22 +62,33 @@ watch(() => props.open, (open) => {
   form.moduleKeys = [...(revision?.module_keys ?? [])]
   form.published = revision?.published ?? false
   localErrors.value = {}
+  initialDraft.value = JSON.stringify(form)
+  discardOpen.value = false
 }, { immediate: true })
 
-function setModule(moduleKey: string, checked: boolean) {
-  form.moduleKeys = checked
-    ? [...new Set([...form.moduleKeys, moduleKey])]
-    : form.moduleKeys.filter(value => value !== moduleKey)
+function requestClose() {
+  if (props.saving || props.recoveryKey) return
+  if (JSON.stringify(form) !== initialDraft.value) discardOpen.value = true
+  else emit('update:open', false)
 }
 
+function focusInvalidField() {
+  void nextTick(() => formElement.value?.querySelector<HTMLElement>('[aria-invalid="true"], [role="alert"]')?.focus())
+}
+
+watch(() => props.fieldErrors, (errors) => {
+  if (props.open && errors && Object.keys(errors).length) focusInvalidField()
+})
+
 function submit() {
-  if (!props.canSellNew || props.saving) return
+  if (!props.canSellNew || props.saving || props.recoveryKey) return
   localErrors.value = {}
   let price: string
   try {
     price = parseOfficeErpMoney(form.price)
   } catch {
     localErrors.value = { price: ['Informe um valor em reais com até duas casas decimais.'] }
+    focusInvalidField()
     return
   }
 
@@ -86,6 +102,7 @@ function submit() {
   if (form.moduleKeys.some(key => !props.moduleKeys.includes(key))) errors.module_keys = ['Remova módulos que não estão liberados para o escritório.']
   if (Object.keys(errors).length) {
     localErrors.value = errors
+    focusInvalidField()
     return
   }
 
@@ -105,12 +122,15 @@ defineExpose({ form, submit })
 </script>
 
 <template>
-  <USlideover
+  <UModal
     :open="open"
     :title="offer ? 'Editar plano' : 'Novo plano'"
     description="Cada alteração cria uma revisão para novas vendas. Contratos existentes preservam os termos aceitos."
-    side="right"
-    @update:open="emit('update:open', $event)"
+    :dismissible="!saving && !recoveryKey"
+    :close="!saving && !recoveryKey"
+    :ui="{ content: 'w-[calc(100%-2rem)] max-w-2xl', footer: 'justify-end' }"
+    @update:open="value => { if (!value) requestClose() }"
+    @after:leave="restoreEditorFocus"
   >
     <template #body>
       <div class="flex h-full min-h-0 flex-col">
@@ -144,7 +164,12 @@ defineExpose({ form, submit })
           </template>
         </UAlert>
 
-        <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="submit">
+        <form
+          id="office-erp-plan-form"
+          ref="formElement"
+          class="flex min-h-0 flex-1 flex-col"
+          @submit.prevent="submit"
+        >
           <div class="flex-1 space-y-4 overflow-y-auto pe-1">
             <UFormField
               name="name"
@@ -211,16 +236,12 @@ defineExpose({ form, submit })
             </UFormField>
 
             <UFormField name="module_keys" label="Módulos incluídos" :error="localErrors.module_keys?.[0] ?? fieldErrors.module_keys?.[0]">
-              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <UCheckbox
-                  v-for="module in visibleModules"
-                  :key="module.value"
-                  :model-value="form.moduleKeys.includes(module.value)"
-                  :label="module.label"
-                  :disabled="!canSellNew || saving"
-                  @update:model-value="setModule(module.value, !!$event)"
-                />
-              </div>
+              <UCheckboxGroup
+                v-model="form.moduleKeys"
+                :items="visibleModules"
+                :disabled="!canSellNew || saving"
+                :ui="{ fieldset: 'grid gap-3 sm:grid-cols-2' }"
+              />
               <p v-if="!visibleModules.length" class="mt-2 text-sm text-muted">
                 Nenhum módulo está liberado para novos planos.
               </p>
@@ -231,22 +252,39 @@ defineExpose({ form, submit })
               A publicação não altera o valor nem os módulos de contratos já aceitos.
             </p>
           </div>
-
-          <div class="mt-5 flex flex-col-reverse justify-end gap-2 border-t border-default pt-4 sm:flex-row">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :disabled="saving"
-              @click="emit('update:open', false)"
-            >
-              Cancelar
-            </UButton>
-            <UButton type="submit" :loading="saving" :disabled="!canSellNew || saving || !!recoveryKey">
-              Salvar plano
-            </UButton>
-          </div>
         </form>
       </div>
     </template>
-  </USlideover>
+    <template #footer>
+      <div class="flex w-full flex-col-reverse justify-end gap-2 sm:flex-row">
+        <UButton
+          color="neutral"
+          variant="outline"
+          :disabled="saving"
+          @click="requestClose"
+        >
+          Cancelar
+        </UButton>
+        <UButton
+          form="office-erp-plan-form"
+          type="submit"
+          :loading="saving"
+          :disabled="!canSellNew || saving || !!recoveryKey"
+        >
+          Salvar plano
+        </UButton>
+      </div>
+    </template>
+  </UModal>
+  <UModal v-model:open="discardOpen" title="Descartar alterações?" description="As alterações não salvas serão perdidas." @after:leave="restoreEditorFocus">
+    <template #footer>
+      <UButton
+        label="Continuar editando"
+        color="neutral"
+        variant="outline"
+        @click="discardOpen = false"
+      />
+      <UButton label="Descartar alterações" color="error" @click="discardOpen = false; emit('update:open', false)" />
+    </template>
+  </UModal>
 </template>

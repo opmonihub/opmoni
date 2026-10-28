@@ -9,14 +9,14 @@
  * with `text-sm` cells and its own scroll root, not a bordered card table.
  */
 
+import { tableChromeUi } from './tableChrome.ts'
+
 /** Bordered card table: hairline row rules, elevated header strip, no outer border. */
 export const panelTableUi = {
   base: 'table-fixed border-separate border-spacing-0',
-  thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-  tbody: '[&>tr]:last:[&>td]:border-b-0',
+  ...tableChromeUi,
   th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-  td: 'border-b border-default',
-  separator: 'h-0'
+  td: 'border-b border-default'
 } as const
 
 /**

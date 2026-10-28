@@ -11,10 +11,19 @@ const operators = types.flatMap(type => operatorChoices(type).map(option => opti
 export function useOfficeTableNavigation(key: string, columns: string[], sortIds: string[] = [], options: { page?: boolean, pageSize?: boolean, views?: boolean } = {}) {
   function normalize(value: unknown): TableState {
     const input = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    const seenSortIds = new Set<string>()
+    const sorting = Array.isArray(input.sortIds)
+      ? input.sortIds.flatMap((id, index) => {
+          if (typeof id !== 'string' || !sortIds.includes(id) || seenSortIds.has(id)) return []
+          seenSortIds.add(id)
+          const direction = Array.isArray(input.sortDesc) ? input.sortDesc[index] : undefined
+          return [{ id, desc: typeof direction === 'boolean' ? direction : false }]
+        })
+      : []
     const output: TableState = {
       search: typeof input.search === 'string' ? input.search.slice(0, 1000) : '',
-      sortIds: Array.isArray(input.sortIds) ? input.sortIds.filter((id): id is string => typeof id === 'string' && sortIds.includes(id)) : [],
-      sortDesc: Array.isArray(input.sortDesc) ? input.sortDesc.filter((desc): desc is boolean => typeof desc === 'boolean') : []
+      sortIds: sorting.map(sort => sort.id),
+      sortDesc: sorting.map(sort => sort.desc)
     }
     if (options.page) output.page = Number.isSafeInteger(input.page) && Number(input.page) > 0 ? Number(input.page) : 1
     if (options.pageSize) output.pageSize = [25, 50, 100].includes(Number(input.pageSize)) ? Number(input.pageSize) : 25
