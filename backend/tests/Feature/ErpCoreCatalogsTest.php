@@ -269,6 +269,27 @@ class ErpCoreCatalogsTest extends TestCase
         $this->assertNotSame((int) $first->id, (int) $pageTwo->json('data.0.id'));
     }
 
+    public function test_brand_name_sort_is_validated_stable_and_applied_before_pagination(): void
+    {
+        $ctx = $this->ownerContext();
+        $first = ErpBrand::factory()->create(['erp_company_id' => $ctx['company']->id, 'name' => 'Alpha']);
+        $second = ErpBrand::factory()->create(['erp_company_id' => $ctx['company']->id, 'name' => 'Alpha']);
+        ErpBrand::factory()->create(['erp_company_id' => $ctx['company']->id, 'name' => 'Zulu']);
+
+        $this->withHeaders($ctx['headers'])
+            ->getJson('/api/v1/erp/brands?sort=name&direction=desc&per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 3)
+            ->assertJsonPath('data.0.name', 'Zulu');
+        $pageTwo = $this->withHeaders($ctx['headers'])
+            ->getJson('/api/v1/erp/brands?sort=name&direction=desc&per_page=1&page=2')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Alpha');
+
+        $this->assertSame((int) $second->id, (int) $pageTwo->json('data.0.id'));
+        $this->assertNotSame((int) $first->id, (int) $pageTwo->json('data.0.id'));
+    }
+
     public function test_catalog_identity_sort_fields_cover_carriers_vehicles_and_operation_natures(): void
     {
         $ctx = $this->ownerContext();
