@@ -252,7 +252,7 @@ watch(identity, () => {
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-col gap-5">
-    <OfficeErpPanel title="Recebimentos" description="Pagamentos registrados e suas alocações.">
+    <OfficeErpPanel title="Recebimentos">
       <template #action>
         <UButton icon="i-lucide-plus" @click="open=true">
           Registrar recebimento

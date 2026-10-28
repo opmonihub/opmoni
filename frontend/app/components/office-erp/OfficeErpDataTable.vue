@@ -58,7 +58,7 @@ const columnOptions = computed(() => tableColumns.value.flatMap((column) => {
     <div
       :class="[
         'max-w-full rounded-lg focus-visible:outline-2 focus-visible:outline-primary',
-        compact ? 'hidden md:block overflow-x-hidden' : 'overflow-x-auto'
+        compact ? 'overflow-x-hidden' : 'overflow-x-auto'
       ]"
       role="region"
       :aria-label="label"
@@ -73,9 +73,10 @@ const columnOptions = computed(() => tableColumns.value.flatMap((column) => {
         :ui="{
           ...panelTableUi,
           root: 'overflow-visible',
+          tr: 'data-[expanded=true]:bg-elevated/50',
           base: compact ? 'w-full min-w-0 table-fixed' : 'w-full min-w-[36rem] table-auto',
-          th: compact ? `${panelTableUi.th} px-2 whitespace-normal text-xs sm:px-3` : `${panelTableUi.th} whitespace-nowrap`,
-          td: compact ? `${panelTableUi.td} px-2 py-2 align-middle sm:px-3` : 'whitespace-nowrap py-2 align-middle tabular-nums',
+          th: compact ? 'border-b border-default px-2 py-3 text-xs font-medium whitespace-normal sm:px-3' : `${panelTableUi.th} whitespace-nowrap`,
+          td: compact ? `${panelTableUi.td} px-2 py-2 align-middle whitespace-normal sm:px-3` : 'whitespace-nowrap py-2 align-middle tabular-nums',
           ...ui
         }"
       >
@@ -83,9 +84,6 @@ const columnOptions = computed(() => tableColumns.value.flatMap((column) => {
           <slot :name="name" v-bind="slotData" />
         </template>
       </UTable>
-    </div>
-    <div v-if="compact" class="divide-y divide-default md:hidden" :aria-label="label">
-      <slot name="mobile" :data="data" />
     </div>
   </div>
 </template>

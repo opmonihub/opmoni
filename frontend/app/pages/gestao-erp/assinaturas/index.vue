@@ -53,11 +53,11 @@ const identityStamp = useOfficeErpReadIdentity(() => [
 ], () => context.capabilities.value?.capability_key)
 const reads = useOfficeErpReads(identityStamp)
 const columns: TableColumn<OfficeErpContractRow>[] = [
-  { id: 'details', header: '', meta: { class: { th: 'w-14' } } },
+  { id: 'details', header: '', meta: { class: { th: 'w-14', td: 'w-14' } } },
   { accessorKey: 'client', header: 'Cliente' },
-  { id: 'plan', header: 'Plano' },
-  { id: 'licence', header: 'Situação', meta: { class: { th: 'w-28' } } },
-  { id: 'actions', header: '', meta: { class: { th: 'w-32' } } }
+  { id: 'plan', header: 'Plano', meta: { class: { th: 'hidden sm:table-cell', td: 'hidden sm:table-cell' } } },
+  { id: 'licence', header: 'Situação', meta: { class: { th: 'hidden w-28 sm:table-cell', td: 'hidden sm:table-cell' } } },
+  { id: 'actions', header: '', meta: { class: { th: 'hidden w-24 sm:table-cell', td: 'hidden sm:table-cell' } } }
 ]
 const agreementStatusLabels: Record<string, string> = {
   draft: 'Rascunho',
@@ -141,7 +141,7 @@ watch(identityStamp, () => {
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-col gap-5">
-    <OfficeErpPanel title="Assinaturas" description="Contratos e situação das licenças ERP.">
+    <OfficeErpPanel title="Assinaturas">
       <template #toolbar>
         <UFormField label="Buscar contrato" class="w-full sm:max-w-sm">
           <UInput
@@ -202,9 +202,10 @@ watch(identityStamp, () => {
             </template>
             <template #client-cell="{ row }">
               <div class="min-w-0">
-                <p class="max-w-56 wrap-anywhere font-medium text-highlighted">
+                <p class="wrap-anywhere font-medium text-highlighted">
                   {{ row.original.client.name }}
                 </p>
+                <p class="mt-0.5 truncate text-xs text-muted sm:hidden">{{ row.original.erp_plan?.name || 'Plano indisponível' }}</p>
               </div>
             </template>
             <template #plan-cell="{ row }">
@@ -235,7 +236,12 @@ watch(identityStamp, () => {
               </UButton>
             </template>
             <template #expanded="{ row }">
-              <div class="grid gap-x-6 gap-y-3 px-4 py-3 text-sm sm:grid-cols-3">
+              <div class="grid gap-4 p-4 text-sm sm:grid-cols-2">
+                <div class="sm:hidden">
+                  <p class="text-xs text-muted">Plano e situação</p>
+                  <p class="wrap-anywhere text-highlighted">{{ row.original.erp_plan?.name || 'Plano indisponível' }} · {{ licenceStatusLabels[row.original.licence_status ?? ''] ?? 'Situação indisponível' }}</p>
+                  <p v-if="row.original.current_revision" class="text-muted">{{ formatOfficeErpMoney(row.original.current_revision.price) }}</p>
+                </div>
                 <div>
                   <p class="text-xs text-muted">
                     Empresa ERP
@@ -293,75 +299,6 @@ watch(identityStamp, () => {
                   Abrir contrato
                 </UButton>
               </div>
-            </template>
-            <template #mobile="{ data }">
-              <UCollapsible v-for="contract in data" :key="contract.id" class="py-3">
-                <UButton
-                  block
-                  color="neutral"
-                  variant="ghost"
-                  class="h-auto min-h-11 justify-between px-0 py-1 text-left"
-                >
-                  <template #leading>
-                    <span class="min-w-0 flex-1">
-                      <span class="block truncate font-medium text-highlighted">{{ contract.client.name }}</span>
-                      <span class="block truncate text-xs text-muted">{{ contract.erp_plan?.name ?? (contract.erp_plan_id ? `Plano #${contract.erp_plan_id}` : 'Plano indisponível') }}</span>
-                    </span>
-                  </template>
-                  <template #trailing>
-                    <UBadge :color="contract.licence_status === 'active' ? 'success' : 'warning'" variant="subtle" class="max-w-28 truncate">
-                      {{ contract.trial?.situation === 'trialing' ? 'Em teste' : contract.trial?.situation === 'expired' ? 'Teste encerrado' : licenceStatusLabels[contract.licence_status ?? ''] ?? 'Situação indisponível' }}
-                    </UBadge>
-                    <UIcon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted" />
-                  </template>
-                </UButton>
-                <template #content>
-                  <div class="space-y-3 pt-3 text-sm">
-                    <div class="grid grid-cols-2 gap-3">
-                      <div>
-                        <p class="text-xs text-muted">
-                          Empresa ERP
-                        </p><p class="wrap-anywhere">
-                          {{ contract.company?.name ?? 'Indisponível' }}
-                        </p>
-                      </div>
-                      <div>
-                        <p class="text-xs text-muted">
-                          Contrato
-                        </p><p>{{ agreementStatusLabels[contract.agreement_status] ?? 'Situação não reconhecida' }}</p>
-                      </div>
-                      <div>
-                        <p class="text-xs text-muted">
-                          Valor
-                        </p><p>{{ contract.current_revision ? formatOfficeErpMoney(contract.current_revision.price) : 'Indisponível' }}</p>
-                      </div>
-                      <div>
-                        <p class="text-xs text-muted">
-                          Próxima cobrança
-                        </p><p>{{ formatDate(contract.next_billing_on ?? '') }}</p>
-                      </div>
-                      <div>
-                        <p class="text-xs text-muted">
-                          Saldo em aberto
-                        </p><p>{{ formatOfficeErpMoney(contract.balance.outstanding) }}</p>
-                      </div>
-                      <div>
-                        <p class="text-xs text-muted">
-                          Acesso do responsável
-                        </p><p>{{ contract.company?.owner_setup_status === 'claimed' ? 'Configurado' : contract.company?.owner_setup_status === 'unclaimed' ? 'Aguardando configuração' : 'Indisponível' }}</p>
-                      </div>
-                    </div>
-                    <UButton
-                      :to="`/gestao-erp/assinaturas/${contract.id}`"
-                      variant="outline"
-                      size="sm"
-                      class="min-h-11"
-                    >
-                      Abrir contrato
-                    </UButton>
-                  </div>
-                </template>
-              </UCollapsible>
             </template>
             <template #empty>
               <div class="py-8 text-center text-sm text-muted">

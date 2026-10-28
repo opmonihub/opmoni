@@ -54,10 +54,10 @@ const identityStamp = useOfficeErpReadIdentity(() => [
 ], () => context.capabilities.value?.capability_key)
 const reads = useOfficeErpReads(identityStamp)
 const columns: TableColumn<OfficeErpPortfolioClient>[] = [
-  { id: 'details', header: '', meta: { class: { th: 'w-14' } } },
+  { id: 'details', header: '', meta: { class: { th: 'w-14', td: 'w-14' } } },
   { accessorKey: 'name', header: 'Cliente' },
-  { id: 'subscription', header: 'Plano e situação' },
-  { id: 'actions', header: '', meta: { class: { th: 'w-32' } } }
+  { id: 'subscription', header: 'Plano e situação', meta: { class: { th: 'hidden sm:table-cell', td: 'hidden sm:table-cell' } } },
+  { id: 'actions', header: '', meta: { class: { th: 'hidden w-32 sm:table-cell', td: 'hidden sm:table-cell' } } }
 ]
 
 const licenceLabels: Record<string, string> = {
@@ -184,7 +184,7 @@ watch(identityStamp, () => {
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-col gap-5">
-    <OfficeErpPanel title="Clientes ERP" description="Clientes e assinaturas ERP do escritório.">
+    <OfficeErpPanel title="Clientes ERP">
       <template #action>
         <div class="flex flex-wrap gap-2">
           <UButton
@@ -262,8 +262,11 @@ watch(identityStamp, () => {
           </template>
           <template #name-cell="{ row }">
             <div class="min-w-0">
-              <p class="max-w-72 font-medium wrap-anywhere text-highlighted">
+              <p class="font-medium wrap-anywhere text-highlighted">
                 {{ row.original.trade_name || row.original.name }}
+              </p>
+              <p class="mt-0.5 truncate text-xs text-muted sm:hidden">
+                {{ row.original.subscription?.erp_plan?.name || (row.original.subscription === null ? 'Sem assinatura' : 'Resumo indisponível') }}
               </p>
             </div>
           </template>
@@ -302,7 +305,17 @@ watch(identityStamp, () => {
             </div>
           </template>
           <template #expanded="{ row }">
-            <div class="grid gap-3 px-4 py-3 text-sm sm:grid-cols-3">
+            <div class="grid gap-4 p-4 text-sm sm:grid-cols-2">
+              <div class="sm:hidden">
+                <p class="text-xs text-muted">Plano e situação</p>
+                <p class="wrap-anywhere text-highlighted">{{ row.original.subscription?.erp_plan?.name || 'Sem plano' }} · {{ licenceLabels[row.original.subscription?.licence_status || ''] || 'Sem assinatura' }}</p>
+              </div>
+              <UButton
+                :to="row.original.subscription ? `/gestao-erp/assinaturas/${row.original.subscription.contract_id}` : clientSelectionTarget(row.original.id)"
+                color="neutral" variant="outline" class="min-h-11 w-fit sm:hidden"
+              >
+                {{ row.original.subscription ? 'Abrir contrato' : 'Ativar ERP' }}
+              </UButton>
               <div>
                 <p class="text-xs text-muted">
                   Razão social
@@ -343,84 +356,6 @@ watch(identityStamp, () => {
                 Selecionar da carteira
               </UButton>
             </div>
-          </template>
-          <template #mobile="{ data }">
-            <UCollapsible v-for="client in data" :key="client.id" class="py-3">
-              <UButton
-                block
-                color="neutral"
-                variant="ghost"
-                class="h-auto min-h-11 justify-between px-0 py-1 text-left"
-              >
-                <template #leading>
-                  <span class="min-w-0 flex-1 truncate font-medium text-highlighted">{{ client.trade_name || client.name }}</span>
-                </template>
-                <template #trailing>
-                  <span class="max-w-28 truncate text-xs text-muted">{{ client.subscription?.erp_plan?.name || (client.subscription === null ? 'Sem assinatura' : 'Resumo indisponível') }}</span>
-                  <UIcon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted" />
-                </template>
-              </UButton>
-              <template #content>
-                <div class="space-y-3 pt-3 text-sm">
-                  <div class="grid grid-cols-2 gap-3">
-                    <div>
-                      <p class="text-xs text-muted">
-                        Situação
-                      </p><p>{{ client.subscription?.trial?.situation === 'trialing' ? trialLabels.trialing : client.subscription?.trial?.situation === 'expired' ? trialLabels.expired : licenceLabels[client.subscription?.licence_status || ''] || (client.subscription === null ? 'Sem assinatura' : 'Indisponível') }}</p>
-                    </div>
-                    <div>
-                      <p class="text-xs text-muted">
-                        CNPJ
-                      </p><p>{{ client.tax_id || '—' }}</p>
-                    </div>
-                    <div>
-                      <p class="text-xs text-muted">
-                        Razão social
-                      </p><p class="wrap-anywhere">
-                        {{ client.name }}
-                      </p>
-                    </div>
-                    <div>
-                      <p class="text-xs text-muted">
-                        Próxima data
-                      </p><p>{{ client.subscription?.trial?.ends_at ? formatOfficeDate(client.subscription.trial.ends_at) : client.subscription ? formatOfficeDate(client.subscription.next_billing_on) || 'Próxima cobrança indisponível' : '—' }}</p>
-                    </div>
-                  </div>
-                  <div class="flex flex-wrap gap-2">
-                    <UButton
-                      v-if="client.subscription"
-                      :to="`/gestao-erp/assinaturas/${client.subscription.contract_id}`"
-                      color="neutral"
-                      variant="outline"
-                      size="sm"
-                      class="min-h-11"
-                    >
-                      Abrir contrato
-                    </UButton>
-                    <UButton
-                      v-if="client.subscription"
-                      :to="clientSelectionTarget(client.id)"
-                      color="neutral"
-                      variant="outline"
-                      size="sm"
-                      class="min-h-11"
-                    >
-                      Selecionar da carteira
-                    </UButton>
-                    <UButton
-                      v-else
-                      :to="clientSelectionTarget(client.id)"
-                      color="neutral"
-                      variant="outline"
-                      size="sm"
-                      class="min-h-11"
-                    >
-                      Ativar ERP
-                    </UButton>
-                  </div>
-                </div>
-              </template>
-            </UCollapsible>
           </template>
           <template #empty>
             <div class="py-8 text-center text-sm text-muted">

@@ -163,7 +163,7 @@ watch(identity, () => {
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-col gap-5">
-    <OfficeErpPanel title="Faturas" description="Cobranças, vencimentos e saldos.">
+    <OfficeErpPanel title="Faturas">
       <template #action>
         <div class="flex flex-wrap gap-2">
           <UButton
