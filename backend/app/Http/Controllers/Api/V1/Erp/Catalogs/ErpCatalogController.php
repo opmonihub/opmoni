@@ -22,6 +22,16 @@ abstract class ErpCatalogController extends Controller
     /** @return list<string> */
     abstract protected function searchableColumns(): array;
 
+    /** @return list<string> */
+    protected function sortableColumns(): array
+    {
+        return array_values(array_unique([
+            'id',
+            ...(in_array('name', $this->searchableColumns(), true) ? ['name'] : []),
+            'status',
+        ]));
+    }
+
     abstract protected function serialize(Model $model): array;
 
     /** @return list<string> */
@@ -33,13 +43,14 @@ abstract class ErpCatalogController extends Controller
     public function index(Request $request): JsonResponse
     {
         $companyId = $this->companyId($request);
-        $params = app(ErpCatalogScope::class)->listParams($request);
+        $catalogScope = app(ErpCatalogScope::class);
+        $params = $catalogScope->listParams($request);
+        $ordering = $catalogScope->orderingParams($request, $this->sortableColumns());
 
         /** @var Builder<Model> $query */
         $query = $this->modelClass()::query()
             ->with($this->indexRelations())
-            ->where('erp_company_id', $companyId)
-            ->orderBy('id');
+            ->where('erp_company_id', $companyId);
         $resource = ErpEstablishmentResource::forModel($this->modelClass());
         if ($resource !== null) {
             app(ErpEstablishmentAccess::class)->apply($query, CurrentCompany::fromRequest($request), $resource);
@@ -56,6 +67,15 @@ abstract class ErpCatalogController extends Controller
                     $inner->orWhere($column, 'like', $needle);
                 }
             });
+        }
+
+        $sortColumn = $ordering['sort'] ?? 'id';
+        if ($sortColumn !== 'id') {
+            $query->orderByRaw("CASE WHEN {$sortColumn} IS NULL THEN 1 ELSE 0 END ASC");
+        }
+        $query->orderBy($sortColumn, $ordering['direction']);
+        if ($sortColumn !== 'id') {
+            $query->orderBy('id', $ordering['direction']);
         }
 
         $page = $query->paginate($params['per_page']);

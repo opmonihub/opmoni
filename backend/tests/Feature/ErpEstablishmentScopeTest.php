@@ -931,4 +931,28 @@ class ErpEstablishmentScopeTest extends TestCase
         Storage::disk('local')->assertExists($exportRow->storage_path);
         Storage::disk('local')->assertExists($locationExportRow->storage_path);
     }
+
+    public function test_operation_nature_sorting_applies_selected_establishment_scope_before_pagination(): void
+    {
+        $allowed = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
+        $denied = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
+        $member = $this->selectedMember([$allowed->id]);
+        ErpOperationNature::factory()->create([
+            'erp_company_id' => $this->company->id,
+            'erp_establishment_id' => $allowed->id,
+            'cfop' => '5102',
+        ]);
+        ErpOperationNature::factory()->create([
+            'erp_company_id' => $this->company->id,
+            'erp_establishment_id' => $denied->id,
+            'cfop' => '6102',
+        ]);
+
+        $this->actingAs($member, 'web')
+            ->getJson('/api/v1/erp/tax-settings/operation-natures?sort=cfop&direction=desc&per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.erp_establishment_id', $allowed->id)
+            ->assertJsonPath('data.0.cfop', '5102');
+    }
 }

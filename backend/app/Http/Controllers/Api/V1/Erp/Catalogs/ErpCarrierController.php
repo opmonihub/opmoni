@@ -23,6 +23,11 @@ class ErpCarrierController extends ErpCatalogController
         return ['legal_name', 'tax_id'];
     }
 
+    protected function sortableColumns(): array
+    {
+        return ['id', 'legal_name', 'status'];
+    }
+
     protected function serialize(Model $model): array
     {
         /** @var ErpCarrier $model */

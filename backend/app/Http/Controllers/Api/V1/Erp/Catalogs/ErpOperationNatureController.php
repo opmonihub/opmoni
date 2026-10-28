@@ -27,6 +27,11 @@ class ErpOperationNatureController extends ErpCatalogController
         return ['cfop', 'description'];
     }
 
+    protected function sortableColumns(): array
+    {
+        return ['id', 'cfop', 'status'];
+    }
+
     protected function serialize(Model $model): array
     {
         /** @var ErpOperationNature $model */

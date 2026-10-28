@@ -22,6 +22,8 @@ interface Account {
 interface CatalogList {
   search: Vue.Ref<string>
   page: Vue.Ref<number>
+  sort: Vue.Ref<string>
+  direction: Vue.Ref<'asc' | 'desc'>
   pending: Vue.Ref<boolean>
   searchPending: Vue.Ref<boolean>
   state: Vue.Ref<{ data: Array<{ id: number, name: string }>, meta: Record<string, number> } | null>
@@ -31,6 +33,7 @@ interface CatalogList {
   authorityBlocked: Vue.ComputedRef<boolean>
   refresh(): Promise<void>
   retry(): Promise<void>
+  toggleSort(field: string): void
 }
 
 interface CatalogRequest {
@@ -65,11 +68,14 @@ function setupList(path = '/erp/products', initial: {
   actorId?: number | null
   sessionGeneration?: number
   memory?: Map<string, Vue.Ref>
+  supportOrdering?: boolean
+  query?: Record<string, unknown>
 } = {}) {
   const user = Vue.ref<{ id: number } | null>(initial.actorId === null ? null : { id: initial.actorId ?? 5 })
   const currentCompany = Vue.ref<Company | null>(initial.company === undefined ? company() : initial.company)
   const currentAccount = Vue.ref<Account | null>(initial.account ?? null)
   const sessionGeneration = Vue.ref(initial.sessionGeneration ?? 7)
+  const routeQuery = Vue.ref<Record<string, unknown>>(initial.query ?? {})
   const requests: CatalogRequest[] = []
   let refreshAuthCalls = 0
   let authRefresh: () => Promise<unknown> = async () => user.value
@@ -91,11 +97,12 @@ function setupList(path = '/erp/products', initial: {
     if (!memory.has(key)) memory.set(key, Vue.ref(init()))
     return memory.get(key) as Vue.Ref<T>
   }
-  const { useErpCatalogList } = loadAppComposable<{ useErpCatalogList(route: string): CatalogList }>(
+  const { useErpCatalogList } = loadAppComposable<{ useErpCatalogList(route: string, fixedQuery?: () => Record<string, string>, remember?: boolean, supportOrdering?: boolean): CatalogList }>(
     'composables/useErpCatalogList.ts',
     {
       useAuth,
       useState,
+      useRoute: () => ({ get query() { return routeQuery.value } }),
       useAccessApi: () => ({ api }),
       apiFailure,
       ref: Vue.ref,
@@ -105,7 +112,7 @@ function setupList(path = '/erp/products', initial: {
     }
   )
   const scope = Vue.effectScope()
-  const list = scope.run(() => useErpCatalogList(path))!
+  const list = scope.run(() => useErpCatalogList(path, () => ({}), true, initial.supportOrdering ?? false))!
 
   return {
     list,
@@ -115,6 +122,7 @@ function setupList(path = '/erp/products', initial: {
     currentCompany,
     currentAccount,
     sessionGeneration,
+    routeQuery,
     stop: () => scope.stop(),
     refreshAuthCalls: () => refreshAuthCalls,
     setAuthRefresh: (refresh: () => Promise<unknown>) => { authRefresh = refresh },
@@ -384,6 +392,68 @@ describe('shared ERP catalog list lifecycle', () => {
     assert.equal(app.requests.length, 3, 'the cancelled debounce must not replace the explicit page request')
     assert.equal(app.list.state.value?.data[0]?.name, 'Página 2')
     app.stop()
+  })
+
+  it('requests only allowlisted server ordering, defaults direction to ascending, and resets pagination once', async () => {
+    const app = setupList('/erp/carriers', {
+      company: company({ permissions: ['erp.carriers.index'] }),
+      supportOrdering: true
+    })
+    assert.equal(app.requests[0]!.url, '/erp/carriers?page=1')
+    app.requests[0]!.resolve(response('Página inicial'))
+    await app.settle()
+    app.list.page.value = 3
+    assert.equal(app.requests[1]!.url, '/erp/carriers?page=3')
+
+    app.list.toggleSort('legal_name')
+    assert.equal(app.list.page.value, 1)
+    assert.equal(app.requests.length, 3, 'sorting resets page and sends one request')
+    assert.equal(app.requests[1]!.options.signal?.aborted, true)
+    assert.equal(app.requests[2]!.url, '/erp/carriers?page=1&sort=legal_name&direction=asc')
+    app.requests[2]!.resolve(response('Ascendente'))
+    await app.settle()
+
+    app.list.toggleSort('legal_name')
+    assert.equal(app.requests[3]!.url, '/erp/carriers?page=1&sort=legal_name&direction=desc')
+    app.requests[3]!.resolve(response('Descendente'))
+    await app.settle()
+    app.list.toggleSort('legal_name')
+    assert.equal(app.list.sort.value, '')
+    assert.equal(app.requests[4]!.url, '/erp/carriers?page=1', 'clearing sort restores the exact legacy query')
+    app.stop()
+  })
+
+  it('gives valid direct URL criteria precedence over same-authority remembered ordering', async () => {
+    const first = setupList('/erp/carriers', {
+      company: company({ permissions: ['erp.carriers.index'] }),
+      supportOrdering: true
+    })
+    first.requests[0]!.resolve(response('Initial'))
+    await first.settle()
+    first.list.toggleSort('legal_name')
+    first.requests[1]!.resolve(response('Remembered'))
+    await first.settle()
+    first.stop()
+
+    const returned = setupList('/erp/carriers', {
+      company: company({ permissions: ['erp.carriers.index'] }),
+      supportOrdering: true,
+      memory: first.memory,
+      query: { sort: 'legal_name', direction: 'desc', page: '2', search: 'Explícita' }
+    })
+    try {
+      assert.equal(returned.list.sort.value, 'legal_name')
+      assert.equal(returned.list.direction.value, 'desc')
+      assert.equal(returned.list.page.value, 2)
+      assert.equal(returned.list.search.value, 'Explícita')
+      assert.equal(returned.requests[0]!.url, '/erp/carriers?page=2&search=Expl%C3%ADcita&sort=legal_name&direction=desc')
+      returned.routeQuery.value = { sort: 'unsupported', direction: 'desc' }
+      await returned.settle()
+      assert.equal(returned.list.sort.value, '')
+      assert.equal(returned.list.direction.value, 'asc')
+      assert.equal(returned.requests.length, 2)
+      assert.equal(returned.requests[1]!.url, '/erp/carriers?page=1')
+    } finally { returned.stop() }
   })
 
   it('keeps successful empty distinct from initial pending and initial failure', async (t) => {

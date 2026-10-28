@@ -7,6 +7,7 @@ use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 final class ErpCatalogScope
@@ -101,6 +102,26 @@ final class ErpCatalogScope
         if (! ErpProductVariant::query()->whereKey($variantId)->whereHas('product', fn ($query) => $query->where('erp_company_id', $companyId)->where('status', 'active'))->where('status', 'active')->exists()) {
             throw ValidationException::withMessages([$field => 'Variante inválida para esta empresa']);
         }
+    }
+
+    /**
+     * @param  list<string>  $sortableColumns
+     * @return array{direction: 'asc'|'desc', sort: ?string}
+     */
+    public function orderingParams(Request $request, array $sortableColumns): array
+    {
+        $ordering = $request->validate([
+            'sort' => ['sometimes', 'required', 'string', Rule::in($sortableColumns)],
+            'direction' => ['sometimes', 'required', 'string', Rule::in(['asc', 'desc'])],
+        ]);
+        if (array_key_exists('direction', $ordering) && ! array_key_exists('sort', $ordering)) {
+            throw ValidationException::withMessages(['direction' => 'A direção exige um campo de ordenação.']);
+        }
+
+        return [
+            'direction' => $ordering['direction'] ?? 'asc',
+            'sort' => $ordering['sort'] ?? null,
+        ];
     }
 
     /** @return array{per_page: int, search: ?string, status: ?string} */
