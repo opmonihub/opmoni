@@ -8,7 +8,7 @@
 
 **Tech Stack:** Laravel 13 / PHP 8.4, Nuxt 4 / Vue / TypeScript, existing Nuxt UI v4, PostgreSQL and Redis; no new runtime dependencies.
 
-**Spec:** [Design](../../../openspec/changes/simplify-office-erp-client-onboarding/design.md), [proposal](../../../openspec/changes/simplify-office-erp-client-onboarding/proposal.md), [capability deltas](../../../openspec/changes/simplify-office-erp-client-onboarding/specs/) and [tracked tasks](../../../openspec/changes/simplify-office-erp-client-onboarding/tasks.md).
+**Spec:** [Design](../../../openspec/changes/archive/2026-10-28-simplify-office-erp-client-onboarding/design.md), [proposal](../../../openspec/changes/archive/2026-10-28-simplify-office-erp-client-onboarding/proposal.md), [capability deltas](../../../openspec/changes/archive/2026-10-28-simplify-office-erp-client-onboarding/specs/) and [tracked tasks](../../../openspec/changes/archive/2026-10-28-simplify-office-erp-client-onboarding/tasks.md).
 
 ## Global Constraints
 
@@ -308,7 +308,7 @@ $this->assertSame(1, $firstPaidInvoiceCount);
 
 ### Task 12: Integrated acceptance, rollout documentation and scenario traceability
 
-**Files:** Modify `README.md`, `docs/architecture/product-decisions.md`, `docs/architecture/system-spec-reconciliation.md`; create `docs/reviews/2026-10-25-erp-client-onboarding/acceptance.md` and `docs/reviews/2026-10-25-erp-client-onboarding/scenario-crosswalk.csv`. Modify `openspec/changes/simplify-office-erp-client-onboarding/tasks.md` checkboxes only with accepted evidence. Keep main canonical specs unsynchronized until the intended sync/archive workflow.
+**Files:** Modify `README.md`, `docs/architecture/product-decisions.md`, `docs/architecture/system-spec-reconciliation.md`; create `docs/reviews/2026-10-25-erp-client-onboarding/acceptance.md` and `docs/reviews/2026-10-25-erp-client-onboarding/scenario-crosswalk.csv`. Modify `openspec/changes/archive/2026-10-28-simplify-office-erp-client-onboarding/tasks.md` checkboxes only with accepted evidence. Keep main canonical specs unsynchronized until the intended sync/archive workflow.
 
 **Interfaces:** Consume all capability scenarios and task evidence. The crosswalk maps each scenario to a real test/browser assertion, source commit, observed result and honest remaining boundary. New design provenance supersedes mandatory offer/invitation/no-trial clauses while preserving D009, financial history and old invitation compatibility.
 

@@ -27,7 +27,7 @@
 
 - [x] 5.1 Prove independent PostgreSQL/Redis races for last licence, same CNPJ across offices, link rotation/registration, duplicate conversion and expiry/conversion in two fresh processes; verify exact outcomes and retained-store repeatability without touching development stores.
 - [x] 5.2 Run relevant backend/frontend focused checks followed by regular suite, PostgreSQL profile, frontend lint/typecheck/tests/build and guarded browser signup/conversion/expiry flows; record exact source, counts, failures/skips and unverified boundaries before accepting completion.
-- [x] 5.3 Rehearse additive migration/compatible-app recovery on private restored stores and update product decisions, README, reconciliation and scenario evidence; verify preserved financial/identity snapshots, unchanged production gates and strict OpenSpec validation. Follow the detailed [implementation plan](../../../docs/superpowers/plans/2026-10-25-simplify-office-erp-client-onboarding.md).
+- [x] 5.3 Rehearse additive migration/compatible-app recovery on private restored stores and update product decisions, README, reconciliation and scenario evidence; verify preserved financial/identity snapshots, unchanged production gates and strict OpenSpec validation. Follow the detailed [implementation plan](../../../../docs/superpowers/plans/2026-10-25-simplify-office-erp-client-onboarding.md).
 
 ## 6. Plan navigation follow-up
 

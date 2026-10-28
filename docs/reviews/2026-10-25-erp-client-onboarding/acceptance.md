@@ -50,3 +50,7 @@ The historical full PostgreSQL profile on `cdbeef5` failed one outbox-concurrenc
 Parallel workers were requested with GPT-6 Luna medium/high, and focused independent reviews with GPT-6.1 Sol high. Runtime model/effort telemetry is unavailable, so actual routing is unconfirmed and no quantified savings claim is made.
 
 No canonical spec synchronization or change archival is included in this work. Registration and trial release gates remain disabled outside the private synthetic runtime. Fiscal, SERPRO, payment, provider delivery and production release gates remain unchanged. No production backup, live-provider call, email delivery, payment capture, fiscal transmission or release authorization was performed.
+
+## Canonical synchronization and archive follow-up
+
+On 2026-10-28, the user selected synchronization and archival of the completed 17-task change. All five delta capabilities now match their canonical counterparts; six requirements were added and ten modified. The [archive record](archive-record.md) records documentation validation and the archived source. This follow-up does not rerun or broaden the runtime acceptance above and does not change release or provider gates.
