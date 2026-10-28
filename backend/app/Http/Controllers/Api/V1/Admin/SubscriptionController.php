@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\IndexSubscriptionRequest;
 use App\Http\Resources\SubscriptionResource;
+use App\Models\Account;
 use App\Models\Subscription;
+use App\Support\ValidatedListOrdering;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -16,10 +19,21 @@ class SubscriptionController extends Controller
         $filters = $request->validated();
         $subscriptions = Subscription::with(['account', 'plan'])
             ->search($filters['q'] ?? null)
-            ->withStatus($filters['status'] ?? null)
-            ->orderByDesc('id')
-            ->paginate(15)
-            ->withQueryString();
+            ->withStatus($filters['status'] ?? null);
+        if (isset($filters['sort'])) {
+            ValidatedListOrdering::apply($subscriptions, $filters['sort'], $filters['direction'] ?? null, [
+                'id' => 'subscriptions.id',
+                'account' => static function (Builder $query, string $direction): void {
+                    $query->orderBy(Account::query()
+                        ->select('name')
+                        ->whereColumn('accounts.id', 'subscriptions.account_id'), $direction);
+                },
+                'status' => 'subscriptions.status',
+            ], 'subscriptions.id');
+        } else {
+            $subscriptions->orderByDesc('id');
+        }
+        $subscriptions = $subscriptions->paginate(15)->withQueryString();
 
         return SubscriptionResource::collection($subscriptions);
     }

@@ -11,11 +11,11 @@ final class ListCommercialRequest extends FormRequest
 {
     private const FILTERS = [
         'summary' => ['from_on', 'to_on', 'due_from', 'due_to'],
-        'clients' => ['search', 'page', 'per_page'],
-        'plans' => ['search', 'status', 'page', 'per_page'],
-        'contracts' => ['search', 'status', 'page', 'per_page'],
-        'invoices' => ['search', 'status', 'contract_id', 'from_on', 'to_on', 'due_from', 'due_to', 'page', 'per_page'],
-        'receipts' => ['search', 'status', 'from_on', 'to_on', 'page', 'per_page'],
+        'clients' => ['search', 'page', 'per_page', 'sort', 'direction'],
+        'plans' => ['search', 'status', 'page', 'per_page', 'sort', 'direction'],
+        'contracts' => ['search', 'status', 'page', 'per_page', 'sort', 'direction'],
+        'invoices' => ['search', 'status', 'contract_id', 'from_on', 'to_on', 'due_from', 'due_to', 'page', 'per_page', 'sort', 'direction'],
+        'receipts' => ['search', 'status', 'from_on', 'to_on', 'page', 'per_page', 'sort', 'direction'],
     ];
 
     public function authorize(): bool
@@ -46,6 +46,8 @@ final class ListCommercialRequest extends FormRequest
                 'contract_id' => ['sometimes', 'integer', 'min:1', 'max:9007199254740991'],
                 'page' => ['sometimes', 'integer', 'min:1'],
                 'per_page' => ['sometimes', 'integer', Rule::in([25, 50, 100])],
+                'sort' => ['sometimes', 'string', Rule::in(self::sortFields($resource))],
+                'direction' => ['sometimes', 'string', Rule::in(['asc', 'desc'])],
                 default => ['sometimes', 'date_format:Y-m-d'],
             };
         }
@@ -74,6 +76,9 @@ final class ListCommercialRequest extends FormRequest
     {
         abort_unless(isset(self::FILTERS[$resource]), 404);
         $input = self::normalizeAliases($resource, $input);
+        if (array_key_exists('direction', $input) && ! array_key_exists('sort', $input)) {
+            throw ValidationException::withMessages(['direction' => ['A direção exige um campo de ordenação.']]);
+        }
         $unknown = array_diff(array_keys($input), self::FILTERS[$resource]);
         if ($unknown !== []) {
             throw ValidationException::withMessages(array_fill_keys($unknown, 'Este filtro não se aplica a esta lista.'));
@@ -89,6 +94,19 @@ final class ListCommercialRequest extends FormRequest
         });
 
         return $validator->validate();
+    }
+
+    /** @return list<string> */
+    private static function sortFields(string $resource): array
+    {
+        return match ($resource) {
+            'clients' => ['id', 'name'],
+            'plans' => ['id', 'name', 'status'],
+            'contracts' => ['id', 'client', 'agreement_status'],
+            'invoices' => ['id', 'number', 'due_on', 'document_status'],
+            'receipts' => ['id', 'received_on', 'reference'],
+            default => [],
+        };
     }
 
     /** @param array<string, mixed> $input
