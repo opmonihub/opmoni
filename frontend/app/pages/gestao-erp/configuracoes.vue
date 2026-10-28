@@ -477,7 +477,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto flex w-full max-w-5xl flex-col gap-6">
+  <div class="mx-auto flex w-full max-w-2xl flex-col gap-6">
     <header class="space-y-1">
       <h2 class="text-base font-semibold text-highlighted">
         Configurações comerciais
@@ -516,13 +516,9 @@ onMounted(() => {
       </template>
     </UAlert>
 
-    <UCard v-if="canManageTrialLink || trialLinkLoading">
-      <template #header>
-        <div class="flex items-center justify-between gap-2">
-          <h2 class="font-semibold text-highlighted">
-            Link de teste ERP
-          </h2>
-          <UPopover :content="{ align: 'end' }">
+    <section v-if="canManageTrialLink || trialLinkLoading" class="space-y-3">
+      <UPageCard title="Link de teste ERP" variant="naked" orientation="horizontal" :ui="{ title: 'text-base font-semibold' }">
+        <UPopover :content="{ align: 'end' }">
             <UButton
               color="neutral"
               variant="ghost"
@@ -536,8 +532,8 @@ onMounted(() => {
               </p>
             </template>
           </UPopover>
-        </div>
-      </template>
+      </UPageCard>
+      <UPageCard variant="subtle" :ui="{ container: 'gap-0', body: 'space-y-5' }">
       <USkeleton v-if="trialLinkLoading" class="h-36 w-full" />
       <div v-else class="space-y-5">
         <UAlert
@@ -558,8 +554,8 @@ onMounted(() => {
           </template>
         </UAlert>
         <div v-if="trialLink?.url" class="space-y-2">
-          <UFormField label="Endereço público do teste">
-            <div class="flex flex-col gap-2 sm:flex-row">
+          <UFormField label="Endereço público do teste" class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div class="flex min-w-0 flex-col gap-2 sm:w-[65%] sm:flex-row">
               <UInput
                 :model-value="trialLink.url"
                 readonly
@@ -589,18 +585,22 @@ onMounted(() => {
           title="Nenhum plano disponível"
           description="O escritório precisa de capacidade ERP e módulos liberados pela plataforma para configurar um link de teste."
         />
-        <div v-else class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <UFormField label="Plano ERP do teste" required>
+        <div v-else class="space-y-4">
+          <UFormField label="Plano ERP do teste" required class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <USelect
               v-model="trialLinkPlanSelectModel"
               :items="trialLinkPlans.map(plan => ({ label: plan.name, value: plan.id }))"
               placeholder="Selecione um plano"
-              class="w-full"
+              class="w-full sm:w-64"
             />
           </UFormField>
-          <USwitch v-model="trialLinkEnabled" label="Link ativo" :disabled="trialLinkBusy || commandBusy || command.pending.value" />
+          <USeparator />
+          <div class="flex items-center justify-between gap-4">
+            <span class="text-sm font-medium text-highlighted">Link ativo</span>
+            <USwitch v-model="trialLinkEnabled" aria-label="Link ativo" :disabled="trialLinkBusy || commandBusy || command.pending.value" />
+          </div>
         </div>
-        <div class="flex flex-wrap items-center gap-3 border-t border-default pt-5">
+        <div class="flex flex-wrap items-center gap-3 border-t border-default pt-4">
           <UButton :loading="trialLinkBusy" :disabled="!trialLinkPlanId || !trialLinkPlans.length || trialLinkBusy || commandBusy || command.pending.value" @click="saveTrialLink">
             {{ trialLink?.configured ? 'Salvar link' : 'Criar link' }}
           </UButton>
@@ -616,7 +616,8 @@ onMounted(() => {
           </UButton>
         </div>
       </div>
-    </UCard>
+      </UPageCard>
+    </section>
     <UAlert
       v-if="recoveryKey && recoveryAction === 'trial-link'"
       color="warning"
@@ -669,13 +670,9 @@ onMounted(() => {
         role="alert"
       />
 
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between gap-2">
-            <h2 class="font-semibold text-highlighted">
-              Política de inadimplência
-            </h2>
-            <UPopover :content="{ align: 'end' }">
+      <section class="space-y-3">
+        <UPageCard title="Política de inadimplência" variant="naked" orientation="horizontal" :ui="{ title: 'text-base font-semibold' }">
+          <UPopover :content="{ align: 'end' }">
               <UButton
                 color="neutral"
                 variant="ghost"
@@ -689,9 +686,8 @@ onMounted(() => {
                 </p>
               </template>
             </UPopover>
-          </div>
-        </template>
-        <div class="space-y-4">
+        </UPageCard>
+        <UPageCard variant="subtle" :ui="{ container: 'gap-0', body: 'space-y-4' }">
           <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div class="max-w-2xl space-y-1">
               <p class="font-medium text-highlighted">
@@ -706,7 +702,8 @@ onMounted(() => {
             />
           </div>
 
-          <UFormField name="grace_days" label="Dias de tolerância" :error="fieldErrors.grace_days">
+          <USeparator />
+          <UFormField name="grace_days" label="Dias de tolerância" :error="fieldErrors.grace_days" class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <UInput
               v-model.number="settings.grace_days"
               type="number"
@@ -716,23 +713,24 @@ onMounted(() => {
               inputmode="numeric"
               :disabled="!canConfigure || commandBusy || command.pending.value"
               aria-describedby="grace-help"
-              class="w-full sm:max-w-xs"
+              class="w-full sm:w-64"
             />
             <template #help>
               <span id="grace-help">Prazo contado em dias corridos após o vencimento.</span>
             </template>
           </UFormField>
-          <UFormField name="billing_timezone" label="Fuso horário de cobrança" :error="fieldErrors.billing_timezone">
+          <USeparator />
+          <UFormField name="billing_timezone" label="Fuso horário de cobrança" :error="fieldErrors.billing_timezone" class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <UInput
               v-model="settings.billing_timezone"
               autocomplete="off"
               placeholder="America/Sao_Paulo"
               :disabled="!canConfigure || commandBusy || command.pending.value"
-              class="w-full sm:max-w-sm"
+              class="w-full sm:w-64"
             />
           </UFormField>
 
-          <div class="flex flex-wrap items-center gap-3 border-t border-default pt-5">
+          <div class="flex flex-wrap items-center gap-3 border-t border-default pt-4">
             <UButton
               color="neutral"
               variant="outline"
@@ -751,8 +749,8 @@ onMounted(() => {
               Salvar configuração
             </UButton>
           </div>
-        </div>
-      </UCard>
+        </UPageCard>
+      </section>
 
       <UAlert
         v-if="previewError"
@@ -775,22 +773,13 @@ onMounted(() => {
         </template>
       </UAlert>
 
-      <UCard v-if="preview">
-        <template #header>
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="space-y-1">
-              <h2 class="font-semibold text-highlighted">
-                Contratos afetados
-              </h2>
-              <p class="text-sm text-muted">
-                Resultado estimado para o rascunho atual. A prévia não salva alterações.
-              </p>
-            </div>
-            <UBadge color="warning" variant="subtle">
-              {{ totalAffected }} contratos afetados
-            </UBadge>
-          </div>
-        </template>
+      <section v-if="preview" class="space-y-3">
+        <UPageCard title="Contratos afetados" description="Resultado estimado para o rascunho atual. A prévia não salva alterações." variant="naked" orientation="horizontal" :ui="{ title: 'text-base font-semibold' }">
+          <UBadge color="warning" variant="subtle">
+            {{ totalAffected }} contratos afetados
+          </UBadge>
+        </UPageCard>
+        <UPageCard variant="subtle" :ui="{ container: 'gap-0', body: 'p-0' }">
         <div :class="panelBodyClass">
           <div class="overflow-x-auto">
             <UTable
@@ -830,7 +819,8 @@ onMounted(() => {
             </div>
           </footer>
         </div>
-      </UCard>
+        </UPageCard>
+      </section>
     </template>
 
     <UModal v-model:open="confirmOpen" title="Confirmar política automática" description="A suspensão por atraso será aplicada aos contratos que atendam às condições da pré-visualização.">

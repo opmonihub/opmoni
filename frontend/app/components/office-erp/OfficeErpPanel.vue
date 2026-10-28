@@ -3,25 +3,28 @@ defineProps<{ title: string, description?: string }>()
 </script>
 
 <template>
-  <section class="flex min-w-0 flex-col gap-5">
-    <header class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div class="min-w-0 space-y-1">
-        <h2 class="text-base font-semibold text-highlighted">
-          {{ title }}
-        </h2>
-        <p v-if="description" class="max-w-3xl text-sm text-muted">
-          {{ description }}
-        </p>
-      </div>
-      <div v-if="$slots.action" class="flex shrink-0 flex-wrap items-center gap-2">
-        <slot name="action" />
-      </div>
-    </header>
-    <div class="min-w-0 overflow-hidden rounded-xl border border-default bg-default">
-      <div v-if="$slots.toolbar" class="flex flex-wrap items-end gap-3 border-b border-default p-4">
+  <section class="flex min-w-0 flex-col gap-3">
+    <UPageCard
+      :title="title"
+      :description="description"
+      variant="naked"
+      orientation="horizontal"
+      :ui="{ root: 'items-start', container: 'items-start', header: 'gap-1', title: 'text-base font-semibold', body: 'shrink-0' }"
+    >
+      <template v-if="$slots.action" #default>
+        <div class="flex shrink-0 flex-wrap items-center gap-2 sm:ms-auto">
+          <slot name="action" />
+        </div>
+      </template>
+    </UPageCard>
+    <UPageCard
+      variant="subtle"
+      :ui="{ root: 'min-w-0', container: 'min-w-0 gap-0', body: 'min-w-0 p-0' }"
+    >
+      <div v-if="$slots.toolbar" class="flex flex-wrap items-center gap-3 border-b border-default px-4 py-3">
         <slot name="toolbar" />
       </div>
       <slot />
-    </div>
+    </UPageCard>
   </section>
 </template>

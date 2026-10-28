@@ -84,7 +84,7 @@ const pageTabs = computed<NavigationMenuItem[][]>(() => [[{
       </template>
 
       <template #body>
-        <div class="mx-auto w-full max-w-[100rem]">
+        <div class="mx-auto w-full max-w-4xl">
           <NuxtPage />
         </div>
       </template>
