@@ -8,7 +8,25 @@ import { retryAfterSeconds } from '../shared/utils/access.ts'
 import { canRegisterTypedCnpj } from '../app/utils/taxId.ts'
 import { formatOfficeErpCompanyDate, officeErpContractAmendmentAction, officeErpContractStatusLabel, officeErpTrialStatusLabel } from '../app/utils/officeErpContractAmendment.ts'
 
+const memberPresentation: Record<string, Vue.Component> = {
+  UAvatar: { setup: () => () => Vue.h('span') },
+  UIcon: { setup: () => () => Vue.h('span') },
+  OfficeErpDataTable: {
+    props: ['data'],
+    setup(props, { slots }) {
+      return () => Vue.h('table', (props.data as unknown[]).map(member => Vue.h('tr', ['user', 'role', 'status', 'actions'].map(column => Vue.h('td', slots[`${column}-cell`]?.({ row: { original: member } }))))))
+    }
+  },
+  UDropdownMenu: {
+    props: ['items'],
+    setup(props, { slots }) {
+      return () => Vue.h('div', [slots.default?.(), ...(props.items as Array<{ label: string, disabled?: boolean, onSelect?: () => void }>).map(item => Vue.h('button', { ...item, onClick: item.onSelect }, item.label))])
+    }
+  }
+}
+
 const pagePaths = [
+  'pages/gestao-erp/assinaturas/empresas/[companyId]/membros.vue',
   'pages/gestao-erp/empresas/index.vue',
   'pages/gestao-erp/empresas/nova.vue',
   'components/office-erp/OfficeErpCompanyPortfolioModal.vue',
@@ -18,7 +36,7 @@ const pagePaths = [
   'pages/gestao-erp/assinaturas/contratos.vue',
   'pages/gestao-erp/assinaturas/[id].vue',
   'pages/gestao-erp/assinaturas/empresas/[companyId].vue',
-  'pages/gestao-erp/assinaturas/empresas/[companyId]/membros.vue',
+  'components/office-erp/OfficeErpCompanyMembers.vue',
   'pages/gestao-erp/assinaturas/empresas/[companyId]/membros/[membershipId]/recuperar.vue',
   'pages/erp/convite.vue',
   'pages/redefinir-senha.vue'
@@ -31,7 +49,7 @@ it('compiles the real Company, membership, invitation and recovery SFCs', () => 
     'components/office-erp/OfficeErpCompanyInspectionModal.vue',
     'components/office-erp/OfficeErpCompanyAssignmentModal.vue',
     'components/office-erp/OfficeErpCompanyPortfolioModal.vue',
-    'pages/gestao-erp/assinaturas/empresas/[companyId]/membros.vue'
+    'components/office-erp/OfficeErpCompanyMembers.vue'
   ])
     assert.match(vueSource(path), /<template #footer>/, `${path} keeps its primary actions in the installed UModal footer slot`)
   for (const path of [
@@ -42,7 +60,7 @@ it('compiles the real Company, membership, invitation and recovery SFCs', () => 
     assert.match(vueSource(path), /useModalFocusReturn/)
     assert.match(vueSource(path), /@after:leave="restoreModalFocus"/)
   }
-  const members = vueSource('pages/gestao-erp/assinaturas/empresas/[companyId]/membros.vue')
+  const members = vueSource('components/office-erp/OfficeErpCompanyMembers.vue')
   assert.match(members, /@after:leave="restoreEditorFocus"/)
   assert.match(members, /@after:leave="restoreDestructiveFocus"/)
 })
@@ -70,11 +88,13 @@ it('uses the contract API amendment action for module set changes and formats bi
 it('renders Company contract and trial states in Portuguese without exposing API codes', async (t) => {
   const user = Vue.ref({ id: 1 })
   const account = Vue.ref({ id: 8, status: 'active', role: 'admin' })
-  const capabilities = Vue.ref({ can_read: true, capability_key: 'cap-1', allowance: { module_keys: [] } })
+  const capabilities = Vue.ref({ can_read: true, can_maintain: true, capability_key: 'cap-1', allowance: { module_keys: [] } })
   const route = Vue.reactive({ path: '/gestao-erp/assinaturas/empresas/41', params: { companyId: '41' }, query: {} as Record<string, string> })
   const profile = { name: 'Empresa Teste LTDA', trade_name: null, tax_regime: 'other', contact_person: null, email: null, phone: null, whatsapp: null, street_type: null, street: null, address_number: null, address_complement: null, district: null, postal_code: null, city: null, state: null, ie: null }
   const company = { id: 41, registration_id: 61, client_id: 71, name: profile.name, cnpj: '123', registered_at: '2026-11-28', owner_setup_status: 'claimed', current_contract_id: 81, capabilities: { relationship: 'current', can_edit_profile: false, can_assign: false, can_manage_members: false, capability_key: 'cap-1' }, profile, profile_version: 'a'.repeat(64) }
   const api = async (path: string) => {
+    if (path === '/erp-commercial/companies/41/members') return { data: [{ kind: 'membership', id: 25, user: { id: 4, name: 'Marina Costa', email: 'marina@example.test' }, role: 'manager', status: 'active', establishment_scope: 'all', establishment_ids: [], effective_permissions: [] }], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }
+    if (path === '/erp-commercial/companies/41/member-options') return { data: { permissions: [], roles: [], establishments: [] } }
     if (path === '/erp-commercial/companies/41') return { data: company }
     if (path === '/erp-commercial/companies/41/subscription') return { data: { company: { id: 41, name: profile.name }, relationship: 'current', subscription: { id: 21, status: 'canceled', erp_plan_id: 71, erp_plan: { id: 71, name: 'Plano ERP' } }, current_contract: { id: 81, agreement_status: 'canceled', current_revision: null, pending_revision: null, service_anchor_on: null, next_billing_on: null, cancel_effective_on: null, manual_hold: false, invoice_ids: [] }, trial: { ends_at: '2026-11-28T12:00:00Z', situation: 'trialing' }, allocation: null, balance: { outstanding: '0.00', invoice_count: 0 }, action_capabilities: {} } }
     if (path === '/erp-commercial/companies/41/contracts') return { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } }
@@ -98,7 +118,8 @@ it('renders Company contract and trial states in Portuguese without exposing API
     '~/composables/useOfficeErpReadIdentity': { useOfficeErpReadIdentity: (getIdentity: () => unknown, getCapability?: () => unknown) => Vue.computed(() => JSON.stringify([getIdentity(), getCapability?.()])) },
     '~/composables/useOfficeErpReads': { useOfficeErpReads: () => ({ begin: () => ({ current: () => true, signal: undefined }), cancel() {} }) }
   }
-  const mounted = mountVueComponent(compileVueComponent('pages/gestao-erp/assinaturas/empresas/[companyId].vue', bindings, modules))
+  const membersComponent = compileVueComponent('components/office-erp/OfficeErpCompanyMembers.vue', bindings, modules)
+  const mounted = mountVueComponent(compileVueComponent('pages/gestao-erp/assinaturas/empresas/[companyId].vue', bindings, modules), { ...memberPresentation, OfficeErpCompanyMembers: membersComponent })
   t.after(mounted.unmount)
   for (let index = 0; index < 8; index++) {
     await Vue.nextTick()
@@ -107,6 +128,14 @@ it('renders Company contract and trial states in Portuguese without exposing API
   assert.match(mounted.text(), /Cancelada/)
   assert.match(mounted.text(), /Em período de teste/)
   assert.doesNotMatch(mounted.text(), /canceled|trialing/)
+  company.capabilities.can_manage_members = true
+  route.query.secao = 'members'
+  for (let index = 0; index < 8; index++) {
+    await Vue.nextTick()
+    await new Promise(resolve => setImmediate(resolve))
+  }
+  assert.match(mounted.text(), /Marina Costa/, 'the members section renders the real management view in place')
+  assert.doesNotMatch(mounted.text(), /Abrir usuários e acessos/, 'the section does not require another navigation step')
 })
 
 it('marks only the public continuation receiver routes no-store and no-referrer in SSR middleware', () => {
@@ -819,7 +848,13 @@ it('mounted Company inspection preserves a 409 draft and shows named validation 
   }
   const component = compileVueComponent('components/office-erp/OfficeErpCompanyInspectionModal.vue', bindings, modules)
   let updatedEvents = 0
-  const mounted = mountVueComponent(component, {}, {
+  const mounted = mountVueComponent(component, {
+    UIcon: memberPresentation.UIcon!,
+    UModal: {
+      props: ['open', 'title'],
+      setup(props, { slots }) { return () => props.open ? Vue.h('section', [props.title, slots.body?.(), slots.footer?.()]) : null }
+    }
+  }, {
     open: true,
     companyId: 41,
     onUpdated: () => {
@@ -831,13 +866,39 @@ it('mounted Company inspection preserves a 409 draft and shows named validation 
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
   }
-  const nameInput = mounted.nodes(node => node.tag === 'input' && node.props.maxlength === 255)[0]
+  assert.equal(mounted.nodes(node => node.tag === 'input').length, 0, 'Ver cadastro starts with readable company facts, without editable controls')
+  assert.match(mounted.text(), /Dados cadastrais/)
+  assert.match(mounted.text(), /Contatos/)
+  assert.match(mounted.text(), /Endereço/)
+  const edit = mounted.nodes(node => node.tag === 'button' && node.children.some(child => child.text?.includes('Editar cadastro')))[0]
+  assert.ok(edit, 'profile editing is an explicit action')
+  ;(edit.props.onClick as () => void)()
+  await Vue.nextTick()
+  let nameInput = mounted.nodes(node => node.tag === 'input' && node.props.maxlength === 255)[0]
   assert.ok(nameInput)
   ;(nameInput.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'Empresa com rascunho LTDA' } })
   await Vue.nextTick()
   const renderText = (node: { text?: string, children: Array<{ text?: string, children: unknown[] }> }): string => `${node.text ?? ''}${node.children.map(child => renderText(child as { text?: string, children: Array<{ text?: string, children: unknown[] }> })).join('')}`
   const button = (label: string) => mounted.nodes(node => node.tag === 'button' && renderText(node).includes(label))[0]
-  ;(button('Salvar perfil').props.onClick as () => Promise<void>)()
+  const submitProfile = () => (mounted.nodes(node => node.tag === 'form' && node.props.id === 'company-profile')[0]!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+  ;(button('Cancelar edição').props.onClick as () => void)()
+  await Vue.nextTick()
+  assert.match(mounted.text(), /Descartar alterações\?/)
+  assert.equal(nameInput.props.value, 'Empresa com rascunho LTDA', 'cancelling does not silently discard the draft')
+  ;(button('Continuar editando').props.onClick as () => void)()
+  await Vue.nextTick()
+  ;(button('Cancelar edição').props.onClick as () => void)()
+  await Vue.nextTick()
+  ;(button('Descartar alterações').props.onClick as () => void)()
+  await Vue.nextTick()
+  assert.equal(mounted.nodes(node => node.tag === 'input').length, 0, 'explicit discard returns to the saved facts')
+  ;(button('Editar cadastro').props.onClick as () => void)()
+  await Vue.nextTick()
+  nameInput = mounted.nodes(node => node.tag === 'input' && node.props.maxlength === 255)[0]
+  assert.equal(nameInput!.props.value, 'Empresa de Exemplo LTDA', 'discard restores the confirmed Company profile')
+  ;(nameInput!.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'Empresa com rascunho LTDA' } })
+  await Vue.nextTick()
+  submitProfile()
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -856,7 +917,7 @@ it('mounted Company inspection preserves a 409 draft and shows named validation 
   assert.equal(refreshedName.props.value, 'Empresa Nova Sincronizada LTDA')
   ;(refreshedName.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'Razão social muito curta' } })
   await Vue.nextTick()
-  ;(button('Salvar perfil').props.onClick as () => Promise<void>)()
+  submitProfile()
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -869,7 +930,7 @@ it('mounted Company inspection preserves a 409 draft and shows named validation 
   assert.equal(refreshedName.props.value, 'Razão social muito curta')
   ;(refreshedName.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'Empresa com resposta tardia LTDA' } })
   await Vue.nextTick()
-  ;(button('Salvar perfil').props.onClick as () => Promise<void>)()
+  submitProfile()
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(writeAttempt, 3)
   mounted.unmount()
@@ -1042,16 +1103,6 @@ it('mounted Companies row opens the shared assignment modal and navigates only t
       }
     }
   })
-  let mobileMenuItems: Array<Array<{ label: string, onSelect: () => unknown }>> = []
-  const dropdown = Vue.defineComponent({
-    props: ['items'],
-    setup(props, { slots }) {
-      return () => {
-        mobileMenuItems = props.items as Array<Array<{ label: string, onSelect: () => unknown }>>
-        return Vue.h('div', { 'data-mobile-actions': 'true' }, slots.default?.())
-      }
-    }
-  })
   let assignmentProps: { open: boolean, companyId: number | null, canAssign: boolean } | null = null
   const assignmentHost = Vue.defineComponent({
     props: ['open', 'companyId', 'companyName', 'canAssign', 'currentContractId'],
@@ -1069,7 +1120,7 @@ it('mounted Companies row opens the shared assignment modal and navigates only t
   })
   const assignmentComponent = compileVueComponent('components/office-erp/OfficeErpCompanyAssignmentModal.vue', bindings, modules)
   const listComponent = compileVueComponent('pages/gestao-erp/empresas/index.vue', bindings, modules)
-  const mounted = mountVueComponent(listComponent, { OfficeErpDataTable: dataTable, UDropdownMenu: dropdown, OfficeErpCompanyAssignmentModal: assignmentHost })
+  const mounted = mountVueComponent(listComponent, { OfficeErpDataTable: dataTable, OfficeErpCompanyAssignmentModal: assignmentHost })
   t.after(mounted.unmount)
   for (let index = 0; index < 8; index++) {
     await Vue.nextTick()
@@ -1079,14 +1130,11 @@ it('mounted Companies row opens the shared assignment modal and navigates only t
   const rowAssign = buttons('Adicionar assinatura')[0]
   assert.ok(rowAssign, 'the unassigned Company row exposes its can_assign action')
   assert.equal(rowAssign.props.color, 'neutral', 'ordinary subscription assignments use the neutral design-system color')
-  assert.equal(rowAssign.props.variant, 'outline')
+  assert.equal(rowAssign.props.variant, 'solid')
   assert.match(String(rowAssign.props.onClick), /openAssignment/)
   assert.ok(mobileColumns.includes('actions'), 'row actions remain visible in the compact mobile table')
-  const assignmentMenu = mounted.nodes(node => node.props['data-mobile-actions'] === 'true')[0]
-  assert.ok(assignmentMenu, 'mobile row actions use the Nuxt UI action menu')
   assert.ok(apiCalls.includes('/erp-commercial/companies'))
-  const mobileAssignment = mobileMenuItems.flat().find(item => item.label === 'Adicionar assinatura')
-  assert.ok(mobileAssignment, 'the mobile action menu includes the target-bound assignment action')
+  assert.ok(buttons('Ver cadastro')[0], 'the Company row exposes its inspection action beside assignment')
   ;(rowAssign.props.onClick as () => void)()
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
@@ -1318,7 +1366,7 @@ it('mounted member editor hides Owner mutations, strips Viewer write permissions
     '~/composables/useOfficeErpReadIdentity': { useOfficeErpReadIdentity: (getIdentity: () => unknown, getCapability?: () => unknown) => Vue.computed(() => JSON.stringify([getIdentity(), getCapability?.()])) },
     '~/composables/useOfficeErpReads': { useOfficeErpReads: () => ({ begin: () => ({ current: () => true, signal: undefined }) }) }
   }
-  const mounted = mountVueComponent(compileVueComponent('pages/gestao-erp/assinaturas/empresas/[companyId]/membros.vue', bindings, modules))
+  const mounted = mountVueComponent(compileVueComponent('components/office-erp/OfficeErpCompanyMembers.vue', bindings, modules), memberPresentation)
   t.after(mounted.unmount)
   for (let index = 0; index < 6; index++) {
     await Vue.nextTick()
@@ -1326,15 +1374,15 @@ it('mounted member editor hides Owner mutations, strips Viewer write permissions
   }
   const renderText = (node: { text?: string, children: Array<{ text?: string, children: unknown[] }> }): string => `${node.text ?? ''}${node.children.map(child => renderText(child as { text?: string, children: Array<{ text?: string, children: unknown[] }> })).join('')}`
   const buttons = (label: string) => mounted.nodes(node => node.tag === 'button' && renderText(node).includes(label))
-  assert.equal(buttons('Editar acesso').length, 5)
+  assert.equal(buttons('Administrar usuário').length, 5)
   assert.equal(buttons('Recuperar acesso').length, 5, 'credential recovery remains available for Owner and self memberships when allowed by target policy')
   assert.ok(buttons('Recuperar acesso').some(button => button.props.to === '/gestao-erp/assinaturas/empresas/41/membros/21/recuperar'))
   assert.ok(buttons('Recuperar acesso').some(button => button.props.to === '/gestao-erp/assinaturas/empresas/41/membros/23/recuperar'))
-  assert.equal(buttons('Editar acesso')[0]!.props.disabled, true, 'Owner editing is disabled')
-  assert.equal(buttons('Editar acesso')[2]!.props.disabled, true, 'self editing is disabled')
+  assert.equal(buttons('Administrar usuário')[0]!.props.disabled, true, 'Owner editing is disabled')
+  assert.equal(buttons('Administrar usuário')[2]!.props.disabled, true, 'self editing is disabled')
   assert.equal(buttons('Remover acesso').length, 4, 'Owner removal is absent')
   assert.equal(buttons('Remover acesso')[1]!.props.disabled, true, 'self removal is disabled')
-  ;(buttons('Editar acesso')[1]!.props.onClick as () => Promise<void>)()
+  ;(buttons('Administrar usuário')[1]!.props.onClick as () => Promise<void>)()
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -1347,7 +1395,7 @@ it('mounted member editor hides Owner mutations, strips Viewer write permissions
   assert.match(String(permissions.props['data-items']), /Consultar empresas/)
   assert.doesNotMatch(String(permissions.props['data-items']), /Editar usuários/)
 
-  ;(buttons('Editar acesso')[3]!.props.onClick as () => Promise<void>)()
+  ;(buttons('Administrar usuário')[3]!.props.onClick as () => Promise<void>)()
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -1361,7 +1409,7 @@ it('mounted member editor hides Owner mutations, strips Viewer write permissions
     await new Promise(resolve => setImmediate(resolve))
   }
   assert.ok(writes.some(write => write.path.endsWith('/members/25') && write.method === 'PATCH' && JSON.stringify(write.body) === JSON.stringify({ role: 'manager', permissions_mode: 'defaults', action_permissions: null, establishment_scope: 'all', establishment_ids: [] })))
-  ;(buttons('Editar acesso')[4]!.props.onClick as () => Promise<void>)()
+  ;(buttons('Administrar usuário')[4]!.props.onClick as () => Promise<void>)()
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -1465,14 +1513,14 @@ it('mounted member editor ignores delayed Company A options after an Account swi
     '~/composables/useOfficeErpReadIdentity': { useOfficeErpReadIdentity: (getIdentity: () => unknown, getCapability?: () => unknown) => Vue.computed(() => JSON.stringify([getIdentity(), getCapability?.()])) },
     '~/composables/useOfficeErpReads': { useOfficeErpReads: () => ({ begin: () => ({ current: () => true, signal: undefined }) }) }
   }
-  const mounted = mountVueComponent(compileVueComponent('pages/gestao-erp/assinaturas/empresas/[companyId]/membros.vue', bindings, modules))
+  const mounted = mountVueComponent(compileVueComponent('components/office-erp/OfficeErpCompanyMembers.vue', bindings, modules), memberPresentation)
   t.after(mounted.unmount)
   for (let index = 0; index < 6; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
   }
   const renderText = (node: { text?: string, children: Array<{ text?: string, children: unknown[] }> }): string => `${node.text ?? ''}${node.children.map(child => renderText(child as { text?: string, children: Array<{ text?: string, children: unknown[] }> })).join('')}`
-  const editButton = () => mounted.nodes(node => node.tag === 'button' && renderText(node).includes('Editar acesso'))[0]!
+  const editButton = () => mounted.nodes(node => node.tag === 'button' && renderText(node).includes('Administrar usuário'))[0]!
   ;(editButton().props.onClick as () => Promise<void>)()
   await Vue.nextTick()
   assert.equal(optionReads, 2)
@@ -1534,13 +1582,13 @@ it('mounted member list yields to the credential child and ignores a delayed edi
     '~/composables/useOfficeErpReads': { useOfficeErpReads: () => ({ begin: () => ({ current: () => true, signal: undefined }), cancel() {} }) }
   }
   const recoveryPage = Vue.defineComponent({ setup: () => () => Vue.h('p', {}, 'Recuperação do usuário selecionado') })
-  const mounted = mountVueComponent(compileVueComponent('pages/gestao-erp/assinaturas/empresas/[companyId]/membros.vue', bindings, modules), { NuxtPage: recoveryPage })
+  const mounted = mountVueComponent(compileVueComponent('components/office-erp/OfficeErpCompanyMembers.vue', bindings, modules), { ...memberPresentation, NuxtPage: recoveryPage })
   t.after(mounted.unmount)
   for (let index = 0; index < 7; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
   }
-  const edit = mounted.nodes(node => node.tag === 'button' && node.children.some(child => child.text?.includes('Editar acesso')))[0]
+  const edit = mounted.nodes(node => node.tag === 'button' && node.children.some(child => child.text?.includes('Administrar usuário')))[0]
   assert.ok(edit)
   const openingEditor = (edit.props.onClick as () => Promise<void>)()
   await Vue.nextTick()

@@ -7,7 +7,10 @@ import { listNavigationField } from '~/composables/useListNavigationState'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { officeErpSortParams } from '~/utils/officeErpListSort'
-import { panelBodyClass } from '~/components/data-table/panel'
+import { companyListBodyClass, companyListFooterClass, companyListTableUi } from '~/components/office-erp/companyList'
+import { formatTaxId } from '~/utils/taxId'
+import type { FilterPanelColumn } from '~/utils/filterPanel'
+import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -36,6 +39,11 @@ const perPage = listNavigationField(navigation, 'perPage')
 const state = listNavigationField(navigation, 'state')
 const sort = listNavigationField(navigation, 'sort')
 const direction = listNavigationField(navigation, 'direction')
+const companyFilterColumns: FilterPanelColumn[] = [{ id: 'state', label: 'Assinatura', icon: 'i-lucide-file-key', control: 'select', options: [{ label: 'Com assinatura', value: 'applied' }, { label: 'Sem assinatura', value: 'unassigned' }] }]
+const companyFilters = computed<DataTableFilterModel[]>({
+  get: (): DataTableFilterModel[] => state.value === 'all' ? [] : [{ columnId: 'state', type: 'option', operator: 'is', values: [state.value] }],
+  set: filters => updateState(String(filters.find(filter => filter.columnId === 'state')?.values[0] ?? 'all'))
+})
 const debouncedQuery = refDebounced(query, 300)
 const manualSearch = ref(false)
 const searchTerm = computed(() => !manualSearch.value && typeof route.query?.q === 'string' && route.query.q === query.value ? query.value : debouncedQuery.value)
@@ -55,16 +63,15 @@ let disposed = false
 const identityStamp = useOfficeErpReadIdentity(() => [user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null], () => context.capabilities.value?.capability_key)
 const reads = useOfficeErpReads(identityStamp)
 const columns: TableColumn<OfficeErpCompany>[] = [
-  { accessorKey: 'name', header: 'Empresa', meta: { class: { th: 'w-full min-w-0 md:w-[32%]', td: 'w-full min-w-0 md:w-[32%]' } } },
-  { accessorKey: 'cnpj', header: 'CNPJ' },
-  { id: 'registration', header: 'Cadastro' },
-  { id: 'situation', header: 'Situação' },
-  { id: 'actions', header: '', meta: { class: { th: 'w-11 min-w-11 max-w-11 px-0 md:w-[26%] md:min-w-0 md:max-w-none md:px-3', td: 'w-11 min-w-11 max-w-11 px-0 md:w-[26%] md:min-w-0 md:max-w-none md:px-3' } } }
+  { accessorKey: 'name', header: 'Empresa', enableSorting: true, meta: { class: { th: 'w-[55%] min-w-0 md:w-[45%]', td: 'w-[55%] min-w-0 md:w-[45%]' } } },
+  { accessorKey: 'registered_at', header: 'Cadastrada em', enableSorting: true, meta: { class: { th: 'md:w-[20%]', td: 'tabular-nums md:w-[20%]' } } },
+  { id: 'actions', header: '', meta: { class: { th: 'w-[45%] md:w-[35%]', td: 'w-[45%] md:w-[35%]' } } }
 ]
+const tableSorting = computed(() => sort.value ? [{ id: sort.value, desc: direction.value === 'desc' }] : [])
 
 function formattedDate(value: string) {
   const date = new Date(value)
-  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' }).format(date) : 'Data indisponível'
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(date) : 'Data indisponível'
 }
 function updateQuery(value: string) {
   manualSearch.value = true
@@ -92,13 +99,6 @@ function openAssignment(row: OfficeErpCompany) {
   assignmentIdentity = identityStamp.value
   assignmentTarget.value = row
   assignmentOpen.value = true
-}
-function companyActionItems(row: OfficeErpCompany) {
-  const items = [{ label: 'Ver cadastro', icon: 'i-lucide-eye', onSelect: () => inspectCompany(row.id) }]
-  if (row.capabilities.relationship !== 'unassigned')
-    items.push({ label: 'Ver assinatura', icon: 'i-lucide-arrow-up-right', onSelect: () => navigateTo(`/gestao-erp/assinaturas/empresas/${row.id}`) })
-  if (row.capabilities.can_assign) items.push({ label: 'Adicionar assinatura', icon: 'i-lucide-plus', onSelect: () => openAssignment(row) })
-  return [items]
 }
 async function assignmentConfirmed(result: { company_id: number, contract_id: number }) {
   const targetCompany = assignmentTarget.value
@@ -180,7 +180,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-col gap-5">
-    <OfficeErpPanel title="Empresas" description="Empresas registradas na carteira do escritório, com ou sem assinatura.">
+    <OfficeErpPanel title="Empresas" description="Clientes cadastrados no ERP do escritório." company-list>
       <template #action>
         <UDropdownMenu
           :items="[[
@@ -188,13 +188,13 @@ onBeforeUnmount(() => {
             { label: 'Cadastrar novo cliente', icon: 'i-lucide-building-2', onSelect: () => navigateTo('/gestao-erp/empresas/nova?modo=novo') }
           ]]"
         >
-          <UButton icon="i-lucide-plus">
+          <UButton icon="i-lucide-plus" trailing-icon="i-lucide-chevron-down" color="neutral">
             Novo cliente
           </UButton>
         </UDropdownMenu>
       </template>
       <template #toolbar>
-        <UFormField label="Buscar empresa" class="w-full sm:max-w-sm">
+        <UFormField label="Buscar empresa" :ui="{ label: 'text-xs' }" class="w-full sm:max-w-sm">
           <UInput
             :model-value="query"
             icon="i-lucide-search"
@@ -204,36 +204,9 @@ onBeforeUnmount(() => {
             @update:model-value="updateQuery"
           />
         </UFormField>
-        <UFormField label="Assinatura" class="w-full sm:w-52">
-          <USelect
-            :model-value="String(state)"
-            :items="[{ label: 'Todas as empresas', value: 'all' }, { label: 'Com assinatura', value: 'applied' }, { label: 'Sem assinatura', value: 'unassigned' }]"
-            class="w-full"
-            @update:model-value="updateState"
-          />
-        </UFormField>
-        <div class="flex gap-2">
-          <UButton
-            size="sm"
-            color="neutral"
-            variant="outline"
-            :aria-pressed="sort === 'name'"
-            @click="ordered('name')"
-          >
-            Ordenar por nome
-          </UButton>
-          <UButton
-            size="sm"
-            color="neutral"
-            variant="outline"
-            :aria-pressed="sort === 'registered_at'"
-            @click="ordered('registered_at')"
-          >
-            Cadastro
-          </UButton>
-        </div>
+        <DataTableFilterPanel v-model="companyFilters" :columns="companyFilterColumns" />
       </template>
-      <div :class="panelBodyClass">
+      <div :class="companyListBodyClass">
         <UAlert
           v-if="loadError"
           color="error"
@@ -268,35 +241,66 @@ onBeforeUnmount(() => {
             :mobile-columns="['name', 'actions']"
             compact
             label="Empresas"
+            :ui="companyListTableUi"
+            :sorting="tableSorting"
           >
+            <template #name-header>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                class="-mx-2 min-h-8"
+                :trailing-icon="sort === 'name' ? (direction === 'asc' ? 'i-lucide-arrow-up' : 'i-lucide-arrow-down') : 'i-lucide-arrow-up-down'"
+                @click="ordered('name')"
+              >
+                Empresa
+              </UButton>
+            </template>
+            <template #registered_at-header>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                class="-mx-2 min-h-8"
+                :trailing-icon="sort === 'registered_at' ? (direction === 'asc' ? 'i-lucide-arrow-up' : 'i-lucide-arrow-down') : 'i-lucide-arrow-up-down'"
+                @click="ordered('registered_at')"
+              >
+                Cadastrada em
+              </UButton>
+            </template>
             <template #name-cell="{ row }">
-              <div class="min-w-0 space-y-1">
-                <NuxtLink class="block min-w-0 break-words font-medium text-highlighted underline-offset-4 hover:underline" :to="`/gestao-erp/assinaturas/empresas/${row.original.id}`">{{ row.original.name }}</NuxtLink>
-                <div class="flex flex-wrap items-center gap-x-2 gap-y-1 md:hidden">
-                  <span class="font-mono text-xs text-muted">{{ row.original.cnpj }}</span>
-                  <UBadge :color="row.original.capabilities.relationship === 'current' ? 'success' : row.original.capabilities.relationship === 'unassigned' ? 'neutral' : 'warning'" variant="subtle">
-                    {{ row.original.capabilities.relationship === 'current' ? 'Com assinatura' : row.original.capabilities.relationship === 'unassigned' ? 'Sem assinatura' : 'Histórico' }}
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="hidden size-9 shrink-0 items-center justify-center rounded-lg border border-default text-muted md:flex">
+                  <UIcon name="i-lucide-building-2" class="size-4.5" />
+                </span>
+                <div class="min-w-0 space-y-1">
+                  <NuxtLink class="block min-w-0 break-words font-semibold text-highlighted underline-offset-4 hover:underline" :to="`/gestao-erp/assinaturas/empresas/${row.original.id}`">
+                    {{ row.original.name }}
+                  </NuxtLink>
+                  <p class="text-xs text-muted">
+                    {{ formatTaxId(row.original.cnpj) }}
+                  </p>
+                  <UBadge
+                    v-if="row.original.capabilities.relationship !== 'current'"
+                    :color="row.original.capabilities.relationship === 'unassigned' ? 'neutral' : 'warning'"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    {{ row.original.capabilities.relationship === 'unassigned' ? 'Sem assinatura' : 'Histórico' }}
                   </UBadge>
                 </div>
               </div>
             </template>
-            <template #cnpj-cell="{ row }">
-              <span class="font-mono text-xs">{{ row.original.cnpj }}</span>
-            </template>
-            <template #registration-cell="{ row }">
+            <template #registered_at-cell="{ row }">
               {{ formattedDate(row.original.registered_at) }}
             </template>
-            <template #situation-cell="{ row }">
-              <UBadge :color="row.original.capabilities.relationship === 'current' ? 'success' : row.original.capabilities.relationship === 'unassigned' ? 'neutral' : 'warning'" variant="subtle">
-                {{ row.original.capabilities.relationship === 'current' ? 'Com assinatura' : row.original.capabilities.relationship === 'unassigned' ? 'Sem assinatura' : 'Histórico' }}
-              </UBadge>
-            </template>
             <template #actions-cell="{ row }">
-              <div class="hidden flex-wrap gap-1 md:flex">
+              <div class="flex flex-col items-stretch justify-end gap-2 md:flex-row md:flex-wrap md:items-center">
                 <UButton
                   color="neutral"
-                  variant="ghost"
-                  size="sm"
+                  variant="outline"
+                  size="xs"
+                  class="min-h-11 justify-center md:min-h-7"
                   @click="inspectCompany(row.original.id)"
                 >
                   Ver cadastro
@@ -304,8 +308,10 @@ onBeforeUnmount(() => {
                 <UButton
                   v-if="row.original.capabilities.relationship !== 'unassigned'"
                   color="neutral"
-                  variant="ghost"
-                  size="sm"
+                  variant="outline"
+                  size="xs"
+                  icon="i-lucide-file-key"
+                  class="min-h-11 justify-center md:min-h-7"
                   :to="`/gestao-erp/assinaturas/empresas/${row.original.id}`"
                 >
                   Ver assinatura
@@ -313,31 +319,20 @@ onBeforeUnmount(() => {
                 <UButton
                   v-if="row.original.capabilities.can_assign"
                   color="neutral"
-                  variant="outline"
-                  size="sm"
+                  variant="solid"
+                  size="xs"
                   icon="i-lucide-plus"
+                  class="min-h-11 justify-center md:min-h-7"
                   @click="openAssignment(row.original)"
                 >
                   Adicionar assinatura
                 </UButton>
               </div>
-              <div class="md:hidden">
-                <UDropdownMenu :items="companyActionItems(row.original)" :content="{ align: 'end' }">
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-ellipsis"
-                    class="size-11 min-w-11 p-0"
-                    :aria-label="`Ações de ${row.original.name}`"
-                  />
-                </UDropdownMenu>
-              </div>
             </template>
           </OfficeErpDataTable>
           <OfficeErpPagination
-            v-if="total > 25 || perPage !== 25 || page > 1"
             v-model:page="page"
+            :class="companyListFooterClass"
             :per-page="perPage"
             :total="total"
             label="empresas"
@@ -346,6 +341,10 @@ onBeforeUnmount(() => {
           />
         </template>
       </div>
+      <template #hint>
+        <UIcon name="i-lucide-info" class="mt-0.5 size-3.5 shrink-0" />
+        Adicione uma assinatura pela linha da empresa. Ativação e acesso ficam nos detalhes da assinatura.
+      </template>
     </OfficeErpPanel>
     <OfficeErpCompanyPortfolioModal v-model:open="pickerOpen" @registered="registered" />
     <OfficeErpCompanyInspectionModal v-model:open="inspectionOpen" :company-id="inspectionCompanyId" @updated="loadCompanies" />

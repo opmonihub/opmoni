@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PageCardProps } from '@nuxt/ui'
 import { panelCardUi, panelToolbarClass } from '~/components/data-table/panel'
 import { pageHeadingActionsClass, pageHeadingClass } from '~/utils/pageShell'
 
@@ -31,6 +32,11 @@ withDefaults(defineProps<{
   title: string
   description?: string
   hideHeading?: boolean
+  ui?: {
+    heading?: PageCardProps['ui']
+    card?: PageCardProps['ui']
+    toolbar?: string
+  }
 }>(), {
   description: undefined,
   hideHeading: false
@@ -44,7 +50,7 @@ withDefaults(defineProps<{
     :description="hideHeading ? undefined : description"
     variant="naked"
     orientation="horizontal"
-    :class="pageHeadingClass"
+    :ui="{ root: pageHeadingClass, ...ui?.heading }"
   >
     <div v-if="$slots.action" :class="pageHeadingActionsClass">
       <slot name="action" />
@@ -53,10 +59,10 @@ withDefaults(defineProps<{
 
   <UPageCard
     variant="subtle"
-    :ui="panelCardUi"
+    :ui="{ ...panelCardUi, ...ui?.card }"
   >
     <template v-if="$slots.toolbar" #header>
-      <div :class="panelToolbarClass">
+      <div :class="ui?.toolbar ?? panelToolbarClass">
         <slot name="toolbar" />
       </div>
     </template>

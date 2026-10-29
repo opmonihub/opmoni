@@ -256,7 +256,7 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
       content: 'flex w-[calc(100%-1rem)] max-h-[calc(100dvh-2rem)] max-w-2xl flex-col overflow-hidden sm:w-full',
       header: 'shrink-0',
       body: 'min-h-0 flex-1 overflow-y-auto',
-      footer: canAmend && baseRevision && !action ? 'grid shrink-0 grid-cols-2 gap-2' : 'shrink-0 justify-end'
+      footer: 'shrink-0 flex-wrap justify-end'
     }"
     @update:open="value => { if (!value) requestClose() }"
     @after:leave="restoreModalFocus"
@@ -579,7 +579,7 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
         color="neutral"
         variant="outline"
         :disabled="working"
-        class="min-h-11 w-full px-1 text-xs sm:text-sm"
+        class="min-h-11 sm:min-h-0"
         @click="requestClose"
       >
         Fechar
@@ -589,7 +589,7 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
         color="neutral"
         :loading="pending"
         :disabled="blocked || !dirty"
-        class="min-h-11 w-full px-1 text-xs sm:text-sm"
+        class="min-h-11 sm:min-h-0"
         @click="scheduleTerms"
       >
         Agendar alteração

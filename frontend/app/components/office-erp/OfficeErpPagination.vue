@@ -11,6 +11,7 @@ const perPage = defineModel<25 | 50 | 100>('perPage', { required: true })
     </p>
     <div class="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
       <USelect
+        v-if="total > 25 || perPage !== 25"
         v-model="perPage"
         :items="[{ label: '25 por página', value: 25 }, { label: '50 por página', value: 50 }, { label: '100 por página', value: 100 }]"
         aria-label="Registros por página"

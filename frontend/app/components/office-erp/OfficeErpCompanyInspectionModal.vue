@@ -4,6 +4,8 @@ import { apiErrorMessage } from '~/composables/useApiError'
 import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { formatTaxId } from '~/utils/taxId'
+import { formatOfficeErpCompanyDate } from '~/utils/officeErpContractAmendment'
 
 const open = defineModel<boolean>('open', { required: true })
 const restoreModalFocus = useModalFocusReturn(open)
@@ -26,10 +28,13 @@ const error = ref('')
 const notice = ref('')
 const fieldErrors = ref<Record<string, string[]>>({})
 const profileConflict = ref(false)
+const editing = ref(false)
+const discardOpen = ref(false)
+const closeAfterDiscard = ref(false)
 let generation = 0
 let mutationGeneration = 0
 const profileFields: Array<{ key: keyof OfficeErpCompanyProfile, label: string, type?: string, wide?: boolean }> = [
-  { key: 'name', label: 'Razão social', wide: true }, { key: 'trade_name', label: 'Nome fantasia', wide: true },
+  { key: 'name', label: 'Razão social' }, { key: 'trade_name', label: 'Nome fantasia' },
   { key: 'tax_regime', label: 'Regime tributário' }, { key: 'ie', label: 'Inscrição estadual' },
   { key: 'contact_person', label: 'Pessoa de contato' }, { key: 'email', label: 'E-mail', type: 'email' },
   { key: 'phone', label: 'Telefone', type: 'tel' }, { key: 'whatsapp', label: 'WhatsApp', type: 'tel' },
@@ -38,11 +43,57 @@ const profileFields: Array<{ key: keyof OfficeErpCompanyProfile, label: string, 
   { key: 'district', label: 'Bairro' }, { key: 'postal_code', label: 'CEP' },
   { key: 'city', label: 'Município' }, { key: 'state', label: 'UF' }
 ]
+const profileSections = [
+  { title: 'Dados cadastrais', icon: 'i-lucide-building-2', fields: profileFields.slice(0, 4) },
+  { title: 'Contatos', icon: 'i-lucide-contact-round', fields: profileFields.slice(4, 8) },
+  { title: 'Endereço', icon: 'i-lucide-map-pin', fields: profileFields.slice(8) }
+]
+const taxRegimes = [{ label: 'MEI', value: 'mei' }, { label: 'Simples Nacional', value: 'simple_national' }, { label: 'Lucro presumido', value: 'presumed_profit' }, { label: 'Lucro real', value: 'actual_profit' }, { label: 'Outro', value: 'other' }]
 const hasChanges = computed(() => !!baseline.value && Object.keys(draft).some(key => draft[key as keyof OfficeErpCompanyProfile] !== baseline.value![key as keyof OfficeErpCompanyProfile]))
+const profileFacts = computed(() => profileSections.map((section) => {
+  const facts = section.fields.map(field => ({ label: field.label, value: profileValue(field.key), wide: false }))
+  if (section.title === 'Dados cadastrais') {
+    facts.splice(2, 0, { label: 'CNPJ', value: formatTaxId(company.value?.cnpj ?? ''), wide: false })
+    facts.push({ label: 'Cadastro no ERP', value: formatOfficeErpCompanyDate(company.value?.registered_at ?? ''), wide: false })
+  }
+  if (section.title === 'Endereço') {
+    const profile = baseline.value
+    const street = [profile?.street_type, profile?.street].filter(Boolean).join(' ')
+    return { ...section, facts: [
+      { label: 'Logradouro e número', value: street ? `${street}, ${profile?.address_number || 's/n'}` : 'Não informado', wide: true },
+      { label: 'Complemento', value: profileValue('address_complement'), wide: false },
+      { label: 'Bairro', value: profileValue('district'), wide: false },
+      { label: 'Cidade / UF', value: [profile?.city, profile?.state].filter(Boolean).join(' / ') || 'Não informado', wide: false },
+      { label: 'CEP', value: profileValue('postal_code'), wide: false }
+    ] }
+  }
+  return { ...section, facts }
+}))
+
+function profileValue(key: keyof OfficeErpCompanyProfile) {
+  const value = baseline.value?.[key]
+  return (key === 'tax_regime' ? taxRegimes.find(item => item.value === value)?.label : value) || 'Não informado'
+}
+function requestClose(closeModal = true) {
+  if (saving.value || command.pending.value) return
+  if (editing.value && hasChanges.value && !command.recoveryKey.value) {
+    closeAfterDiscard.value = closeModal
+    discardOpen.value = true
+    return
+  }
+  if (closeModal) close()
+  else editing.value = false
+}
+function discardChanges() {
+  if (baseline.value) assignProfile(baseline.value)
+  discardOpen.value = false
+  editing.value = false
+  if (closeAfterDiscard.value) close()
+}
 
 function assignProfile(profile: OfficeErpCompanyProfile) {
-  baseline.value = structuredClone(profile)
-  Object.assign(draft, structuredClone(profile))
+  baseline.value = { ...profile }
+  Object.assign(draft, profile)
 }
 function updateField(key: keyof OfficeErpCompanyProfile, value: string | number | null) {
   if (key === 'tax_regime') return
@@ -114,6 +165,7 @@ async function save() {
       company.value = response.data
       profileVersion.value = response.data.profile_version
       assignProfile(response.data.profile)
+      editing.value = false
       notice.value = 'Cadastro atualizado.'
       emit('updated')
     } else if (response.status === 'unknown') notice.value = 'O resultado não foi confirmado. Consulte a operação ' + response.key + ' antes de reenviar.'
@@ -164,10 +216,14 @@ function close() {
   fieldErrors.value = {}
   profileConflict.value = false
   notice.value = ''
+  editing.value = false
+  discardOpen.value = false
 }
 watch([open, () => props.companyId], ([isOpen, currentCompanyId], [wasOpen, previousCompanyId]) => {
   mutationGeneration++
   if (wasOpen && isOpen && currentCompanyId !== previousCompanyId) {
+    editing.value = false
+    discardOpen.value = false
     company.value = null
     baseline.value = null
     profileVersion.value = ''
@@ -177,6 +233,8 @@ watch([open, () => props.companyId], ([isOpen, currentCompanyId], [wasOpen, prev
   }
   if (isOpen) void load()
   else {
+    editing.value = false
+    discardOpen.value = false
     generation++
     reads.cancel('companyInspection')
     company.value = null
@@ -190,6 +248,8 @@ watch([open, () => props.companyId], ([isOpen, currentCompanyId], [wasOpen, prev
   }
 }, { immediate: true })
 watch(identityStamp, () => {
+  editing.value = false
+  discardOpen.value = false
   generation++
   mutationGeneration++
   saving.value = false
@@ -221,10 +281,18 @@ onScopeDispose(() => {
 
 <template>
   <UModal
-    v-model:open="open"
-    title="Cadastro da empresa"
-    description="Consulte e edite somente os dados próprios da empresa."
-    :ui="{ content: 'sm:max-w-4xl', header: 'pr-12' }"
+    :open="open"
+    :title="editing ? 'Editar cadastro da empresa' : 'Cadastro da empresa'"
+    :description="company?.name ?? 'Consulte os dados cadastrais, contatos e endereço.'"
+    :dismissible="!saving && !command.pending.value"
+    :close="!saving && !command.pending.value"
+    :ui="{
+      content: 'max-w-4xl max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden',
+      header: 'shrink-0',
+      body: 'min-h-0 flex-1 overflow-y-auto',
+      footer: 'shrink-0 flex-wrap justify-end'
+    }"
+    @update:open="value => { if (!value) requestClose() }"
     @after:leave="restoreModalFocus"
   >
     <template #body>
@@ -267,67 +335,128 @@ onScopeDispose(() => {
           </template>
         </UAlert>
         <template v-if="company">
-          <div class="flex flex-wrap items-center gap-2">
-            <UBadge color="neutral" variant="subtle">
-              CNPJ {{ company.cnpj }}
-            </UBadge>
-            <UBadge :color="company.capabilities.relationship === 'current' ? 'success' : company.capabilities.relationship === 'historical' ? 'warning' : 'neutral'" variant="subtle">
-              {{ company.capabilities.relationship === 'current' ? 'Com vínculo atual' : company.capabilities.relationship === 'historical' ? 'Com histórico' : 'Sem assinatura' }}
-            </UBadge>
-          </div>
-          <UAlert color="neutral" title="Dados protegidos" description="CNPJ, identidade de usuários e configurações fiscais não são editáveis nesta tela." />
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField
-              v-for="field in profileFields"
-              :key="field.key"
-              :label="field.label"
-              :name="field.key"
-              :error="fieldErrors[field.key]?.[0]"
-              :class="field.wide ? 'sm:col-span-2' : ''"
-            >
-              <USelect
-                v-if="field.key === 'tax_regime'"
-                v-model="draft.tax_regime"
-                :items="[{ label: 'MEI', value: 'mei' }, { label: 'Simples Nacional', value: 'simple_national' }, { label: 'Lucro presumido', value: 'presumed_profit' }, { label: 'Lucro real', value: 'actual_profit' }, { label: 'Outro', value: 'other' }]"
-                :disabled="!company.capabilities.can_edit_profile || saving"
-                class="w-full"
-              />
-              <UInput
-                v-else
-                :model-value="draft[field.key] ?? ''"
-                :type="field.type ?? 'text'"
-                :maxlength="field.key === 'name' || field.key === 'trade_name' ? 255 : undefined"
-                :disabled="!company.capabilities.can_edit_profile || saving"
-                class="w-full"
-                @update:model-value="value => updateField(field.key, value)"
-              />
-            </UFormField>
+          <UForm
+            v-if="editing"
+            id="company-profile"
+            :state="draft"
+            class="divide-y divide-default"
+            @submit="save"
+          >
+            <section v-for="section in profileSections" :key="section.title" class="space-y-4 py-6 first:pt-0 last:pb-0">
+              <h3 class="flex items-center gap-2 text-sm font-semibold text-highlighted">
+                <UIcon :name="section.icon" class="size-4 text-muted" />
+                {{ section.title }}
+              </h3>
+              <div class="grid gap-4 sm:grid-cols-2">
+                <UFormField
+                  v-for="field in section.fields"
+                  :key="field.key"
+                  :label="field.label"
+                  :name="field.key"
+                  :required="field.key === 'name'"
+                  :error="fieldErrors[field.key]?.[0]"
+                  :class="field.wide ? 'sm:col-span-2' : ''"
+                >
+                  <USelect
+                    v-if="field.key === 'tax_regime'"
+                    v-model="draft.tax_regime"
+                    :items="taxRegimes"
+                    :disabled="!company.capabilities.can_edit_profile || saving"
+                    class="w-full"
+                  />
+                  <UInput
+                    v-else
+                    :model-value="draft[field.key] ?? ''"
+                    :type="field.type ?? 'text'"
+                    :maxlength="field.key === 'name' || field.key === 'trade_name' ? 255 : undefined"
+                    :disabled="!company.capabilities.can_edit_profile || saving"
+                    class="w-full"
+                    @update:model-value="value => updateField(field.key, value)"
+                  />
+                </UFormField>
+                <UFormField v-if="section.title === 'Dados cadastrais'" label="CNPJ" description="O CNPJ identifica a empresa e não pode ser alterado aqui.">
+                  <UInput :model-value="formatTaxId(company.cnpj)" readonly class="w-full" />
+                </UFormField>
+              </div>
+            </section>
+          </UForm>
+          <div v-else class="divide-y divide-default">
+            <section v-for="section in profileFacts" :key="section.title" class="space-y-5 py-6 first:pt-0 last:pb-0">
+              <h3 class="flex items-center gap-2 text-sm font-semibold text-highlighted">
+                <UIcon :name="section.icon" class="size-4 text-muted" />
+                {{ section.title }}
+              </h3>
+              <dl class="grid grid-cols-2 gap-x-5 gap-y-6 text-sm sm:grid-cols-3">
+                <div v-for="fact in section.facts" :key="fact.label" :class="fact.wide ? 'col-span-2 sm:col-span-3' : 'min-w-0'">
+                  <dt class="text-xs text-muted">
+                    {{ fact.label }}
+                  </dt>
+                  <dd class="mt-1 font-medium wrap-anywhere text-highlighted">
+                    {{ fact.value }}
+                  </dd>
+                </div>
+              </dl>
+            </section>
           </div>
         </template>
       </div>
     </template>
     <template #footer>
-      <div v-if="company" class="flex flex-wrap justify-end gap-2">
+      <template v-if="editing">
         <UButton
           color="neutral"
           variant="outline"
           :disabled="saving"
-          @click="close"
+          @click="requestClose(false)"
         >
+          Cancelar edição
+        </UButton>
+        <UButton
+          form="company-profile"
+          type="submit"
+          :disabled="!company?.capabilities.can_edit_profile || !hasChanges || saving || command.pending.value"
+          :loading="saving"
+        >
+          Salvar perfil
+        </UButton>
+      </template>
+      <template v-else>
+        <UButton color="neutral" variant="outline" @click="requestClose()">
           Fechar
         </UButton>
         <UButton
+          v-if="company?.capabilities.can_edit_profile"
           color="neutral"
           variant="outline"
-          :disabled="!hasChanges || saving"
-          @click="baseline && assignProfile(baseline)"
+          icon="i-lucide-pencil"
+          @click="editing = true"
         >
-          Descartar alterações
+          Editar cadastro
         </UButton>
-        <UButton :disabled="!company.capabilities.can_edit_profile || !hasChanges || saving || command.pending.value" :loading="saving" @click="save">
-          Salvar perfil
+        <UButton
+          v-if="company && company.capabilities.relationship !== 'unassigned'"
+          :to="`/gestao-erp/assinaturas/empresas/${company.id}`"
+          trailing-icon="i-lucide-arrow-right"
+          @click="close"
+        >
+          Ver assinatura
         </UButton>
-      </div>
+      </template>
+    </template>
+  </UModal>
+  <UModal
+    v-model:open="discardOpen"
+    title="Descartar alterações?"
+    description="As alterações no cadastro ainda não foram salvas."
+    :ui="{ footer: 'justify-end' }"
+  >
+    <template #footer>
+      <UButton color="neutral" variant="outline" @click="discardOpen = false">
+        Continuar editando
+      </UButton>
+      <UButton color="error" @click="discardChanges">
+        Descartar alterações
+      </UButton>
     </template>
   </UModal>
 </template>

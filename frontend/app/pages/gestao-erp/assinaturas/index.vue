@@ -6,7 +6,8 @@ import { listNavigationField } from '~/composables/useListNavigationState'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { officeErpSortParams } from '~/utils/officeErpListSort'
-import { panelBodyClass } from '~/components/data-table/panel'
+import { companyListBodyClass, companyListFooterClass, companyListTableUi } from '~/components/office-erp/companyList'
+import { formatTaxId } from '~/utils/taxId'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -48,16 +49,17 @@ let requestGeneration = 0
 const identityStamp = useOfficeErpReadIdentity(() => [user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null], () => context.capabilities.value?.capability_key)
 const reads = useOfficeErpReads(identityStamp)
 const columns: TableColumn<SubscriptionCompanyRow>[] = [
-  { accessorKey: 'name', header: 'Empresa' },
-  { id: 'plan', header: 'Plano' },
-  { id: 'situation', header: 'Situação' },
-  { id: 'next_billing', header: 'Próxima cobrança' },
-  { id: 'actions', header: '' }
+  { accessorKey: 'name', header: 'Empresa', enableSorting: true, meta: { class: { th: 'w-full md:w-[35%]', td: 'min-w-0 md:w-[35%]' } } },
+  { id: 'plan', header: 'Plano e situação', meta: { class: { th: 'md:w-[25%]', td: 'md:w-[25%]' } } },
+  { id: 'next_billing', header: 'Próxima cobrança', meta: { class: { th: 'md:w-[20%]', td: 'md:w-[20%]' } } },
+  { id: 'actions', header: '', meta: { class: { th: 'w-11 md:w-[20%]', td: 'w-11 text-right md:w-[20%]' } } }
 ]
+const tableSorting = computed(() => sort.value ? [{ id: sort.value, desc: direction.value === 'desc' }] : [])
+
 function date(value: string | null | undefined) {
   if (!value) return '—'
   const parsed = new Date(`${value.slice(0, 10)}T00:00:00Z`)
-  return Number.isFinite(parsed.getTime()) ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeZone: 'UTC' }).format(parsed) : 'Data indisponível'
+  return Number.isFinite(parsed.getTime()) ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(parsed) : 'Data indisponível'
 }
 function statusLabel(row: SubscriptionCompanyRow) {
   if (row.relationship === 'historical') return 'Histórico'
@@ -131,7 +133,7 @@ watch(identityStamp, () => {
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-col gap-5">
-    <OfficeErpPanel title="Assinaturas" description="Acompanhe a assinatura atual de cada empresa e seu histórico comercial.">
+    <OfficeErpPanel title="Assinaturas" description="Planos e acesso ao ERP, organizados por empresa." company-list>
       <template #action>
         <UButton
           color="neutral"
@@ -143,36 +145,17 @@ watch(identityStamp, () => {
         </UButton>
       </template>
       <template #toolbar>
-        <UFormField label="Buscar empresa" class="w-full sm:max-w-sm">
+        <UFormField label="Buscar empresa" :ui="{ label: 'text-xs' }" class="w-full sm:max-w-sm">
           <UInput
             v-model="query"
             icon="i-lucide-search"
-            placeholder="Nome da empresa"
+            placeholder="Nome ou CNPJ"
             aria-label="Buscar empresa"
             class="w-full"
           />
         </UFormField>
-        <div class="flex gap-2">
-          <UButton
-            size="sm"
-            color="neutral"
-            variant="outline"
-            :aria-pressed="sort === 'name'"
-            @click="ordered('name')"
-          >
-            Nome
-          </UButton><UButton
-            size="sm"
-            color="neutral"
-            variant="outline"
-            :aria-pressed="sort === 'registered_at'"
-            @click="ordered('registered_at')"
-          >
-            Cadastro
-          </UButton>
-        </div>
       </template>
-      <div :class="panelBodyClass">
+      <div :class="companyListBodyClass">
         <UAlert
           v-if="loadError"
           color="error"
@@ -197,20 +180,51 @@ watch(identityStamp, () => {
             :data="rows"
             :loading="loading"
             :get-row-id="row => String(row.id)"
-            :mobile-columns="['name', 'situation']"
+            :mobile-columns="['name', 'actions']"
             compact
             label="Assinaturas por empresa"
+            :ui="companyListTableUi"
+            :sorting="tableSorting"
           >
+            <template #name-header>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                class="-mx-2 min-h-8"
+                :trailing-icon="sort === 'name' ? (direction === 'asc' ? 'i-lucide-arrow-up' : 'i-lucide-arrow-down') : 'i-lucide-arrow-up-down'"
+                @click="ordered('name')"
+              >
+                Empresa
+              </UButton>
+            </template>
             <template #name-cell="{ row }">
-              <NuxtLink class="font-medium text-highlighted underline-offset-4 hover:underline" :to="`/gestao-erp/assinaturas/empresas/${row.original.id}`">{{ row.original.name }}</NuxtLink>
+              <div class="min-w-0 space-y-1">
+                <NuxtLink class="block break-words font-semibold text-highlighted underline-offset-4 hover:underline" :to="`/gestao-erp/assinaturas/empresas/${row.original.id}`">{{ row.original.name }}</NuxtLink>
+                <p class="text-xs text-muted">
+                  {{ formatTaxId(row.original.cnpj) }}
+                </p>
+                <div class="space-y-1 md:hidden">
+                  <p class="text-xs text-muted">
+                    {{ row.original.subscription?.erp_plan?.name ?? 'Plano indisponível' }}
+                  </p>
+                  <UBadge :color="statusColor(row.original)" variant="subtle" size="sm">
+                    {{ statusLabel(row.original) }}
+                  </UBadge>
+                  <span v-if="row.original.current_contract?.trial?.situation === 'trialing'" class="block text-xs text-muted">Teste até {{ date(row.original.current_contract.trial.ends_at) }}</span>
+                </div>
+              </div>
             </template>
             <template #plan-cell="{ row }">
-              {{ row.original.subscription?.erp_plan?.name ?? '—' }}
-            </template>
-            <template #situation-cell="{ row }">
-              <UBadge :color="statusColor(row.original)" variant="subtle">
-                {{ statusLabel(row.original) }}
-              </UBadge><span v-if="row.original.current_contract?.trial?.situation === 'trialing'" class="mt-1 block text-xs text-muted">Teste até {{ date(row.original.current_contract.trial.ends_at) }}</span>
+              <div class="space-y-1.5">
+                <p class="font-semibold text-highlighted">
+                  {{ row.original.subscription?.erp_plan?.name ?? '—' }}
+                </p>
+                <UBadge :color="statusColor(row.original)" variant="subtle" size="sm">
+                  {{ statusLabel(row.original) }}
+                </UBadge>
+                <span v-if="row.original.current_contract?.trial?.situation === 'trialing'" class="block text-xs text-muted">Teste até {{ date(row.original.current_contract.trial.ends_at) }}</span>
+              </div>
             </template>
             <template #next_billing-cell="{ row }">
               {{ date(row.original.current_contract?.next_billing_on) }}
@@ -218,23 +232,30 @@ watch(identityStamp, () => {
             <template #actions-cell="{ row }">
               <UButton
                 color="neutral"
-                variant="ghost"
-                size="sm"
+                variant="outline"
+                size="xs"
+                trailing-icon="i-lucide-chevron-right"
+                class="min-h-11 min-w-11 justify-center px-0 md:min-h-7 md:px-2"
                 :to="`/gestao-erp/assinaturas/empresas/${row.original.id}`"
               >
-                Detalhes
+                <span class="hidden md:inline">Ver detalhes</span><span class="sr-only md:hidden">Ver detalhes de {{ row.original.name }}</span>
               </UButton>
             </template>
           </OfficeErpDataTable>
           <OfficeErpPagination
             v-model:page="page"
             v-model:per-page="perPage"
+            :class="companyListFooterClass"
             :total="total"
             label="empresas"
             :loading="loading"
           />
         </template>
       </div>
+      <template #hint>
+        <UIcon name="i-lucide-mouse-pointer-2" class="mt-0.5 size-3.5 shrink-0" />
+        Abra uma empresa para consultar a assinatura, ativar o ERP e configurar o acesso.
+      </template>
     </OfficeErpPanel>
   </div>
 </template>

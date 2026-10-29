@@ -140,7 +140,7 @@ watch(() => [props.companyId, props.contractId] as const, (current, previous) =>
       content: 'flex w-[calc(100%-1rem)] max-h-[calc(100dvh-2rem)] max-w-xl flex-col overflow-hidden sm:w-full',
       header: 'shrink-0',
       body: 'min-h-0 flex-1 overflow-y-auto',
-      footer: 'grid shrink-0 grid-cols-2 gap-2'
+      footer: 'shrink-0 flex-wrap justify-end'
     }"
     @update:open="value => { if (!value) requestClose() }"
     @after:leave="restoreModalFocus"
@@ -197,19 +197,19 @@ watch(() => [props.companyId, props.contractId] as const, (current, previous) =>
           Escolha os recursos previstos para o próximo ciclo. Os módulos vigentes continuam disponíveis até a data de aplicação.
         </p>
 
-        <div class="divide-y divide-default rounded-md border border-default" aria-label="Seleção de módulos para o próximo ciclo">
-          <label v-for="module in catalog" :key="module.value" class="flex min-w-0 items-start justify-between gap-3 p-3">
+        <div class="divide-y divide-default" aria-label="Seleção de módulos para o próximo ciclo">
+          <div v-for="module in catalog" :key="module.value" class="flex min-w-0 items-center justify-between gap-4 py-4">
             <span class="min-w-0 flex-1">
               <span class="block text-sm font-medium text-highlighted">{{ module.label }}</span>
               <span class="mt-1 block text-xs text-muted">{{ currentKeys.includes(module.value) ? 'Habilitado atualmente' : 'Desabilitado atualmente' }}<template v-if="pendingRevision && pendingKeys.includes(module.value) !== currentKeys.includes(module.value)"> · {{ pendingKeys.includes(module.value) ? 'incluído' : 'remoção' }} no próximo ciclo</template></span>
             </span>
-            <UCheckbox
+            <USwitch
               :model-value="selected.includes(module.value)"
               :aria-label="module.label"
               :disabled="!canAmend || blocked || !eligibleForNextCycle(module.value)"
               @update:model-value="toggleModule(module.value, $event)"
             />
-          </label>
+          </div>
         </div>
 
         <UAlert
@@ -239,7 +239,7 @@ watch(() => [props.companyId, props.contractId] as const, (current, previous) =>
         color="neutral"
         variant="outline"
         :disabled="working"
-        class="min-h-11 w-full px-1 text-xs sm:text-sm"
+        class="min-h-11 sm:min-h-0"
         @click="requestClose"
       >
         Fechar
@@ -248,7 +248,7 @@ watch(() => [props.companyId, props.contractId] as const, (current, previous) =>
         color="neutral"
         :loading="pending"
         :disabled="!canAmend || blocked || !dirty || !sourceRevision"
-        class="min-h-11 w-full px-1 text-xs sm:text-sm"
+        class="min-h-11 sm:min-h-0"
         @click="submit"
       >
         Agendar alterações

@@ -140,7 +140,7 @@ function component(path: string, props: Record<string, unknown>) {
       return () => Vue.h('select', { ...context.attrs, value: inputProps.modelValue, onChange: (event: Event) => context.emit('update:modelValue', (event.target as HTMLSelectElement).value) }, (inputProps.items as Array<{ label: string, value: string }>).map(item => Vue.h('option', { value: item.value }, item.label)))
     }
   })
-  app.component('UCheckbox', {
+  app.component('USwitch', {
     props: ['modelValue', 'label', 'disabled'],
     setup(inputProps, context) {
       return () => Vue.h('label', {}, [Vue.h('input', { ...context.attrs, 'type': 'checkbox', 'aria-label': inputProps.label ?? context.attrs['aria-label'], 'checked': inputProps.modelValue, 'disabled': inputProps.disabled, 'onChange': (event: Event) => context.emit('update:modelValue', (event.target as HTMLInputElement).checked) }), inputProps.label as string])

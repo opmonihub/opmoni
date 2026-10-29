@@ -11,5 +11,7 @@ node_modules/
 
 # Local reference and agent workspaces
 .superpowers/
+/.impeccable/
 /.dashboard/
 /.worktrees/
+/reference/sistema/
