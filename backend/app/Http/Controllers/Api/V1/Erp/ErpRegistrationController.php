@@ -53,7 +53,7 @@ class ErpRegistrationController extends Controller
 
         [$user, $company] = $this->registration->registerNewOwner($data);
         AccessSession::assertOwnership($request);
-        AccessSession::authenticate($request, $user, null);
+        AccessSession::authenticate($request, $user, null, 0);
         ErpSession::applyCompanySelection($request, (int) $company->id, [
             'kind' => 'direct',
             'membership' => $company->memberships()->where('user_id', $user->id)->firstOrFail(),

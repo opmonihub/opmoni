@@ -7,6 +7,7 @@ use App\Enums\ClientStatus;
 use App\Erp\ErpCompanyProvisioning;
 use App\Models\Account;
 use App\Models\Client;
+use App\Models\Erp\Commercial\OfficeErpCompanyRegistration;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\Commercial\OfficeErpOwnerInvitation;
@@ -144,6 +145,7 @@ final class OfficeErpOwnerAcceptance
                     }
 
                     $this->allocator->occupy($context, $contract, $company);
+                    $this->ensureCompanyRegistration($context, $contract, $company, $contract->authorized_by_user_id);
                     abort_unless($invitation->status === 'pending', 409, 'invitation_not_pending');
                     $invitation->forceFill(['status' => 'consumed', 'consumed_at' => now()]);
                     OfficeErpRecords::persist($context, $invitation);
@@ -163,7 +165,7 @@ final class OfficeErpOwnerAcceptance
         abort_unless($companyId > 0, 503, 'owner_acceptance_outcome_unavailable');
         $company = ErpCompany::query()->findOrFail($companyId);
         if ($createdOwner instanceof User) {
-            AccessSession::authenticate($request, $createdOwner, null);
+            AccessSession::authenticate($request, $createdOwner, null, 0);
         }
         $authenticatedOwner = $createdOwner ?? $request->user();
         $membership = ErpCompanyMembership::query()
@@ -192,6 +194,15 @@ final class OfficeErpOwnerAcceptance
         $authenticatedOwner = $request->user();
         if ($authenticatedOwner !== null) {
             abort_unless(mb_strtolower(trim($authenticatedOwner->email)) === $continuation['owner_email'], 403, 'invitation_owner_mismatch');
+        }
+        app(AccessAccounts::class)->advisory('email:'.$continuation['owner_email']);
+        $owner = $authenticatedOwner === null
+            ? null
+            : User::query()->whereKey($authenticatedOwner->id)->lockForUpdate()->firstOrFail();
+        if ($owner !== null) {
+            abort_unless(mb_strtolower(trim($owner->email)) === $continuation['owner_email'], 403, 'invitation_owner_mismatch');
+        } else {
+            abort_if(User::query()->where('email', $continuation['owner_email'])->lockForUpdate()->exists(), 409, 'login_required');
         }
         $targetCompanyId = $payload['company_id'] ?? null;
         $candidate = OfficeErpRecords::query($context, OfficeErpContract::class)
@@ -229,16 +240,6 @@ final class OfficeErpOwnerAcceptance
         abort_unless((int) $invitation->account_id === $context->accountId
             && (int) $invitation->contract_id === (int) $contract->id
             && $invitation->owner_email === $continuation['owner_email'], 404);
-
-        $owner = $authenticatedOwner === null
-            ? null
-            : User::query()->whereKey($authenticatedOwner->id)->lockForUpdate()->first();
-        if ($owner !== null) {
-            abort_unless(mb_strtolower(trim($owner->email)) === $continuation['owner_email'], 403, 'invitation_owner_mismatch');
-        } else {
-            app(AccessAccounts::class)->advisory('email:'.$continuation['owner_email']);
-            abort_if(User::query()->where('email', $continuation['owner_email'])->lockForUpdate()->exists(), 409, 'login_required');
-        }
 
         if ($invitation->status === 'consumed') {
             abort_unless(in_array($contract->agreement_status, ['accepted', 'effective'], true)
@@ -289,5 +290,31 @@ final class OfficeErpOwnerAcceptance
                 && preg_match('/for key [\'`]erp_companies_cnpj_unique[\'`]/', $diagnostic) === 1,
             default => false,
         };
+    }
+
+    private function ensureCompanyRegistration(OfficeErpExecutionContext $context, OfficeErpContract $contract, ErpCompany $company, ?int $actorId): void
+    {
+        $existing = OfficeErpRecords::query($context, OfficeErpCompanyRegistration::class)
+            ->where(fn ($registrations) => $registrations
+                ->where('erp_company_id', $company->id)
+                ->orWhere('client_id', $contract->client_id))
+            ->orderBy('id')->lockForUpdate()->get();
+        if ($existing->isNotEmpty()) {
+            abort_unless($existing->count() === 1
+                && (int) $existing[0]->client_id === (int) $contract->client_id
+                && (int) $existing[0]->erp_company_id === (int) $company->id, 409, 'company_registration_conflict');
+
+            return;
+        }
+
+        $registration = new OfficeErpCompanyRegistration;
+        $registration->forceFill([
+            'account_id' => $context->accountId,
+            'client_id' => (int) $contract->client_id,
+            'erp_company_id' => (int) $company->id,
+            'created_by_user_id' => $actorId,
+            'registered_at' => now(),
+        ]);
+        OfficeErpRecords::persist($context, $registration);
     }
 }

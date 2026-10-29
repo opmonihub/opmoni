@@ -47,7 +47,7 @@ class ErpCompanySettingsController extends Controller
             'stock_overselling_enabled' => ['sometimes', 'boolean'],
             'name' => ['sometimes', 'string', 'max:255'],
             'cnpj' => ['sometimes', 'string', 'max:20'],
-            'razao_social' => ['sometimes', 'nullable', 'string', 'min:10', 'max:120'],
+            'razao_social' => ['sometimes', 'nullable', 'string', 'min:10', 'max:255'],
             'ie' => ['sometimes', 'nullable', 'string', 'max:20'],
             'cst_csosn_padrao' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{2,3}\z/'],
             'cst_pis_padrao' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{2}\z/'],

@@ -22,8 +22,6 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class AccessController extends Controller
 {
@@ -62,7 +60,7 @@ class AccessController extends Controller
     public function register(AccessRequest $request): JsonResponse
     {
         [$user,$account] = $this->actions->bootstrap($request->validated());
-        AccessSession::authenticate($request, $user, $account->id);
+        AccessSession::authenticate($request, $user, $account->id, 0);
 
         return $this->identity($request, 201);
     }
@@ -70,22 +68,8 @@ class AccessController extends Controller
     public function login(AccessRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $user = User::where('email', $data['email'])->first();
-        $dummy = '$argon2id$v=19$m=65536,t=2,p=1$QWxwaGFCZXRhR2FtbWFEZQ$LAoqYUN2TrYY82BVhXA/LAihsqHFvlalWNKBJVqsMXA';
-        $hash = $user?->password ?? $dummy;
-        $valid = match (password_get_info($hash)['algoName']) {
-            'bcrypt' => strlen($data['password']) <= 72 && Hash::driver('bcrypt')->check($data['password'], $hash),
-            'argon2id' => Hash::check($data['password'], $hash),
-            default => false,
-        };
-        if (! $user || ! $valid) {
-            throw ValidationException::withMessages(['email' => 'Email ou senha inválidos']);
-        } if (Hash::needsRehash($user->password)) {
-            $user->password = Hash::make($data['password']);
-            $user->save();
-        }
-
-        AccessSession::authenticate($request, $user, $user->defaultAccountId());
+        [$user, $revision] = $this->actions->authenticatePassword($data['email'], $data['password']);
+        AccessSession::authenticate($request, $user, $user->defaultAccountId(), $revision);
 
         return $this->identity($request);
     }
@@ -97,10 +81,12 @@ class AccessController extends Controller
 
     public function logout(Request $request): Response
     {
+        $continuations = AccessSession::preservableContinuationsForLogout($request);
         AccessSession::revoke($request);
         Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+        AccessSession::restoreContinuationsAfterLogout($request, $continuations);
         $request->session()->put(['access_logout' => true, 'access_deadline' => time() + 1800]);
 
         return response()->noContent();
@@ -141,7 +127,7 @@ class AccessController extends Controller
     public function activate(AccessRequest $request): JsonResponse
     {
         [$user,$account] = $this->actions->activate($request->validated());
-        AccessSession::authenticate($request, $user, $account->id);
+        AccessSession::authenticate($request, $user, $account->id, 0);
 
         return $this->identity($request, 201);
     }

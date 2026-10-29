@@ -96,6 +96,112 @@ class ErpCompanyAdministrationConcurrencyTest extends TestCase
         $this->fail('HTTP worker did not reach the Company lock barrier: '.$label);
     }
 
+    private function waitForWorkerPreboot(string $label, string $ready, Process $worker): int
+    {
+        $deadline = microtime(true) + 20;
+        do {
+            $contents = file_exists($ready) ? (string) file_get_contents($ready) : '';
+            if ($contents !== '') {
+                $facts = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+                $this->assertSame($worker->getPid(), $facts['pid']);
+                $this->assertSame($label, $facts['label']);
+                $this->assertGreaterThan(0, $facts['backend_pid']);
+
+                return (int) $facts['backend_pid'];
+            }
+            $this->assertTrue($worker->isRunning(), 'Worker exited before completing application bootstrap.');
+            $this->assertLessThan($deadline, microtime(true), 'Worker did not complete application bootstrap: '.$label);
+            usleep(10000);
+        } while (true);
+    }
+
+    private function waitForCompanyRowWait(string $label, string $ready, Process $worker, int $holderPid): int
+    {
+        $deadline = microtime(true) + 8;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $waiting = DB::selectOne("select pid, wait_event_type from pg_stat_activity where application_name = ? and wait_event_type = 'Lock'", [$label]);
+            $contents = file_exists($ready) ? (string) file_get_contents($ready) : '';
+            if ($waiting && $contents !== '') {
+                $facts = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+                $this->assertSame($worker->getPid(), $facts['pid']);
+                $this->assertSame($label, $facts['label']);
+                $this->assertSame('company_for_update', $facts['barrier']);
+                $this->assertSame($this->company->id, $facts['company_id']);
+                $this->assertSame((int) $waiting->pid, (int) $facts['backend_pid']);
+                $rooted = DB::selectOne(<<<'SQL'
+                    with recursive blockers(pid) as (
+                        select unnest(pg_blocking_pids(?::int))
+                        union
+                        select unnest(pg_blocking_pids(blockers.pid)) from blockers
+                    )
+                    select count(*) as count from blockers where pid = ?
+                    SQL, [(int) $waiting->pid, $holderPid]);
+                $this->assertSame(1, (int) $rooted->count, 'The real Company waiter must remain blocked by the parent transaction.');
+
+                return (int) $waiting->pid;
+            }
+            $this->assertTrue($worker->isRunning(), 'Worker exited before waiting on the actual Company row lock.');
+            usleep(10000);
+        } while (microtime(true) < $deadline);
+
+        $this->fail('Worker did not reach the rooted Company row-lock wait: '.$label);
+    }
+
+    private function waitForIdentityAdvisoryWait(string $label, string $companyReady, Process $worker, int $workerBackendPid, int $firstBackendPid, int $holderPid): void
+    {
+        $deadline = microtime(true) + 8;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $wait = DB::selectOne(<<<'SQL'
+                with recursive waiting_activity as (
+                    select pid, wait_event_type, wait_event from pg_stat_activity
+                    where application_name = ? and wait_event_type = 'Lock'
+                ), blockers(pid) as (
+                    select unnest(pg_blocking_pids(waiting_activity.pid)) from waiting_activity
+                    union
+                    select unnest(pg_blocking_pids(blockers.pid)) from blockers
+                )
+                select waiting_activity.pid, waiting_activity.wait_event_type, waiting_activity.wait_event,
+                    ? = any(pg_blocking_pids(waiting_activity.pid)) as blocked_by_first,
+                    exists (
+                        select 1 from pg_locks waiting
+                        join pg_locks held on held.locktype = waiting.locktype
+                            and held.database = waiting.database
+                            and held.classid = waiting.classid
+                            and held.objid = waiting.objid
+                            and held.objsubid = waiting.objsubid
+                        where waiting.pid = waiting_activity.pid and waiting.locktype = 'advisory'
+                            and waiting.granted = false and waiting.objsubid = 1
+                            and held.pid = ? and held.granted = true and held.mode = 'ExclusiveLock'
+                    ) as waits_on_first_identity_lock,
+                    exists (
+                        select 1 from pg_locks relation_lock
+                        where relation_lock.pid = waiting_activity.pid and relation_lock.granted = true
+                            and relation_lock.relation = 'erp_companies'::regclass
+                    ) as holds_company_relation_lock,
+                    exists (select 1 from blockers where pid = ?) as blocker_chain_reaches_company_holder
+                from waiting_activity
+                SQL, [$label, $firstBackendPid, $firstBackendPid, $holderPid]);
+            if ($wait !== null) {
+                $this->assertSame($workerBackendPid, (int) $wait->pid);
+                $this->assertSame('Lock', $wait->wait_event_type);
+                $this->assertSame('advisory', $wait->wait_event);
+                $this->assertTrue(in_array($wait->blocked_by_first, [true, 1, '1', 't'], true), 'The second request must wait directly on the first request.');
+                $this->assertTrue(in_array($wait->waits_on_first_identity_lock, [true, 1, '1', 't'], true), 'The ungranted advisory lock tuple must match the first request\'s granted identity lock.');
+                $this->assertTrue(in_array($wait->blocker_chain_reaches_company_holder, [true, 1, '1', 't'], true), 'The second request\'s blocker chain must reach the parent Company-lock holder.');
+                $this->assertFalse(in_array($wait->holds_company_relation_lock, [true, 1, '1', 't'], true), 'Identity locks must be acquired before the Company relation lock.');
+                $this->assertFileDoesNotExist($companyReady, 'The second request must not reach the Company lock while waiting for identity authority.');
+
+                return;
+            }
+            $this->assertTrue($worker->isRunning(), 'Second request exited before its identity advisory-lock wait was observed.');
+            usleep(10000);
+        } while (microtime(true) < $deadline);
+
+        $this->fail('Second request did not wait on the first request identity lock: '.$label);
+    }
+
     private function race(): array
     {
         $a = $this->login();
@@ -103,24 +209,56 @@ class ErpCompanyAdministrationConcurrencyTest extends TestCase
         $this->assertNotSame($a['cookies']['opmoni-session'], $b['cookies']['opmoni-session']);
         $readyA = tempnam(sys_get_temp_dir(), 'company-admin-a-');
         $readyB = tempnam(sys_get_temp_dir(), 'company-admin-b-');
+        $prebootReadyA = tempnam(sys_get_temp_dir(), 'company-admin-preboot-');
+        $prebootReadyB = tempnam(sys_get_temp_dir(), 'company-admin-preboot-');
+        $prebootReleaseA = tempnam(sys_get_temp_dir(), 'company-admin-preboot-');
+        $prebootReleaseB = tempnam(sys_get_temp_dir(), 'company-admin-preboot-');
         unlink($readyA);
         unlink($readyB);
-        DB::beginTransaction();
-        DB::table('erp_companies')->where('id', $this->company->id)->lockForUpdate()->first();
+        unlink($prebootReadyA);
+        unlink($prebootReadyB);
+        unlink($prebootReleaseA);
+        unlink($prebootReleaseB);
+        $workerA = $workerB = null;
         try {
-            $workerA = $this->worker($this->association($a) + ['label' => 'company-admin-race-a', 'ready' => $readyA]);
-            $workerB = $this->worker($this->association($b) + ['label' => 'company-admin-race-b', 'ready' => $readyB]);
-            $this->waitForDatabaseLock('company-admin-race-a', $readyA);
-            $this->waitForDatabaseLock('company-admin-race-b', $readyB);
+            $workerA = $this->worker($this->association($a) + [
+                'label' => 'company-admin-race-a', 'ready' => $readyA, 'ready_facts' => true,
+                'preboot_ready' => $prebootReadyA, 'preboot_release' => $prebootReleaseA,
+            ]);
+            $workerB = $this->worker($this->association($b) + [
+                'label' => 'company-admin-race-b', 'ready' => $readyB, 'ready_facts' => true,
+                'preboot_ready' => $prebootReadyB, 'preboot_release' => $prebootReleaseB,
+            ]);
+            $backendA = $this->waitForWorkerPreboot('company-admin-race-a', $prebootReadyA, $workerA);
+            $backendB = $this->waitForWorkerPreboot('company-admin-race-b', $prebootReadyB, $workerB);
+
+            DB::beginTransaction();
+            DB::table('erp_companies')->where('id', $this->company->id)->lockForUpdate()->first();
+            $holderPid = (int) DB::selectOne('select pg_backend_pid() as pid')->pid;
+            touch($prebootReleaseA);
+            $backendA = $this->waitForCompanyRowWait('company-admin-race-a', $readyA, $workerA, $holderPid);
+            touch($prebootReleaseB);
+            $this->waitForIdentityAdvisoryWait('company-admin-race-b', $readyB, $workerB, $backendB, $backendA, $holderPid);
             DB::commit();
 
             return [$this->response($workerA), $this->response($workerB)];
         } finally {
+            @touch($prebootReleaseA);
+            @touch($prebootReleaseB);
             if (DB::transactionLevel() > 0) {
                 DB::rollBack();
             }
+            foreach ([$workerA, $workerB] as $worker) {
+                if ($worker instanceof Process && $worker->isRunning()) {
+                    $worker->stop(1);
+                }
+            }
             @unlink($readyA);
             @unlink($readyB);
+            @unlink($prebootReadyA);
+            @unlink($prebootReadyB);
+            @unlink($prebootReleaseA);
+            @unlink($prebootReleaseB);
         }
     }
 

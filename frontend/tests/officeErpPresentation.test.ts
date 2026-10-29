@@ -4,13 +4,13 @@ import * as Vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { compileVueComponent, evaluateVueBindings, vueSource } from './helpers/compileVueComponent.ts'
 
-test('client registration keeps Clients selected in both navigation presentations', () => {
+test('Company registration keeps Empresas selected in both navigation presentations', () => {
   const result = evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], {
     computed: Vue.computed,
-    route: { path: '/gestao-erp/clientes/novo' }
+    route: { path: '/gestao-erp/empresas/nova' }
   })
   const items = (result.pageTabs as Vue.ComputedRef<Array<Array<{ to: string, active: boolean }>>>).value.flat()
-  assert.deepEqual(items.filter(item => item.active).map(item => item.to), ['/gestao-erp/clientes'])
+  assert.deepEqual(items.filter(item => item.active).map(item => item.to), ['/gestao-erp/empresas'])
 })
 
 test('column visibility preserves identity and actions while allowing secondary fields to be restored', async () => {
@@ -60,8 +60,8 @@ test('expandable commercial rows use the supplied stable domain identity', async
   assert.equal(getRowId?.({ id: 804 }, 0), '804')
 })
 
-test('the client ordering column names its legal-name field when trade names are displayed', () => {
-  const result = evaluateVueBindings(vueSource('pages/gestao-erp/clientes/index.vue'), ['columns'], {})
+test('the Company list names its legal-name field', () => {
+  const result = evaluateVueBindings(vueSource('pages/gestao-erp/empresas/index.vue'), ['columns'], {})
   const name = (result.columns as Array<{ accessorKey?: string, header: string }>).find(column => column.accessorKey === 'name')
-  assert.equal(name?.header, 'Razão social')
+  assert.equal(name?.header, 'Empresa')
 })

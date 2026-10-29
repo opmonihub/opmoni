@@ -28,6 +28,8 @@ export function useOfficeErpListNavigation<T extends Criteria>(
       } else if (['from', 'to', 'dueFrom', 'dueTo'].includes(String(field))) {
         if (candidate === '' || (typeof candidate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(candidate)
           && Number.isFinite(Date.parse(candidate)) && new Date(candidate).toISOString().slice(0, 10) === candidate)) result[field] = candidate as T[keyof T]
+      } else if (field === 'contractId') {
+        if (candidate === '' || (typeof candidate === 'string' && /^[1-9]\d{0,14}$/.test(candidate))) result[field] = candidate as T[keyof T]
       } else if (typeof candidate === 'string') {
         result[field] = candidate as T[keyof T]
       }
@@ -39,7 +41,7 @@ export function useOfficeErpListNavigation<T extends Criteria>(
   function readQuery() {
     const query = route.query ?? {}
     const legacy = fromQuery?.()
-    const aliases: Record<string, string[]> = { page: ['pagina', 'page'], perPage: ['porPagina', 'per_page'], from: ['from_on', 'received_from'], to: ['to_on', 'received_to'], dueFrom: ['due_from'], dueTo: ['due_to'] }
+    const aliases: Record<string, string[]> = { page: ['pagina', 'page'], perPage: ['porPagina', 'per_page'], from: ['from_on', 'received_from'], to: ['to_on', 'received_to'], dueFrom: ['due_from'], dueTo: ['due_to'], contractId: ['contract_id'] }
     const explicit: Record<string, unknown> = { ...defaults, ...sortDefaults, ...legacy }
     let found = legacy !== null && legacy !== undefined
     for (const field of [...Object.keys(defaults), 'sort', 'direction']) {

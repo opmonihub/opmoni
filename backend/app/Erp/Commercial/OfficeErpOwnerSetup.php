@@ -166,7 +166,7 @@ final class OfficeErpOwnerSetup
         $companyId = (int) ($result['data']['company_id'] ?? 0);
         abort_unless($companyId > 0, 503, 'owner_setup_outcome_unavailable');
         if ($createdOwner instanceof User) {
-            AccessSession::authenticate($request, $createdOwner, null);
+            AccessSession::authenticate($request, $createdOwner, null, 0);
         }
         $authenticatedOwner = $createdOwner ?? $request->user();
         $membership = ErpCompanyMembership::query()
@@ -231,8 +231,14 @@ final class OfficeErpOwnerSetup
     private function lockAcceptanceState(OfficeErpExecutionContext $ctx, array $continuation, Request $request, string $key, bool $acquireEmailAdvisory = true): array
     {
         $owner = $request->user();
-        if ($owner === null && $acquireEmailAdvisory) {
+        if ($acquireEmailAdvisory) {
             app(AccessAccounts::class)->advisory('email:'.$continuation['owner_email']);
+        }
+        if ($owner !== null) {
+            $owner = User::query()->whereKey($owner->id)->lockForUpdate()->firstOrFail();
+            abort_unless(mb_strtolower(trim($owner->email)) === $continuation['owner_email'], 403, 'invitation_owner_mismatch');
+        } else {
+            abort_if(User::query()->where('email', $continuation['owner_email'])->lockForUpdate()->exists(), 409, 'login_required');
         }
 
         [$account] = $this->admission->lockCommercialAggregate($ctx);
@@ -270,13 +276,6 @@ final class OfficeErpOwnerSetup
             && $invitation->purpose === 'access_setup'
             && $invitation->owner_email === $continuation['owner_email'], 404);
         abort_unless($allocation?->state === 'occupied', 409, 'licence_allocation_not_occupied');
-
-        if ($owner !== null) {
-            $owner = User::query()->whereKey($owner->id)->lockForUpdate()->firstOrFail();
-            abort_unless(mb_strtolower(trim($owner->email)) === $continuation['owner_email'], 403, 'invitation_owner_mismatch');
-        } else {
-            abort_if(User::query()->where('email', $continuation['owner_email'])->lockForUpdate()->exists(), 409, 'login_required');
-        }
 
         $operationExists = OfficeErpRecords::query($ctx, OfficeErpCommercialOperation::class)
             ->where('actor_kind', $ctx->actorKind)

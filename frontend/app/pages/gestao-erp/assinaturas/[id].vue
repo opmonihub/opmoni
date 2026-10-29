@@ -338,14 +338,14 @@ watch(identityStamp, () => {
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="min-w-0">
         <p class="text-sm text-muted">
-          <NuxtLink to="/gestao-erp/assinaturas" class="underline">Assinaturas</NuxtLink> / contrato {{ route.params.id }}
+          <NuxtLink to="/gestao-erp/assinaturas/contratos" class="underline">Contratos</NuxtLink> / contrato {{ route.params.id }}
         </p>
         <h2 class="mt-1 text-base font-semibold wrap-anywhere text-highlighted">
           {{ record?.client.name ?? 'Contrato ERP' }}
         </h2>
       </div>
-      <UButton to="/gestao-erp/assinaturas" color="neutral" variant="outline">
-        Voltar às assinaturas
+      <UButton to="/gestao-erp/assinaturas/contratos" color="neutral" variant="outline">
+        Voltar aos contratos
       </UButton>
     </div>
     <UAlert

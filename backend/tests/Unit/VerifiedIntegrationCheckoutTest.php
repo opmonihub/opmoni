@@ -90,6 +90,15 @@ final class VerifiedIntegrationCheckoutTest extends TestCase
         ));
     }
 
+    public function test_it_accepts_the_client_access_container_alias_only_with_exact_source_identity(): void
+    {
+        $source = '/home/obsidian/dev/opmoni/.worktrees/manage-office-erp-client-access';
+        $identity = self::actualCheckoutIdentity();
+        self::assertTrue(VerifiedIntegrationCheckout::allows('/workspace', '/workspace', $source, $identity, $identity));
+        self::assertFalse(VerifiedIntegrationCheckout::allows('/workspace', '/workspace', $source, $identity.'0', $identity));
+        self::assertFalse(VerifiedIntegrationCheckout::allows('/workspace', '/workspace', $source.'-other', $identity, $identity));
+    }
+
     private static function actualCheckoutIdentity(): string
     {
         $checkout = realpath(dirname(__DIR__, 3));

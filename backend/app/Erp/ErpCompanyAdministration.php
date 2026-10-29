@@ -2,10 +2,13 @@
 
 namespace App\Erp;
 
+use App\Actions\AccessAccounts;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpEstablishment;
+use App\Models\User;
 use App\Support\AccessSession;
+use App\Support\AccessTransaction;
 use App\Support\CurrentCompany;
 use Closure;
 use Illuminate\Http\Request;
@@ -15,6 +18,37 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class ErpCompanyAdministration
 {
+    /** Acquire identity locks before ResolveCompany takes its aggregate lock. */
+    public function prepareMemberIdentityLocks(Request $request, int $companyId): void
+    {
+        AccessTransaction::boundLockWaits();
+        abort_unless(ErpCompanyMembership::query()->where('erp_company_id', $companyId)
+            ->where('user_id', $request->user()->id)->where('role', 'owner')->exists(), 403);
+        if ($request->routeIs('erp.members.store')) {
+            $targetId = $request->input('user_id');
+            if ((! is_int($targetId) && ! (is_string($targetId) && ctype_digit($targetId)))
+                || (int) $targetId < 1 || (int) $targetId > 9007199254740991) {
+                throw ValidationException::withMessages(['user_id' => 'Identidade inválida']);
+            }
+        } else {
+            $targetId = ErpCompanyMembership::query()->where('erp_company_id', $companyId)
+                ->whereKey($request->route('membership'))->firstOrFail()->user_id;
+        }
+        $ids = array_values(array_unique([(int) $request->user()->id, (int) $targetId]));
+        sort($ids, SORT_NUMERIC);
+        $identities = User::query()->whereIn('id', $ids)->orderBy('id')->get(['id', 'email']);
+        if ($identities->count() !== count($ids)) {
+            throw ValidationException::withMessages(['user_id' => 'Identidade inválida']);
+        }
+        $emails = $identities->map(fn (User $user): string => mb_strtolower(trim($user->email)))->unique()->sort()->values();
+        foreach ($emails as $email) {
+            app(AccessAccounts::class)->advisory('email:'.$email);
+        }
+        $locked = User::query()->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get();
+        abort_unless($locked->count() === count($ids)
+            && $locked->pluck('email', 'id')->all() === $identities->pluck('email', 'id')->all(), 409);
+    }
+
     public function assertOwner(Request $request): ErpCompanyMembership
     {
         $context = CurrentCompany::fromRequest($request);

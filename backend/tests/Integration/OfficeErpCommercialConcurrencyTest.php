@@ -136,8 +136,11 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $first = $this->worker('owner_accept', $this->ownerAcceptancePayload($invitation, true));
         $this->waitFor($first, 'held');
         $this->assertWorkerHeldLock($first, 'accounts');
-        $second = $this->worker('owner_accept', $this->ownerAcceptancePayload($invitation));
-        $this->assertWaitingOnRowLock($second, 'accounts');
+        $second = $this->worker('owner_accept', [
+            ...$this->ownerAcceptancePayload($invitation),
+            'test_identity_lock_timeout_email' => mb_strtolower(trim($owner->email)),
+        ]);
+        $this->assertWaitingOnIdentityLock($second, $first, $owner->email);
         $this->release($first);
         $results = [$this->workerResult($first), $this->workerResult($second)];
 
@@ -169,8 +172,11 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $first = $this->worker('owner_accept', $this->ownerAcceptancePayload($firstInvitation, false, true));
         $this->waitFor($first, 'held');
         $this->assertWorkerHeldLock($first, 'users');
-        $second = $this->worker('owner_accept', $this->ownerAcceptancePayload($secondInvitation));
-        $this->assertWaitingOnRowLock($second, 'users');
+        $second = $this->worker('owner_accept', [
+            ...$this->ownerAcceptancePayload($secondInvitation),
+            'test_identity_lock_timeout_email' => mb_strtolower(trim($owner->email)),
+        ]);
+        $this->assertWaitingOnIdentityLock($second, $first, $owner->email);
         $this->release($first);
         $results = [$this->workerResult($first), $this->workerResult($second)];
 

@@ -3,10 +3,16 @@
 namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpAdmission;
+use App\Erp\Commercial\OfficeErpAssignments;
+use App\Erp\Commercial\OfficeErpCompanyMembers;
+use App\Erp\Commercial\OfficeErpCompanyProfiles;
+use App\Erp\Commercial\OfficeErpCompanyRegistrations;
 use App\Erp\Commercial\OfficeErpContracts;
 use App\Erp\Commercial\OfficeErpCustomerEnrollment;
 use App\Erp\Commercial\OfficeErpDelinquency;
 use App\Erp\Commercial\OfficeErpInvoices;
+use App\Erp\Commercial\OfficeErpMemberCredentials;
+use App\Erp\Commercial\OfficeErpMemberInvitations;
 use App\Erp\Commercial\OfficeErpOperations;
 use App\Erp\Commercial\OfficeErpOwnerInvitations;
 use App\Erp\Commercial\OfficeErpOwnerSetup;
@@ -21,7 +27,7 @@ use Illuminate\Validation\ValidationException;
 
 final class OfficeErpOperationController extends Controller
 {
-    public function __invoke(Request $request, string $key, OfficeErpAdmission $admission, OfficeErpOperations $operations, ErpOperationJournal $journal, OfficeErpSalesPlans $plans, OfficeErpDelinquency $delinquency, OfficeErpInvoices $invoices, OfficeErpOwnerInvitations $invitations, OfficeErpOwnerSetup $ownerSetup, OfficeErpReceipts $receipts, OfficeErpContracts $contracts, OfficeErpCustomerEnrollment $enrollment, OfficeErpTrialLinks $trialLinks): JsonResponse
+    public function __invoke(Request $request, string $key, OfficeErpAdmission $admission, OfficeErpOperations $operations, ErpOperationJournal $journal, OfficeErpSalesPlans $plans, OfficeErpDelinquency $delinquency, OfficeErpInvoices $invoices, OfficeErpOwnerInvitations $invitations, OfficeErpOwnerSetup $ownerSetup, OfficeErpReceipts $receipts, OfficeErpContracts $contracts, OfficeErpCustomerEnrollment $enrollment, OfficeErpTrialLinks $trialLinks, OfficeErpCompanyRegistrations $registrations, OfficeErpCompanyProfiles $profiles, OfficeErpCompanyMembers $members, OfficeErpMemberInvitations $memberInvitations, OfficeErpMemberCredentials $credentials, OfficeErpAssignments $assignments): JsonResponse
     {
         $routeKey = $key;
         $headerKey = $request->header('Idempotency-Key');
@@ -37,7 +43,37 @@ final class OfficeErpOperationController extends Controller
         $outcome = $operations->lookup(
             $ctx,
             $validatedKey,
-            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey, $delinquency, $invoices, $invitations, $ownerSetup, $receipts, $contracts, $enrollment, $trialLinks): void {
+            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey, $delinquency, $invoices, $invitations, $ownerSetup, $receipts, $contracts, $enrollment, $trialLinks, $registrations, $profiles, $members, $memberInvitations, $credentials, $assignments): void {
+                if ($action === 'subscription.assign') {
+                    $assignments->authorizeOperation($ctx, $action, $payload, $validatedKey);
+
+                    return;
+                }
+                if (in_array($action, ['member.update', 'member.remove'], true)) {
+                    $members->authorizeOperation($ctx, $action, $payload, $validatedKey);
+
+                    return;
+                }
+                if (in_array($action, ['member.invitation.issue', 'member.invitation.reissue', 'member.invitation.revoke'], true)) {
+                    $memberInvitations->authorizeOperation($ctx, $action, $payload);
+
+                    return;
+                }
+                if (in_array($action, ['member.password_reset', 'member.password_recovery.issue'], true)) {
+                    $credentials->authorizeOperation($ctx, $action, $payload, $validatedKey);
+
+                    return;
+                }
+                if ($action === 'company.profile.update') {
+                    $profiles->authorizeOperation($ctx, $action, $payload);
+
+                    return;
+                }
+                if ($action === 'company.register') {
+                    $registrations->authorizeOperation($ctx, $action, $payload, $validatedKey);
+
+                    return;
+                }
                 if ($action === 'customer.enroll') {
                     $enrollment->authorizeOperation($ctx, $action, $payload, $validatedKey);
 
@@ -78,7 +114,7 @@ final class OfficeErpOperationController extends Controller
 
                     return;
                 }
-                if (in_array($action, ['contract.activate', 'contract.renew', 'contract.amend.price', 'contract.suspend', 'contract.resume', 'contract.cancel', 'modules.expand'], true)) {
+                if (in_array($action, ['contract.activate', 'contract.renew', 'contract.amend.price', 'contract.amend.modules.reduce', 'contract.suspend', 'contract.resume', 'contract.cancel', 'modules.expand'], true)) {
                     $contracts->authorizeOperation($ctx, $action, $payload, $validatedKey);
 
                     return;

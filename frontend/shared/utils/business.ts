@@ -19,6 +19,6 @@ export function tenantPermissions(identity: Identity | null) {
 }
 
 export function tenantApiPath(path: string) {
-  return !/^\/(?:admin|csrf|me|login|logout|register|registration-status|first-access|account\/switch|erp-invitations|erp\/(?:company\/switch|companies|delegations)|serpro\/(?:connection|connectivity))(?:\/|\?|$)/.test(path)
+  return !/^\/(?:admin|csrf|me|login|logout|register|registration-status|first-access|account\/switch|erp-invitations|erp-member-invitations|password-recovery|erp\/(?:company\/switch|companies|delegations)|serpro\/(?:connection|connectivity))(?:\/|\?|$)/.test(path)
     && !/^\/erp\//.test(path)
 }

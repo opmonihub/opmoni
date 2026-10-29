@@ -115,6 +115,57 @@ test('owner invitation transport is available without tenant membership and neve
   assert.equal(calls.filter(call => call.path === '/api/v1/clients' || call.path === '/api/v1/erp-commercial/plans' || call.path === '/api/v1/erp-invitations-foreign/current').length, 0)
 })
 
+test('public member and password continuation routes bypass tenant assertions but reject neighboring prefixes', async () => {
+  const states = new Map<string, ReturnType<typeof ref>>([
+    ['access-user', ref(null)],
+    ['access-csrf', ref<string | null>(null)]
+  ])
+  const calls: { path: string, options: Record<string, unknown> }[] = []
+  Object.assign(globalThis, {
+    useNuxtApp: () => (globalThis as { __publicContinuationsNuxtApp?: object }).__publicContinuationsNuxtApp ??= {},
+    useState: (key: string, initial: () => unknown) => {
+      if (!states.has(key)) states.set(key, ref(initial()))
+      return states.get(key)
+    },
+    useRequestEvent: () => undefined,
+    useRequestFetch: () => async (path: string, options: Record<string, unknown>) => {
+      calls.push({ path, options })
+      return path.endsWith('/csrf') ? { csrf_token: 'continuation-csrf' } : { state: 'missing' }
+    }
+  })
+  const { useAccessApi } = await import('../app/composables/useAccessApi.ts')
+  const { api } = useAccessApi()
+  await api('/erp-member-invitations/resolve', { method: 'POST', body: { token: 'opaque' }, headers: { 'X-Account-Id': '901', 'X-Company-Id': '902' } })
+  await api('/erp-member-invitations/current')
+  await api('/erp-member-invitations/accept', { method: 'POST', body: {}, headers: { 'X-Account-Id': '901' } })
+  await api('/password-recovery/resolve', { method: 'POST', body: { token: 'opaque', delivery_id: '9' }, headers: { 'X-Account-Id': '901', 'X-Company-Id': '902' } })
+  await api('/password-recovery/current')
+  await api('/password-recovery/complete', { method: 'POST', body: { password: 'temporary' }, headers: { 'X-Account-Id': '901' } })
+
+  const requests = calls.filter(call => call.path !== '/api/v1/csrf')
+  assert.deepEqual(requests.map(call => call.path), [
+    '/api/v1/erp-member-invitations/resolve',
+    '/api/v1/erp-member-invitations/current',
+    '/api/v1/erp-member-invitations/accept',
+    '/api/v1/password-recovery/resolve',
+    '/api/v1/password-recovery/current',
+    '/api/v1/password-recovery/complete'
+  ])
+  for (const call of requests) {
+    const headers = new Headers(call.options.headers as HeadersInit)
+    assert.equal(headers.get('X-Account-Id'), null)
+    assert.equal(headers.get('X-Company-Id'), null)
+    assert.equal(call.options.retry, 0)
+  }
+  assert.equal(new Headers(requests[0]!.options.headers as HeadersInit).get('X-CSRF-Token'), 'continuation-csrf')
+  assert.equal(new Headers(requests[2]!.options.headers as HeadersInit).get('X-CSRF-Token'), 'continuation-csrf')
+  assert.equal(new Headers(requests[3]!.options.headers as HeadersInit).get('X-CSRF-Token'), 'continuation-csrf')
+  assert.equal(new Headers(requests[5]!.options.headers as HeadersInit).get('X-CSRF-Token'), 'continuation-csrf')
+  await assert.rejects(api('/erp-member-invitations-foreign/current'), /account|escritório/i)
+  await assert.rejects(api('/password-recovery-foreign/current'), /account|escritório/i)
+  assert.equal(calls.some(call => call.path.includes('-foreign')), false)
+})
+
 test('tenant permissions require a matching active membership even for platform administrators', async () => {
   const { tenantPermissions } = await import('../shared/utils/business.ts')
   assert.equal(tenantPermissions(identity).canManageClients, true)

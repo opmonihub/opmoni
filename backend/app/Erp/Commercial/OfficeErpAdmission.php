@@ -21,14 +21,17 @@ final class OfficeErpAdmission
 {
     public const ACTION_CLASSIFICATION = [
         'maintenance' => [
-            'contract.read', 'contract.activate', 'contract.renew', 'contract.amend.price', 'contract.suspend', 'contract.resume', 'contract.cancel',
+            'contract.read', 'contract.activate', 'contract.renew', 'contract.amend.price', 'contract.amend.modules.reduce', 'contract.suspend', 'contract.resume', 'contract.cancel',
             'invoice.read', 'invoice.issue', 'invoice.correct', 'receipt.read', 'receipt.record', 'receipt.reverse',
             'policy.read', 'policy.configure', 'offer.archive', 'report.read', 'invitation.revoke', 'owner.setup.issue',
+            'member.update', 'member.remove', 'member.invitation.issue', 'member.invitation.reissue', 'member.invitation.revoke',
+            'member.password_reset', 'member.password_recovery.issue',
         ],
         'new_sale' => [
-            'contract.create', 'contract.send', 'invitation.issue', 'subscription.adopt', 'licence.add', 'modules.expand',
+            'contract.create', 'contract.send', 'invitation.issue', 'subscription.assign', 'subscription.adopt', 'licence.add', 'modules.expand',
             'offer.create', 'offer.publish', 'customer.enroll', 'trial.link.configure', 'trial.link.rotate', 'trial.convert',
         ],
+        'registration' => ['company.register', 'company.profile.update'],
         'owner_only' => ['owner.accept', 'owner.reject'],
         'trial_registration' => ['trial.register'],
         'system_only' => ['billing.generate', 'allocation.expire', 'trial.expire'],
@@ -56,6 +59,7 @@ final class OfficeErpAdmission
                 $canRead = $account->status === 'active';
                 $commercialEnabled = (bool) $allowance['enabled'];
                 $subscriptionActive = $subscription?->status === 'active';
+                $canRegisterCompany = $canRead && $subscriptionActive;
                 $canMaintain = $canRead;
                 $canConfigure = $canRead;
                 $limit = $allowance['licence_limit'];
@@ -111,10 +115,11 @@ final class OfficeErpAdmission
                     'subscription_status' => $subscription?->status,
                     'plan_id' => (int) ($plan?->id ?? 0),
                     'allowance' => $identityAllowance,
-                    'capabilities' => [$canRead, $canMaintain, $canConfigure, $canSellNew, $canProvision, $canStartTrial, $canManageTrialLink],
+                    'capabilities' => [$canRead, $canMaintain, $canConfigure, $canSellNew, $canProvision, $canStartTrial, $canManageTrialLink, $canRegisterCompany],
                 ];
 
                 return [
+                    'can_register_company' => $canRegisterCompany,
                     'can_read' => $canRead,
                     'can_maintain' => $canMaintain,
                     'can_configure' => $canConfigure,
@@ -123,6 +128,7 @@ final class OfficeErpAdmission
                     'can_start_trial' => $canStartTrial,
                     'can_manage_trial_link' => $canManageTrialLink,
                     'capability_reasons' => [
+                        'can_register_company' => $subscriptionActive ? [] : ['subscription_inactive'],
                         'can_configure' => [],
                         'can_sell_new' => array_values(array_unique($resaleReasons)),
                         'can_provision' => array_values(array_unique($provisionReasons)),
@@ -205,6 +211,7 @@ final class OfficeErpAdmission
         $ctx->assertVerified();
         $this->assertActorCanRunAction($ctx, $action);
         abort_unless(in_array($action, [
+            ...self::ACTION_CLASSIFICATION['registration'],
             ...self::ACTION_CLASSIFICATION['maintenance'],
             ...self::ACTION_CLASSIFICATION['new_sale'],
             ...self::ACTION_CLASSIFICATION['owner_only'],
@@ -223,6 +230,11 @@ final class OfficeErpAdmission
         array $allowance,
         array $modules,
     ): void {
+        if (in_array($action, self::ACTION_CLASSIFICATION['registration'], true)) {
+            abort_unless($subscription?->status === 'active', 403, 'subscription_inactive');
+
+            return;
+        }
         if (in_array($action, self::ACTION_CLASSIFICATION['maintenance'], true)) {
             abort_unless($this->isAcceptedMaintenance($action, $contract, $allocation, $ctx), 403);
             $this->assertModulesAllowed($action, $modules, $contract, $allowance, false);
@@ -252,7 +264,7 @@ final class OfficeErpAdmission
         $convertingCurrentTrial = $action === 'trial.convert'
             && $allocation?->state === 'occupied'
             && $this->hasCurrentUnconvertedTrial($contract);
-        if (in_array($action, ['customer.enroll', 'trial.convert'], true) && ! $convertingCurrentTrial) {
+        if (in_array($action, ['customer.enroll', 'subscription.assign', 'trial.convert'], true) && ! $convertingCurrentTrial) {
             $this->assertCanProvision($subscription, $allowance);
         } elseif ($convertingCurrentTrial) {
             abort_unless($subscription?->status === 'active', 403, 'subscription_inactive');
@@ -274,7 +286,7 @@ final class OfficeErpAdmission
             && $allocation->expires_at !== null
             && $allocation->expires_at->isFuture();
         $capacityRequired = in_array($action, [
-            'contract.create', 'contract.send', 'invitation.issue', 'subscription.adopt', 'licence.add', 'owner.accept',
+            'contract.create', 'contract.send', 'invitation.issue', 'subscription.assign', 'subscription.adopt', 'licence.add', 'owner.accept',
             'offer.create', 'offer.publish', 'customer.enroll', 'trial.convert',
         ], true);
         abort_if(
@@ -514,6 +526,13 @@ final class OfficeErpAdmission
             return true;
         }
 
+        if (in_array($action, [
+            'member.update', 'member.remove', 'member.invitation.issue', 'member.invitation.reissue', 'member.invitation.revoke',
+            'member.password_reset', 'member.password_recovery.issue',
+        ], true)) {
+            return true;
+        }
+
         if ($contract === null) {
             return false;
         }
@@ -524,6 +543,7 @@ final class OfficeErpAdmission
 
         return match ($action) {
             'contract.read', 'invoice.read', 'invoice.issue', 'invoice.correct', 'receipt.read', 'receipt.record', 'receipt.reverse' => $historical && $effectiveLicence,
+            'contract.amend.modules.reduce' => $contract->agreement_status === 'effective' && $effectiveLicence,
             'contract.activate' => $contract->agreement_status === 'accepted' && $allocation?->state === 'occupied',
             'contract.renew', 'contract.amend.price', 'contract.suspend', 'contract.resume', 'contract.cancel' => $active && $effectiveLicence,
             'invitation.revoke' => $contract->agreement_status === 'awaiting_owner' && $allocation?->state === 'reserved',
@@ -540,13 +560,16 @@ final class OfficeErpAdmission
 
             return;
         }
-        $allowed = $expansion ? $allowance['module_keys'] : ($contract?->currentRevision?->module_keys ?? []);
-        abort_unless(array_diff($modules, $allowed) === [], 403, 'commercial_module_not_allowed');
-        if (! $expansion && $contract !== null) {
-            abort_unless(array_diff($modules, $contract->currentRevision?->module_keys ?? []) === [], 403, 'commercial_grant_expansion_forbidden');
+        $current = $contract?->currentRevision?->module_keys ?? [];
+        if ($expansion && $contract !== null) {
+            $added = array_diff($modules, $current);
+            abort_unless(array_diff($added, $allowance['module_keys']) === [], 403, 'commercial_module_not_allowed');
+        } elseif ($expansion) {
+            abort_unless(array_diff($modules, $allowance['module_keys']) === [], 403, 'commercial_module_not_allowed');
+        } elseif ($contract !== null) {
+            abort_unless(array_diff($modules, $current) === [], 403, 'commercial_grant_expansion_forbidden');
         }
         if ($action === 'contract.renew' || $action === 'contract.amend.price') {
-            $current = $contract?->currentRevision?->module_keys ?? [];
             sort($modules, SORT_STRING);
             sort($current, SORT_STRING);
             abort_unless($modules === $current, 403, 'commercial_grant_expansion_forbidden');

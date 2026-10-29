@@ -150,7 +150,7 @@ onMounted(() => {
           Visão geral
         </h1>
         <p class="mt-2 text-sm text-muted">
-          Clientes, assinaturas e cobranças do escritório.
+          Empresas, assinaturas e cobranças do escritório.
         </p>
       </div>
       <UButton
@@ -168,24 +168,24 @@ onMounted(() => {
     <section aria-labelledby="erp-start" class="flex flex-col gap-5 rounded-xl border border-default bg-default p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
       <div class="max-w-2xl space-y-2">
         <h2 id="erp-start" class="text-lg font-semibold text-highlighted">
-          Ative o ERP para um cliente
+          Cadastre uma empresa ou acompanhe o ERP
         </h2>
         <p class="text-sm text-muted">
-          Selecione um cliente e defina o plano para ativar a assinatura.
+          Registre uma empresa sem assinatura ou consulte as assinaturas existentes.
         </p>
       </div>
       <div class="flex shrink-0 flex-col gap-2">
-        <UButton to="/gestao-erp/clientes/novo" icon="i-lucide-user-plus" class="justify-center">
-          Cadastrar cliente e ativar ERP
+        <UButton to="/gestao-erp/empresas/nova" icon="i-lucide-user-plus" class="justify-center">
+          Nova empresa
         </UButton>
         <UButton
-          to="/gestao-erp/clientes"
+          to="/gestao-erp/empresas"
           color="neutral"
           variant="ghost"
           trailing-icon="i-lucide-arrow-right"
           class="justify-center"
         >
-          Consultar clientes da carteira
+          Consultar empresas da carteira
         </UButton>
       </div>
     </section>

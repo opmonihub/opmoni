@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpClientController;
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpCompanyController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContextController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContractController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpEnrollmentController;
@@ -18,6 +19,10 @@ use App\Http\Middleware\ResolveOfficeErpCommercial;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->group(function (): void {
+    require __DIR__.'/office-erp-subscriptions.php';
+    require __DIR__.'/office-erp-access-deliveries.php';
+    require __DIR__.'/office-erp-members.php';
+    require __DIR__.'/office-erp-member-credentials.php';
     Route::get('/context', OfficeErpContextController::class)->name('office-erp-commercial.context');
     Route::get('/summary', OfficeErpSummaryController::class)->name('office-erp-commercial.summary');
     Route::get('/operations/{key}', OfficeErpOperationController::class)->name('office-erp-commercial.operations.lookup');
@@ -32,6 +37,10 @@ Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->
     Route::post('/receipts/{receipt}/reverse', [OfficeErpReceiptController::class, 'reverse'])->whereNumber('receipt')->name('office-erp-commercial.receipts.reverse');
     Route::post('/receipt-proofs', [OfficeErpReceiptProofController::class, 'store'])->name('office-erp-commercial.receipt-proofs.store');
     Route::get('/receipt-proofs/{proofId}', [OfficeErpReceiptProofController::class, 'download'])->whereUuid('proofId')->name('office-erp-commercial.receipt-proofs.download');
+    Route::post('/companies', [OfficeErpCompanyController::class, 'store'])->name('office-erp-commercial.companies.store');
+    Route::get('/companies', [OfficeErpCompanyController::class, 'index'])->name('office-erp-commercial.companies.index');
+    Route::patch('/companies/{company}', [OfficeErpCompanyController::class, 'update'])->whereNumber('company')->name('office-erp-commercial.companies.update');
+    Route::get('/companies/{company}', [OfficeErpCompanyController::class, 'show'])->whereNumber('company')->name('office-erp-commercial.companies.show');
     Route::get('/clients', [OfficeErpClientController::class, 'index'])->name('office-erp-commercial.clients.index');
     Route::get('/contracts', [OfficeErpContractController::class, 'index'])->name('office-erp-commercial.contracts.index');
     Route::get('/contracts/{contract}', [OfficeErpContractController::class, 'show'])->whereNumber('contract')->name('office-erp-commercial.contracts.show');

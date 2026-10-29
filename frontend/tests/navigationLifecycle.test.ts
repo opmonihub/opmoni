@@ -61,7 +61,7 @@ test('one mounted commercial shell follows tab changes and history', async () =>
   })
   try {
     const header = mounted.nodes().find(node => node.tag === 'header')
-    for (const path of ['/gestao-erp/assinaturas', '/gestao-erp/planos', '/gestao-erp/clientes', '/gestao-erp/recebimentos', '/gestao-erp/configuracoes', '/gestao-erp', '/gestao-erp/faturas/12', '/gestao-erp/assinaturas/31', '/gestao-erp/planos']) {
+    for (const path of ['/gestao-erp/assinaturas', '/gestao-erp/planos', '/gestao-erp/empresas', '/gestao-erp/recebimentos', '/gestao-erp/configuracoes', '/gestao-erp', '/gestao-erp/faturas/12', '/gestao-erp/assinaturas/31', '/gestao-erp/planos']) {
       route.path = path
       await Vue.nextTick()
       const owner = path.replace(/\/(?:12|31)$/, '')

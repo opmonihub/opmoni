@@ -8,7 +8,10 @@ final class VerifiedIntegrationCheckout
 
     private const CONTAINER_CHECKOUT = '/workspace';
 
-    private const VERIFIED_SOURCE_CHECKOUT = '/home/obsidian/dev/opmoni/.worktrees/office-erp-commercial-design';
+    private const VERIFIED_SOURCE_CHECKOUTS = [
+        '/home/obsidian/dev/opmoni/.worktrees/office-erp-commercial-design',
+        '/home/obsidian/dev/opmoni/.worktrees/manage-office-erp-client-access',
+    ];
 
     public static function statIdentityFor(string $path): ?string
     {
@@ -38,7 +41,7 @@ final class VerifiedIntegrationCheckout
 
         return $checkout === self::CONTAINER_CHECKOUT
             && $expectedCheckout === self::CONTAINER_CHECKOUT
-            && $sourceCheckout === self::VERIFIED_SOURCE_CHECKOUT
+            && in_array($sourceCheckout, self::VERIFIED_SOURCE_CHECKOUTS, true)
             && is_string($sourceIdentity)
             && preg_match('/\A(?:0|[1-9][0-9]*):(?:0|[1-9][0-9]*)\z/', $sourceIdentity) === 1
             && $actualCheckoutIdentity !== null

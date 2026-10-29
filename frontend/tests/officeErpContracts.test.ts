@@ -160,7 +160,7 @@ async function settle() {
 }
 
 test('renders the contracts list SFC and keeps agreement and licence statuses distinct', async () => {
-  const page = harness('pages/gestao-erp/assinaturas/index.vue')
+  const page = harness('pages/gestao-erp/assinaturas/contratos.vue')
   try {
     await settle()
     await expandAllContractRows(page.root)
@@ -183,7 +183,7 @@ test('labels every canonical agreement state and never describes unknown states 
     id: 20 + index,
     agreement_status
   }))
-  const page = harness('pages/gestao-erp/assinaturas/index.vue', detail, null, rows)
+  const page = harness('pages/gestao-erp/assinaturas/contratos.vue', detail, null, rows)
   try {
     await settle()
     await expandAllContractRows(page.root)
@@ -213,7 +213,7 @@ test('shows factual trial dates without inventing a next invoice', async () => {
     },
     next_billing_on: null
   }
-  const list = harness('pages/gestao-erp/assinaturas/index.vue', detail, null, [trialRecord])
+  const list = harness('pages/gestao-erp/assinaturas/contratos.vue', detail, null, [trialRecord])
   const page = harness('pages/gestao-erp/assinaturas/[id].vue', trialRecord)
   try {
     await settle()
@@ -247,7 +247,7 @@ test('keeps paid subscription status and next billing visible after trial conver
     },
     next_billing_on: '2026-11-25'
   }))
-  const page = harness('pages/gestao-erp/assinaturas/index.vue', detail, null, rows)
+  const page = harness('pages/gestao-erp/assinaturas/contratos.vue', detail, null, rows)
   const convertedActiveDetail = harness('pages/gestao-erp/assinaturas/[id].vue', {
     ...detail,
     licence_status: 'active',

@@ -71,7 +71,7 @@ test('commercial shell exposes plans with the other primary destinations and exa
   const expectedDestinations = [
     ['Visão geral', '/gestao-erp'],
     ['Planos', '/gestao-erp/planos'],
-    ['Clientes ERP', '/gestao-erp/clientes'],
+    ['Empresas', '/gestao-erp/empresas'],
     ['Assinaturas', '/gestao-erp/assinaturas'],
     ['Faturas', '/gestao-erp/faturas'],
     ['Recebimentos', '/gestao-erp/recebimentos'],
@@ -90,7 +90,7 @@ test('commercial shell exposes plans with the other primary destinations and exa
   assert.deepEqual(tabsAt('/gestao-erp/faturas-antigas').flat().filter(item => item.active).map(item => item.label), [])
   assert.deepEqual(tabsAt('/gestao-erp/recebimentos').flat().filter(item => item.active).map(item => item.label), ['Recebimentos'])
   assert.deepEqual(tabsAt('/gestao-erp/configuracoes').flat().filter(item => item.active).map(item => item.label), ['Configurações'])
-  assert.deepEqual(tabsAt('/gestao-erp/clientes').flat().filter(item => item.active).map(item => item.label), ['Clientes ERP'])
+  assert.deepEqual(tabsAt('/gestao-erp/empresas').flat().filter(item => item.active).map(item => item.label), ['Empresas'])
 })
 
 test('legacy offers page remains directly routable', () => {

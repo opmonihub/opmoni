@@ -10,6 +10,7 @@ use App\Erp\Commercial\OfficeErpRecords;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\OfficeErp\ListCommercialRequest;
 use App\Models\Client;
+use App\Models\Erp\Commercial\OfficeErpCompanyRegistration;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +25,8 @@ final class OfficeErpClientController extends Controller
         $page = $queries->clients($ctx, $filters);
         $clientIds = array_map(static fn (Client $client): int => (int) $client->id, $page->items());
         $subscriptionSummaries = [];
+        $registrations = OfficeErpRecords::query($ctx, OfficeErpCompanyRegistration::class)
+            ->whereIn('client_id', $clientIds)->get(['id', 'client_id', 'erp_company_id'])->keyBy('client_id');
 
         if ($clientIds !== []) {
             $latestContractIds = OfficeErpRecords::query($ctx, OfficeErpContract::class)
@@ -58,6 +61,10 @@ final class OfficeErpClientController extends Controller
                 'trade_name' => $client->trade_name,
                 'tax_id' => (string) $client->tax_id,
                 'subscription' => $subscriptionSummaries[(int) $client->id] ?? null,
+                'erp_registration' => isset($registrations[$client->id]) ? [
+                    'registration_id' => (int) $registrations[$client->id]->id,
+                    'company_id' => (int) $registrations[$client->id]->erp_company_id,
+                ] : null,
             ], $page->items()),
             'meta' => [
                 'current_page' => $page->currentPage(),

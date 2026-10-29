@@ -28,6 +28,16 @@ class ErpCompany extends Model
         return ErpCompanyFactory::new();
     }
 
+    public function officeErpContracts(): HasMany
+    {
+        return $this->hasMany(Commercial\OfficeErpContract::class, 'erp_company_id');
+    }
+
+    public function officeErpRegistrations(): HasMany
+    {
+        return $this->hasMany(Commercial\OfficeErpCompanyRegistration::class, 'erp_company_id');
+    }
+
     public function establishments(): HasMany
     {
         return $this->hasMany(ErpEstablishment::class);

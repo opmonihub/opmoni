@@ -1,8 +1,10 @@
 <?php
 
+use App\Actions\AccessAccounts;
 use App\Http\Middleware\AccessSecurity;
 use App\Http\Middleware\SerializedAccessSession;
 use App\Http\Middleware\TrustedIngress;
+use App\Models\User;
 use App\Support\AccessSession;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Http\Kernel;
@@ -13,7 +15,9 @@ use Illuminate\Foundation\Bootstrap\BootProviders;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
+use Tests\Integration\OfficeErpCommercialProcessTestCase;
 
 require __DIR__.'/bootstrap.php';
 $app = require __DIR__.'/../../bootstrap/app.php';
@@ -29,6 +33,62 @@ $kernel->bootstrap();
 if (config('database.default') !== 'pgsql' || config('database.connections.pgsql.database') !== 'opmoni_test'
     || config('database.redis.sessions.database') !== '15') {
     throw new RuntimeException('Integration worker requires isolated PostgreSQL and Redis stores.');
+}
+
+if (($input['database_operation'] ?? null) === 'reset-auth-revision') {
+    OfficeErpCommercialProcessTestCase::assertIsolatedStores();
+    DB::transaction(function () use ($input): void {
+        $user = User::query()->findOrFail($input['user_id']);
+        app(AccessAccounts::class)->advisory('email:'.mb_strtolower(trim($user->email)));
+        $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+        $user->forceFill([
+            'password' => Hash::make('Replacement password 123'),
+            'access_auth_revision' => (int) $user->access_auth_revision + 1,
+        ])->save();
+        if (isset($input['ready'], $input['release'])) {
+            file_put_contents($input['ready'], json_encode(['database_pid' => DB::selectOne('select pg_backend_pid() as pid')->pid]));
+            $deadline = microtime(true) + 15;
+            while (! file_exists($input['release'])) {
+                if (microtime(true) >= $deadline) {
+                    throw new RuntimeException('Authentication reset fixture synchronization timed out.');
+                }
+                usleep(1000);
+            }
+        }
+        if (isset($input['company_id'])) {
+            DB::table('erp_companies')->where('id', $input['company_id'])->lockForUpdate()->first();
+        }
+    });
+    echo json_encode(['status' => 204]);
+    exit;
+}
+
+if (isset($input['pause_after_password_proof'])) {
+    OfficeErpCommercialProcessTestCase::assertIsolatedStores();
+    $signals = $input['pause_after_password_proof'];
+    $app->bind(AccessAccounts::class, fn () => new class($signals) extends AccessAccounts
+    {
+        public function __construct(private array $signals) {}
+
+        public function authenticatePassword(string $email, string $password): array
+        {
+            $proof = parent::authenticatePassword($email, $password);
+            file_put_contents($this->signals['ready'], json_encode(['revision' => $proof[1]]));
+            $deadline = microtime(true) + 15;
+            while (! file_exists($this->signals['release'])) {
+                if (microtime(true) >= $deadline) {
+                    throw new RuntimeException('Password proof fixture synchronization timed out.');
+                }
+                usleep(1000);
+            }
+
+            return $proof;
+        }
+    });
+}
+
+if (isset($input['started'])) {
+    file_put_contents($input['started'], json_encode(['database_pid' => DB::selectOne('select pg_backend_pid() as pid')->pid]));
 }
 
 if (($input['database_operation'] ?? null) === 'hold-account') {
@@ -141,10 +201,13 @@ if ($input['fixture'] ?? false) {
     ]);
 }
 if (isset($input['barrier'])) {
-    $deadline = microtime(true) + 10;
+    if (isset($input['bootstrap_ready'])) {
+        touch($input['bootstrap_ready']);
+    }
+    $deadline = microtime(true) + 60;
     while (! file_exists($input['barrier'])) {
         if (microtime(true) >= $deadline) {
-            throw new RuntimeException('Worker synchronization timed out.');
+            throw new RuntimeException('Worker request barrier timed out.');
         }
         usleep(1000);
     }

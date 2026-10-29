@@ -758,6 +758,7 @@ test('login resumes the server-verified owner continuation at the activation rou
   const api = async (path: string) => {
     calls.push(path)
     if (path === '/login') return { id: 4, name: 'Ana Owner', email: 'ana@example.test', is_super_admin: false, accounts: [], current_account: null, companies: [], current_company: null }
+    if (path === '/password-recovery/current' || path === '/erp-member-invitations/current') return { state: 'missing' }
     if (path === '/erp-invitations/current') return { state: 'ready' }
     return { csrf_token: 'csrf' }
   }
@@ -779,7 +780,7 @@ test('login resumes the server-verified owner continuation at the activation rou
   const result = await useAuth().authenticate('/login', { email: 'ana@example.test' })
   assert.equal(result, '/erp/ativar')
   assert.deepEqual(redirects, ['/erp/ativar'])
-  assert.deepEqual(calls, ['/login', '/erp-invitations/current'])
+  assert.deepEqual(calls, ['/login', '/password-recovery/current', '/erp-member-invitations/current', '/erp-invitations/current'])
 })
 
 test('the real global middleware admits owner activation and exact public trial signup routes', async () => {

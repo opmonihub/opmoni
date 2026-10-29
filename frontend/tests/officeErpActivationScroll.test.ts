@@ -83,11 +83,12 @@ test('activation token bypasses the selector lookup and other navigations delega
     value: fakeDocument(() => { selectorQueries++ })
   })
 
-  const tokenRoute = { path: '/erp/ativar', hash: '#token=synthetic-fixture-value', meta: {}, matched: [] }
-  const activationPage = { path: '/erp/ativar', hash: '', meta: {}, matched: [] }
-  assert.equal(options.scrollBehavior(tokenRoute, activationPage), false)
-  assert.equal(options.scrollBehavior(tokenRoute, { path: '/clients', hash: '', meta: {}, matched: [] }), false, 'initial activation navigation bypasses Nuxt too')
-  assert.equal(selectorQueries, 0, 'the token is rejected before Nuxt receives it')
+  const tokenRoutes = ['/erp/ativar', '/erp/convite', '/redefinir-senha'].map(path => ({ path, hash: path === '/redefinir-senha' ? '#delivery=42&%74oken=synthetic-fixture-value' : '#token=synthetic-fixture-value', meta: {}, matched: [] }))
+  for (const tokenRoute of tokenRoutes) {
+    assert.equal(options.scrollBehavior(tokenRoute, { path: tokenRoute.path, hash: '', meta: {}, matched: [] }), false)
+    assert.equal(options.scrollBehavior(tokenRoute, { path: '/clients', hash: '', meta: {}, matched: [] }), false, `initial ${tokenRoute.path} navigation bypasses Nuxt too`)
+  }
+  assert.equal(selectorQueries, 0, 'recipient token fragments are rejected before Nuxt selector lookup')
 
   const ordinaryAnchor = { path: '/clients', hash: '#terms', meta: {}, matched: [] }
   const samePage = { path: '/clients', hash: '', meta: {}, matched: [] }

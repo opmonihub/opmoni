@@ -54,6 +54,29 @@ if (isset($input['ready'])) {
         }
     });
 }
+if (isset($input['preboot_ready'], $input['preboot_release'])) {
+    $prebootReady = $input['preboot_ready'];
+    $prebootRelease = $input['preboot_release'];
+    foreach ([$prebootReady, $prebootRelease] as $signalPath) {
+        if (! is_string($signalPath) || dirname($signalPath) !== sys_get_temp_dir()
+            || ! str_starts_with(basename($signalPath), 'erp-commercial-')) {
+            throw new RuntimeException('Invalid application-bootstrap barrier.');
+        }
+    }
+    if (file_exists($prebootReady) || file_exists($prebootRelease)) {
+        throw new RuntimeException('Application-bootstrap barrier must be exclusively reserved.');
+    }
+    file_put_contents($prebootReady, json_encode([
+        'pid' => getmypid(), 'backend_pid' => $backendPid, 'label' => $label,
+    ], JSON_THROW_ON_ERROR));
+    $deadline = microtime(true) + 20;
+    while (! file_exists($prebootRelease)) {
+        if (microtime(true) >= $deadline) {
+            throw new RuntimeException('Application-bootstrap barrier timed out.');
+        }
+        usleep(10000);
+    }
+}
 $server = ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json', 'HTTP_ORIGIN' => 'http://localhost:3000', 'HTTP_X_OPMONI_INGRESS_KEY' => 'integration-test-only-key', 'HTTP_X_OPMONI_CLIENT_IP' => $input['client_ip'], 'HTTP_X_OPMONI_CLIENT_PROTO' => 'http'];
 foreach ($input['headers'] ?? [] as $name => $value) {
     if (! in_array($name, ['X-CSRF-Token', 'X-Company-Id', 'Idempotency-Key'], true) || ! is_string($value)) {

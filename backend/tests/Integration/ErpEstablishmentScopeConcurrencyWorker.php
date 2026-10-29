@@ -39,6 +39,20 @@ if (isset($input['ready'])) {
         }
     });
 }
+if (isset($input['preboot_ready'], $input['preboot_release'])) {
+    file_put_contents($input['preboot_ready'], json_encode([
+        'pid' => getmypid(),
+        'backend_pid' => (int) DB::selectOne('select pg_backend_pid() as pid')->pid,
+        'label' => $input['label'] ?? 'erp-scope-'.getmypid(),
+    ], JSON_THROW_ON_ERROR));
+    $deadline = microtime(true) + 20;
+    while (! file_exists($input['preboot_release'])) {
+        if (microtime(true) >= $deadline) {
+            throw new RuntimeException('Application-bootstrap barrier timed out.');
+        }
+        usleep(10000);
+    }
+}
 
 $injectedFailure = false;
 if (isset($input['fault'])) {

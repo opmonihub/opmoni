@@ -212,9 +212,13 @@ class ErpCompanyConcurrencyTest extends TestCase
         $this->assertContains($results[0]['status'], [200, 403]);
         $this->assertSame(204, $results[1]['status']);
         $this->assertSame('suspended', DB::table('erp_companies')->where('id', $companyId)->value('status'));
+        $session = $this->refreshSession($session, $results[0]);
         $denied = $this->request($this->mutation($session, '/api/v1/erp/company/switch', ['company_id' => $companyId]));
         $this->assertSame(403, $denied['status']);
+        $this->assertSame('forbidden', $denied['body']['code']);
+        $this->assertSame('Acesso negado', $denied['body']['message']);
         $allowed = $this->request($this->mutation($session, '/api/v1/erp/company/switch', ['company_id' => $otherCompanyId]));
         $this->assertSame(200, $allowed['status']);
+        $this->assertSame($otherCompanyId, (int) $allowed['body']['current_company']['id']);
     }
 }

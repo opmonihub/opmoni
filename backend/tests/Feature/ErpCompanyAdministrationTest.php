@@ -13,6 +13,7 @@ use App\Models\Erp\ErpSubscription;
 use App\Models\Erp\Finance\ErpPayment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -42,6 +43,29 @@ class ErpCompanyAdministrationTest extends TestCase
     private function memberPayload(User $user): array
     {
         return ['user_id' => $user->id, 'role' => 'operator', 'action_permissions' => [], 'establishment_scope' => 'all'];
+    }
+
+    public function test_member_identity_is_locked_before_the_company_at_the_http_boundary(): void
+    {
+        $target = User::factory()->create();
+        $queries = [];
+        DB::listen(function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+        $this->postJson('/api/v1/erp/members', $this->memberPayload($target))->assertCreated();
+        $userIndex = null;
+        $companyIndex = null;
+        foreach ($queries as $index => $sql) {
+            if ($userIndex === null && str_starts_with($sql, 'select * from "users"')) {
+                $userIndex = $index;
+            }
+            if ($companyIndex === null && str_starts_with($sql, 'select * from "erp_companies"')) {
+                $companyIndex = $index;
+            }
+        }
+        self::assertNotNull($userIndex, 'The membership boundary must acquire identity locks.');
+        self::assertNotNull($companyIndex);
+        self::assertLessThan($companyIndex, $userIndex, 'Identity locks must precede Company locks, including middleware.');
     }
 
     public function test_owner_can_lookup_associate_edit_and_detach_existing_identity_without_changing_it(): void

@@ -17,10 +17,10 @@ const pageTabs = computed<NavigationMenuItem[][]>(() => [[{
   to: '/gestao-erp/planos',
   active: route.path === '/gestao-erp/planos'
 }, {
-  label: 'Clientes ERP',
-  icon: 'i-lucide-users',
-  to: '/gestao-erp/clientes',
-  active: route.path === '/gestao-erp/clientes' || route.path.startsWith('/gestao-erp/clientes/')
+  label: 'Empresas',
+  icon: 'i-lucide-building-2',
+  to: '/gestao-erp/empresas',
+  active: route.path === '/gestao-erp/empresas' || route.path.startsWith('/gestao-erp/empresas/')
 }, {
   label: 'Assinaturas',
   icon: 'i-lucide-file-key',
@@ -55,12 +55,12 @@ const pageTabs = computed<NavigationMenuItem[][]>(() => [[{
           </template>
           <template #right>
             <UButton
-              v-if="!['/gestao-erp/clientes', '/gestao-erp/clientes/novo'].includes(route.path)"
-              to="/gestao-erp/clientes/novo"
+              v-if="!['/gestao-erp/empresas', '/gestao-erp/empresas/nova'].includes(route.path)"
+              to="/gestao-erp/empresas/nova"
               icon="i-lucide-plus"
               size="sm"
             >
-              Cadastrar cliente
+              Nova empresa
             </UButton>
           </template>
         </UDashboardNavbar>

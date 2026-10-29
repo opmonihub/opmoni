@@ -141,7 +141,7 @@ final class OfficeErpTrialRegistration
 
         try {
             if (! $wasAuthenticated) {
-                AccessSession::authenticate($request, $owner, null);
+                AccessSession::authenticate($request, $owner, null, 0);
             }
             ErpSession::applyCompanySelection($request, $companyId, ['kind' => 'direct', 'membership' => $membership]);
         } catch (\Throwable) {

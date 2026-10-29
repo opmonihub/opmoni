@@ -773,6 +773,61 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         } while (true);
     }
 
+    protected function assertWaitingOnIdentityLock(Process $contender, Process $holder, string $normalizedEmail): void
+    {
+        $email = mb_strtolower(trim($normalizedEmail));
+        self::assertNotSame('', $email);
+        $identity = $this->workers[spl_object_id($contender)]['identity'];
+        $holderPid = (int) $this->signalData($holder, 'ready')['database_pid'];
+        $deadline = microtime(true) + 10;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $wait = DB::selectOne(<<<'SQL'
+                select activity.wait_event_type,
+                    ? = any(pg_blocking_pids(activity.pid)) as blocked_by_holder,
+                    to_hex(hashtextextended(?, 0)) as expected_advisory_key_hash,
+                    exists (
+                        select 1 from pg_locks waiting
+                        where waiting.pid = activity.pid and waiting.locktype = 'advisory'
+                          and waiting.granted = false and waiting.objsubid = 1
+                          and waiting.classid = ((hashtextextended(?, 0) >> 32) & 4294967295)::oid
+                          and waiting.objid = (hashtextextended(?, 0) & 4294967295)::oid
+                    ) as waits_for_identity,
+                    exists (
+                        select 1 from pg_locks held
+                        where held.pid = activity.pid and held.granted = true
+                          and held.mode <> 'AccessShareLock'
+                          and held.relation in ('accounts'::regclass, 'erp_companies'::regclass)
+                    ) as holds_office_or_company_row_lock
+                from pg_stat_activity activity where activity.pid = ?
+                SQL, [
+                $holderPid,
+                'email:'.$email,
+                'email:'.$email,
+                'email:'.$email,
+                (int) $identity['database_pid'],
+            ]);
+            if ($wait?->wait_event_type === 'Lock'
+                && in_array($wait->blocked_by_holder, [true, 1, 't'], true)
+                && in_array($wait->waits_for_identity, [true, 1, 't'], true)) {
+                self::assertFalse(in_array($wait->holds_office_or_company_row_lock, [true, 1, 't'], true),
+                    'Identity contender must acquire the normalized email advisory lock before Account or Company row locks.');
+                $this->observedWaits[spl_object_id($contender)] = [
+                    'phase' => 'owner-acceptance-before-identity-release',
+                    'query_category' => 'normalized-email-advisory-lock',
+                    'contender_pid' => (int) $identity['database_pid'],
+                    'holder_pid' => $holderPid,
+                    'expected_lock' => 'advisory-key-hash:'.$wait->expected_advisory_key_hash,
+                ];
+
+                return;
+            }
+            self::assertTrue($contender->isRunning(), 'Identity contender exited before waiting on the email advisory lock.');
+            self::assertLessThan($deadline, microtime(true), 'No wait on the expected normalized-email advisory lock, blocked by its holder, was observed.');
+            usleep(10000);
+        } while (true);
+    }
+
     protected function assertWorkerHeldAdvisoryLock(Process $process): void
     {
         $ready = $this->signalData($process, 'ready');

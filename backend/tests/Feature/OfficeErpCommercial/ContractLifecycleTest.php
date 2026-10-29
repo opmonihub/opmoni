@@ -5,7 +5,9 @@ namespace Tests\Feature\OfficeErpCommercial;
 use App\Erp\Commercial\OfficeErpCalendar;
 use App\Erp\Commercial\OfficeErpContracts;
 use App\Erp\ErpCommercialCatalog;
+use App\Erp\ErpCommercialGate;
 use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\ErpCompany;
@@ -146,6 +148,138 @@ class ContractLifecycleTest extends OfficeErpCommercialTestCase
         self::assertSame((int) $stockCompany->id, (int) $stockContract->fresh()->erp_company_id);
         self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $purchasesContract->id)->value('state'));
         self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $stockContract->id)->value('state'));
+    }
+
+    public function test_pure_module_reduction_is_maintenance_after_resale_and_allowance_loss(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases', 'stock_transfers']]);
+        [$contract] = $this->acceptedOccupiedContract($ctx, 'effective', ['module_keys' => ['purchases', 'stock_transfers']]);
+        $officePlan = $ctx->account->subscription->plan;
+        $allowance = $officePlan->erp_commercial;
+        $allowance['enabled'] = false;
+        $allowance['module_keys'] = [];
+        $officePlan->forceFill(['erp_commercial' => $allowance])->save();
+        $currentRevisionId = (int) $contract->current_revision_id;
+
+        $reduction = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx,
+            $contract,
+            ['module_keys' => ['purchases']],
+            'amend-pure-module-reduction',
+        ));
+
+        self::assertSame($currentRevisionId, (int) $contract->fresh()->current_revision_id);
+        self::assertSame((int) $reduction->id, (int) $contract->fresh()->pending_revision_id);
+        self::assertSame(['purchases', 'stock_transfers'], $contract->fresh()->currentRevision->module_keys);
+        self::assertSame(['purchases'], $reduction->module_keys);
+    }
+
+    public function test_pending_amendment_replacement_uses_expected_revision_and_preserves_unedited_terms(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases', 'stock_transfers']]);
+        [$contract] = $this->acceptedOccupiedContract($ctx, 'effective', ['module_keys' => ['purchases']]);
+        $first = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx,
+            $contract,
+            ['price' => '145.00', 'interval_months' => 3],
+            'amend-first-pending-snapshot',
+        ));
+        $expectedRevisionId = (int) $first->id;
+
+        $replacement = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx,
+            $contract->fresh(),
+            ['expected_pending_revision_id' => $expectedRevisionId, 'module_keys' => ['purchases', 'stock_transfers']],
+            'amend-replace-pending-snapshot',
+        ));
+        $replayed = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx,
+            $contract->fresh(),
+            ['expected_pending_revision_id' => $expectedRevisionId, 'module_keys' => ['purchases', 'stock_transfers']],
+            'amend-replace-pending-snapshot',
+        ));
+
+        self::assertNotSame($expectedRevisionId, (int) $replacement->id);
+        self::assertSame((int) $replacement->id, (int) $replayed->id);
+        self::assertNotNull(OfficeErpContractRevision::query()->findOrFail($expectedRevisionId)->superseded_at);
+        self::assertSame('145.00', (string) $replacement->price);
+        self::assertSame(3, (int) $replacement->interval_months);
+        self::assertSame(['purchases', 'stock_transfers'], $replacement->module_keys);
+        self::assertSame((int) $replacement->id, (int) $contract->fresh()->pending_revision_id);
+        self::assertSame(['purchases'], $contract->fresh()->currentRevision->module_keys);
+    }
+
+    public function test_replacement_receipt_replays_after_a_later_pending_replacement(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases', 'stock_transfers']]);
+        [$contract] = $this->acceptedOccupiedContract($ctx, 'effective', ['module_keys' => ['purchases']]);
+        $first = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx, $contract, ['price' => '145.00', 'interval_months' => 3], 'replacement-replay-seed',
+        ));
+        $replacementTerms = ['expected_pending_revision_id' => (int) $first->id, 'module_keys' => ['purchases', 'stock_transfers']];
+        $replacement = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx, $contract->fresh(), $replacementTerms, 'replacement-replay-key',
+        ));
+        $later = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx,
+            $contract->fresh(),
+            ['expected_pending_revision_id' => (int) $replacement->id, 'price' => '155.00'],
+            'replacement-replay-later',
+        ));
+        $replayed = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx, $contract->fresh(), $replacementTerms, 'replacement-replay-key',
+        ));
+
+        self::assertSame((int) $replacement->id, (int) $replayed->id);
+        self::assertSame((int) $later->id, (int) $contract->fresh()->pending_revision_id);
+        self::assertSame(1, DB::table('office_erp_commercial_operations')->where('idempotency_key', 'replacement-replay-key')->count());
+    }
+
+    public function test_module_expansion_checks_only_added_keys_against_current_allowance(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases', 'stock_transfers']]);
+        [$contract] = $this->acceptedOccupiedContract($ctx, 'effective', ['module_keys' => ['purchases']]);
+        $officePlan = $ctx->account->subscription->plan;
+        $allowance = $officePlan->erp_commercial;
+        $allowance['module_keys'] = ['stock_transfers'];
+        $officePlan->forceFill(['erp_commercial' => $allowance])->save();
+
+        $revision = $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx,
+            $contract,
+            ['module_keys' => ['purchases', 'stock_transfers']],
+            'amend-grandfathered-plus-allowed-module',
+        ));
+
+        self::assertSame(['purchases'], $contract->fresh()->currentRevision->module_keys);
+        self::assertSame(['purchases', 'stock_transfers'], $revision->module_keys);
+    }
+
+    public function test_pending_module_removal_takes_effect_at_service_boundary_without_scheduler(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-25 12:00:00 America/Sao_Paulo');
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases', 'stock_transfers']]);
+        [$contract, $company, $subscription] = $this->acceptedOccupiedContract($ctx, 'effective', ['module_keys' => ['purchases', 'stock_transfers']]);
+        $subscription->forceFill(['office_erp_contract_id' => $contract->id])->save();
+        $contract->forceFill([
+            'service_anchor_on' => '2026-10-25',
+            'next_period_month_offset' => 1,
+            'next_period_index' => 1,
+        ])->save();
+        $contract = $contract->fresh();
+        $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
+            $ctx,
+            $contract,
+            ['module_keys' => ['purchases']],
+            'amend-remove-module-next-cycle',
+        ));
+
+        self::assertTrue(app(ErpCommercialGate::class)->moduleEnabled($company, 'stock_transfers'));
+        CarbonImmutable::setTestNow('2026-11-25 00:00:00 America/Sao_Paulo');
+        self::assertFalse(app(ErpCommercialGate::class)->moduleEnabled($company->fresh(), 'stock_transfers'));
+        self::assertTrue(app(ErpCommercialGate::class)->moduleEnabled($company->fresh(), 'purchases'));
+        self::assertNotNull($contract->fresh()->pending_revision_id, 'The check must honor the due pending snapshot before the scheduler reconciles the contract pointer.');
+        CarbonImmutable::setTestNow();
     }
 
     public function test_suspended_account_cannot_use_real_contract_maintenance_route(): void

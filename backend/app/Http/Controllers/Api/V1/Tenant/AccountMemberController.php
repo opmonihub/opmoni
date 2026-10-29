@@ -8,9 +8,11 @@ use App\Http\Resources\MemberDirectoryResource;
 use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\OwnerActivation;
+use App\Models\Subscription;
 use App\Models\User;
 use App\Services\PlanLimits;
 use App\Services\SupportAudit;
+use App\Support\AccessTransaction;
 use App\Tenant\CurrentTenant;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -122,7 +124,8 @@ class AccountMemberController extends Controller
         $data = $request->validate(['role' => ['required', 'in:admin,operador,user']]);
 
         return DB::transaction(function () use ($request, $account, $member, $data): JsonResponse {
-            Account::query()->whereKey($account->id)->lockForUpdate()->firstOrFail();
+            $this->lockMemberIdentities($request, $member);
+            $account = $this->lockCurrentAdminAccount($request, (int) $account->id);
             $membership = AccountMembership::query()->where('account_id', $account->id)->where('user_id', $member->id)->lockForUpdate()->first();
             abort_unless($membership, 404);
             $this->assertLastAdmin($account, $membership, $data['role']);
@@ -139,7 +142,8 @@ class AccountMemberController extends Controller
         Gate::authorize('manageMembers', $account);
 
         return DB::transaction(function () use ($request, $account, $member): Response {
-            Account::query()->whereKey($account->id)->lockForUpdate()->firstOrFail();
+            $this->lockMemberIdentities($request, $member);
+            $account = $this->lockCurrentAdminAccount($request, (int) $account->id);
             $membership = AccountMembership::query()->where('account_id', $account->id)->where('user_id', $member->id)->lockForUpdate()->first();
             abort_unless($membership, 404);
             $this->assertLastAdmin($account, $membership, null);
@@ -156,6 +160,34 @@ class AccountMemberController extends Controller
         if ($membership->role === 'admin' && $nextRole !== 'admin' && ! AccountMembership::query()->where('account_id', $account->id)->where('role', 'admin')->whereKeyNot($membership->id)->exists()) {
             throw ValidationException::withMessages(['role' => ['O escritório precisa manter pelo menos um administrador.']]);
         }
+    }
+
+    private function lockMemberIdentities(Request $request, User $member): void
+    {
+        AccessTransaction::boundLockWaits();
+        $userIds = array_values(array_unique([
+            (int) $request->user()->getKey(),
+            (int) $member->getKey(),
+        ]));
+        sort($userIds, SORT_NUMERIC);
+        $users = User::query()->whereIn('id', $userIds)->orderBy('id')->lockForUpdate()->get();
+        abort_unless($users->count() === count($userIds), 404);
+    }
+
+    private function lockCurrentAdminAccount(Request $request, int $accountId): Account
+    {
+        $account = Account::query()->whereKey($accountId)->lockForUpdate()->firstOrFail();
+        abort_unless($account->status === 'active', 403, 'account_suspended');
+        $actorMembership = AccountMembership::query()
+            ->where('account_id', $accountId)
+            ->where('user_id', $request->user()->getKey())
+            ->lockForUpdate()
+            ->first();
+        abort_unless($actorMembership?->role === 'admin', 403);
+        $subscription = Subscription::query()->where('account_id', $accountId)->lockForUpdate()->first();
+        abort_unless($subscription?->status === 'active', 403, 'subscription_inactive');
+
+        return $account;
     }
 
     private function tenantAccount(): Account

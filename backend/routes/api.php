@@ -27,6 +27,10 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/first-access', [AccessController::class, 'activate'])->name('access.activate');
         require __DIR__.'/office-erp-trials.php';
         require __DIR__.'/office-erp-invitations.php';
+        require __DIR__.'/office-erp-password-recovery.php';
+        Route::prefix('erp-member-invitations')->group(function (): void {
+            require __DIR__.'/office-erp-member-invitations.php';
+        });
         Route::middleware('auth')->group(function (): void {
             Route::get('/me', [AccessController::class, 'me'])->name('access.me');
             Route::post('/logout', [AccessController::class, 'logout'])->name('access.logout');

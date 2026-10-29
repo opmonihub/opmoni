@@ -43,3 +43,17 @@ export function apiFailure(error: unknown): {
 export function passwordLength(value: string): number {
   return [...value].length
 }
+
+export function retryAfterSeconds(error: unknown, now = Date.now()): number {
+  if (typeof error !== 'object' || error === null) return 0
+  const record = error as { headers?: unknown, response?: { headers?: unknown } }
+  const headers = (record.response?.headers ?? record.headers) as { get?: (name: string) => string | null, [key: string]: unknown } | undefined
+  const raw = typeof headers?.get === 'function'
+    ? headers.get('retry-after')
+    : headers?.['retry-after'] ?? headers?.['Retry-After']
+  if (typeof raw !== 'string' || !raw.trim()) return 0
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(3600, Math.ceil(seconds))
+  const timestamp = Date.parse(raw)
+  return Number.isFinite(timestamp) && timestamp > now ? Math.min(3600, Math.ceil((timestamp - now) / 1000)) : 0
+}

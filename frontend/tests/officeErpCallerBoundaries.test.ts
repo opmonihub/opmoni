@@ -26,19 +26,11 @@ const summary = (amount: string) => ({
 })
 
 function client(name: string) {
-  return { id: 5, name, trade_name: null, tax_id: '12.345.678/0001-90' }
+  return { id: 5, registration_id: 2, client_id: 5, name, cnpj: '12.345.678/0001-90', registered_at: '2026-10-28T12:00:00Z', owner_setup_status: 'claimed', current_contract_id: null, capabilities: { relationship: 'unassigned', can_edit_profile: true, can_assign: true, can_manage_members: false, capability_key: 'company-capability' } }
 }
 
-function contract(name: string) {
-  return {
-    id: 18,
-    client: { id: 5, name },
-    company: null,
-    agreement_status: 'effective',
-    licence_status: 'active',
-    current_revision: { price: '99.00', interval_months: 1 },
-    balance: { outstanding: '50.00', invoice_count: 1 }
-  }
+function subscriptionCompany(name: string) {
+  return { id: 5, registration_id: 2, client_id: 5, name, cnpj: '12.345.678/0001-90', registered_at: '2026-10-28T12:00:00Z', owner_setup_status: 'claimed', current_contract_id: 18, linked_contract_id: 18, relationship: 'current', subscription: { id: 19, status: 'active', erp_plan_id: 1, erp_plan: { id: 1, name: 'Plano ERP' } }, current_contract: { id: 18, agreement_status: 'effective', next_billing_on: '2026-11-01', balance: { outstanding: '50.00' } }, trial: null, action_capabilities: {} }
 }
 
 function invoice(name: string) {
@@ -114,6 +106,13 @@ function mountRenderer(componentToMount: Vue.Component) {
   app.component('DataTablePanelList', component((props, ctx) => () => Vue.h('section', { 'aria-label': props.title }, [
     ctx.slots.action?.(), ctx.slots.toolbar?.(), ctx.slots.default?.()
   ]), ['title']))
+  app.component('OfficeErpPanel', component((props, ctx) => () => Vue.h('section', {}, [
+    Vue.h('h2', {}, String(props.title ?? '')), ctx.slots.action?.(), ctx.slots.toolbar?.(), ctx.slots.default?.()
+  ]), ['title', 'description']))
+  app.component('OfficeErpDataTable', component((props, ctx) => () => Vue.h('div', {}, (props.data as Array<Record<string, unknown>> ?? []).map(original => Vue.h('article', {}, Object.entries(ctx.slots).filter(([name]) => name.endsWith('-cell')).map(([, slot]) => slot({ row: { original } }))))), ['data', 'columns', 'loading', 'getRowId', 'mobileColumns', 'compact', 'label']))
+  app.component('OfficeErpPagination', component((props, ctx) => () => Vue.h('button', { 'aria-label': 'Próxima página', 'onClick': () => ctx.emit('update:page', Number(props.page) + 1) }, 'Próxima página'), ['page', 'perPage', 'total', 'label', 'loading']))
+  app.component('OfficeErpCompanyInspectionModal', { setup: () => () => null })
+  app.component('OfficeErpCompanyPortfolioModal', { setup: () => () => null })
   app.component('UPageGrid', passthrough)
   app.component('UPageCard', component((props, ctx) => () => Vue.h('article', {}, [
     Vue.h('h3', {}, String(props.title ?? '')),
@@ -281,23 +280,23 @@ const callers = [
     }
   },
   {
-    name: 'client list', path: 'pages/gestao-erp/clientes/index.vue', endpoint: '/erp-commercial/clients',
+    name: 'Company list', path: 'pages/gestao-erp/empresas/index.vue', endpoint: '/erp-commercial/companies',
     oldResponse: () => ({ data: [client('Old Protected Client')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }),
     currentResponse: () => ({ data: [client('Current Client')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }),
     oldMarker: 'Old Protected Client', currentMarker: 'Current Client',
     trigger(page: ReturnType<typeof mountCaller>) {
-      const input = find(page.root, node => node.tag === 'input' && node.props['aria-label'] === 'Buscar cliente')
+      const input = find(page.root, node => node.tag === 'input' && node.props['aria-label'] === 'Buscar empresa')
       assert.ok(input)
       ;(input.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'second read' } })
     }
   },
   {
-    name: 'contract list', path: 'pages/gestao-erp/assinaturas/index.vue', endpoint: '/erp-commercial/contracts',
-    oldResponse: () => ({ data: [contract('Old Protected Contract')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }),
-    currentResponse: () => ({ data: [contract('Current Contract')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }),
+    name: 'Company subscription list', path: 'pages/gestao-erp/assinaturas/index.vue', endpoint: '/erp-commercial/subscription-companies',
+    oldResponse: () => ({ data: [subscriptionCompany('Old Protected Contract')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }),
+    currentResponse: () => ({ data: [subscriptionCompany('Current Contract')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } }),
     oldMarker: 'Old Protected Contract', currentMarker: 'Current Contract',
     trigger(page: ReturnType<typeof mountCaller>) {
-      const input = find(page.root, node => node.tag === 'input' && node.props['aria-label'] === 'Buscar contrato')
+      const input = find(page.root, node => node.tag === 'input' && node.props['aria-label'] === 'Buscar empresa')
       assert.ok(input)
       ;(input.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'second read' } })
     }

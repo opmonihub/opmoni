@@ -231,6 +231,11 @@ class TrialRegistrationTest extends OfficeErpCommercialTestCase
         $this->assertDatabaseMissing('account_memberships', ['user_id' => $owner->id]);
         $accountId = OfficeErpTrialLink::query()->where('public_code', $code)->value('account_id');
         $this->assertDatabaseHas('clients', ['id' => $data['client_id'], 'account_id' => $accountId]);
+        $this->assertDatabaseHas('office_erp_company_registrations', [
+            'account_id' => $accountId,
+            'client_id' => $data['client_id'],
+            'erp_company_id' => $data['company_id'],
+        ]);
         $this->assertDatabaseHas('erp_subscriptions', ['id' => $data['subscription_id'], 'status' => 'trialing']);
         $this->assertDatabaseHas('erp_subscription_trials', ['id' => $data['trial_id'], 'cnpj' => '27865757000102']);
         $this->assertDatabaseHas('office_erp_contracts', [

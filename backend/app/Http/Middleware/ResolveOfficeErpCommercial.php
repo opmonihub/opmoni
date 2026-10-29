@@ -24,8 +24,14 @@ final class ResolveOfficeErpCommercial
         abort_unless(is_int($sessionAccountId) || (is_string($sessionAccountId) && ctype_digit($sessionAccountId)), 403);
         $sessionAccountId = (int) $sessionAccountId;
 
-        $isEnrollment = $request->route()?->getName() === 'office-erp-commercial.enrollments.store';
-        if ($isEnrollment) {
+        $ownsCommandTransaction = $request->routeIs(
+            'office-erp-commercial.enrollments.store',
+            'office-erp-commercial.companies.store',
+            'office-erp-commercial.members.*',
+            'office-erp-commercial.member-invitations.*',
+            'office-erp-commercial.operations.lookup',
+        );
+        if ($ownsCommandTransaction) {
             [$account, $membership] = DB::transaction(fn (): array => $this->resolveSelectedOfficeAdmin($request, $sessionAccountId));
 
             return $this->runInSelectedOffice($request, $next, $sessionAccountId, $account, $membership);

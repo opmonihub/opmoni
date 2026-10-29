@@ -41,6 +41,9 @@ class ResolveCompany
 
         return DB::transaction(function () use ($request, $next, $companyId, $officeId) {
             AccessTransaction::boundLockWaits();
+            if ($request->routeIs('erp.members.store', 'erp.members.update', 'erp.members.destroy')) {
+                app(ErpCompanyAdministration::class)->prepareMemberIdentityLocks($request, $companyId);
+            }
             $company = ErpCompany::lockForUpdate()->find($companyId);
             if (! $company) {
                 abort(response()->json(['code' => 'company_required', 'message' => 'Selecione uma empresa'], 403));

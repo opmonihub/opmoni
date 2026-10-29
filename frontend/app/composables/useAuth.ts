@@ -65,6 +65,16 @@ export function useAuth() {
     clearNuxtData()
     await rotateCsrf()
     try {
+      const recoveryContinuation = await api<{ state: string }>('/password-recovery/current')
+      if (['valid', 'identity_mismatch'].includes(recoveryContinuation.state))
+        return navigateTo('/redefinir-senha', { replace: true })
+    } catch { /* Ordinary authentication keeps its usual destination without a password recovery continuation. */ }
+    try {
+      const memberContinuation = await api<{ state: string }>('/erp-member-invitations/current')
+      if (['valid', 'ready', 'accepted', 'identity_mismatch', 'login_required'].includes(memberContinuation.state))
+        return navigateTo('/erp/convite', { replace: true })
+    } catch { /* Ordinary login keeps its usual destination when no member invitation is pending. */ }
+    try {
       const continuation = await api<{ state: string }>('/erp-invitations/current')
       if (['valid', 'ready', 'accepted', 'identity_mismatch', 'login_required'].includes(continuation.state))
         return navigateTo('/erp/ativar', { replace: true })

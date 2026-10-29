@@ -138,6 +138,25 @@ class ErpEstablishmentScopeConcurrencyTest extends TestCase
         $this->fail('Independent HTTP worker did not reach the observed Company lock wait: '.$label);
     }
 
+    private function waitForWorkerPreboot(string $label, string $ready, Process $worker): void
+    {
+        $deadline = microtime(true) + 20;
+        do {
+            $contents = file_exists($ready) ? (string) file_get_contents($ready) : '';
+            if ($contents !== '') {
+                $facts = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+                $this->assertSame($worker->getPid(), $facts['pid']);
+                $this->assertGreaterThan(0, $facts['backend_pid']);
+                $this->assertSame($label, $facts['label']);
+
+                return;
+            }
+            $this->assertTrue($worker->isRunning(), 'Worker exited before completing application bootstrap.');
+            $this->assertLessThan($deadline, microtime(true), 'Worker did not complete application bootstrap: '.$label);
+            usleep(10000);
+        } while (true);
+    }
+
     public function test_source_write_waiting_on_company_fence_is_denied_after_owner_narrows_retained_member_scope(): void
     {
         ['owner' => $owner, 'member' => $member, 'company' => $company, 'location' => $location, 'membership' => $membership] = $this->scenario();
@@ -151,19 +170,39 @@ class ErpEstablishmentScopeConcurrencyTest extends TestCase
 
         $narrowReady = tempnam(sys_get_temp_dir(), 'task22-narrow-');
         $writeReady = tempnam(sys_get_temp_dir(), 'task22-source-');
+        $narrowPrebootReady = tempnam(sys_get_temp_dir(), 'task22-narrow-');
+        $writePrebootReady = tempnam(sys_get_temp_dir(), 'task22-source-');
+        $narrowPrebootRelease = tempnam(sys_get_temp_dir(), 'task22-narrow-');
+        $writePrebootRelease = tempnam(sys_get_temp_dir(), 'task22-source-');
         @unlink($narrowReady);
         @unlink($writeReady);
-        DB::beginTransaction();
-        DB::table('erp_companies')->where('id', $company->id)->lockForUpdate()->first();
+        @unlink($narrowPrebootReady);
+        @unlink($writePrebootReady);
+        @unlink($narrowPrebootRelease);
+        @unlink($writePrebootRelease);
+        $narrow = $write = null;
         try {
             $narrow = $this->worker($this->mutation($ownerSession, '/api/v1/erp/members/'.$membership->id, [
                 'body' => ['establishment_scope' => 'selected', 'establishment_ids' => []],
-            ], 'PATCH') + ['label' => 'task22-owner-narrow', 'ready' => $narrowReady]);
-            $this->waitForCompanyLock('task22-owner-narrow', $narrowReady);
+            ], 'PATCH') + [
+                'label' => 'task22-owner-narrow', 'ready' => $narrowReady,
+                'preboot_ready' => $narrowPrebootReady, 'preboot_release' => $narrowPrebootRelease,
+            ]);
             $write = $this->worker($this->mutation($memberSession, '/api/v1/erp/quotes', [
                 'headers' => ['Idempotency-Key' => 'scope-race-after-narrow'],
                 'body' => ['erp_establishment_id' => $location->id, 'quote_no' => 'scope-race-after-narrow', 'lines' => [['description' => 'Synthetic denied quote', 'quantity' => '1', 'unit_price' => '7.00']]],
-            ]) + ['label' => 'task22-source-write', 'ready' => $writeReady]);
+            ]) + [
+                'label' => 'task22-source-write', 'ready' => $writeReady,
+                'preboot_ready' => $writePrebootReady, 'preboot_release' => $writePrebootRelease,
+            ]);
+            $this->waitForWorkerPreboot('task22-owner-narrow', $narrowPrebootReady, $narrow);
+            $this->waitForWorkerPreboot('task22-source-write', $writePrebootReady, $write);
+
+            DB::beginTransaction();
+            DB::table('erp_companies')->where('id', $company->id)->lockForUpdate()->first();
+            touch($narrowPrebootRelease);
+            $this->waitForCompanyLock('task22-owner-narrow', $narrowReady);
+            touch($writePrebootRelease);
             $this->waitForCompanyLock('task22-source-write', $writeReady);
 
             DB::commit();
@@ -180,11 +219,22 @@ class ErpEstablishmentScopeConcurrencyTest extends TestCase
             $this->assertDatabaseHas('erp_company_memberships', ['id' => $membership->id, 'access_all_establishments' => false]);
             $this->assertDatabaseCount('erp_company_membership_establishments', 0);
         } finally {
+            @touch($narrowPrebootRelease);
+            @touch($writePrebootRelease);
             if (DB::transactionLevel() > 0) {
                 DB::rollBack();
             }
+            foreach ([$narrow, $write] as $worker) {
+                if ($worker instanceof Process && $worker->isRunning()) {
+                    $worker->stop(1);
+                }
+            }
             @unlink($narrowReady);
             @unlink($writeReady);
+            @unlink($narrowPrebootReady);
+            @unlink($writePrebootReady);
+            @unlink($narrowPrebootRelease);
+            @unlink($writePrebootRelease);
         }
     }
 

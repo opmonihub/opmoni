@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\OfficeErp;
 
+use App\Enums\Erp\ErpSubscriptionStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -12,6 +13,8 @@ final class ListCommercialRequest extends FormRequest
     private const FILTERS = [
         'summary' => ['from_on', 'to_on', 'due_from', 'due_to'],
         'clients' => ['search', 'page', 'per_page', 'sort', 'direction'],
+        'companies' => ['search', 'state', 'page', 'per_page', 'sort', 'direction'],
+        'subscription-companies' => ['search', 'status', 'page', 'per_page', 'sort', 'direction'],
         'plans' => ['search', 'status', 'page', 'per_page', 'sort', 'direction'],
         'contracts' => ['search', 'status', 'page', 'per_page', 'sort', 'direction'],
         'invoices' => ['search', 'status', 'contract_id', 'from_on', 'to_on', 'due_from', 'due_to', 'page', 'per_page', 'sort', 'direction'],
@@ -42,6 +45,7 @@ final class ListCommercialRequest extends FormRequest
         foreach ($filters as $filter) {
             $rules[$filter] = match ($filter) {
                 'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+                'state' => ['sometimes', Rule::in(['applied', 'unassigned'])],
                 'status' => ['sometimes', 'nullable', 'string', 'max:32', ...self::statusValues($resource)],
                 'contract_id' => ['sometimes', 'integer', 'min:1', 'max:9007199254740991'],
                 'page' => ['sometimes', 'integer', 'min:1'],
@@ -59,6 +63,7 @@ final class ListCommercialRequest extends FormRequest
     private static function statusValues(string $resource): array
     {
         $values = match ($resource) {
+            'subscription-companies' => array_column(ErpSubscriptionStatus::cases(), 'value'),
             'plans' => ['active', 'archived'],
             'contracts' => ['accepted', 'effective', 'canceled'],
             'invoices' => ['draft', 'issued', 'canceled'],
@@ -101,6 +106,8 @@ final class ListCommercialRequest extends FormRequest
     {
         return match ($resource) {
             'clients' => ['id', 'name'],
+            'companies' => ['name', 'registered_at'],
+            'subscription-companies' => ['name', 'registered_at', 'status'],
             'plans' => ['id', 'name', 'status'],
             'contracts' => ['id', 'client', 'agreement_status'],
             'invoices' => ['id', 'number', 'due_on', 'document_status'],

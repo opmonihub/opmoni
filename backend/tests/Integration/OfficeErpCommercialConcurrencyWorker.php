@@ -4,6 +4,7 @@ namespace Tests\Integration;
 
 use App\Actions\ErpCommercialRegistration;
 use App\Erp\Commercial\ErpTrialLifecycle;
+use App\Erp\Commercial\OfficeErpAssignments;
 use App\Erp\Commercial\OfficeErpContracts;
 use App\Erp\Commercial\OfficeErpCustomerEnrollment;
 use App\Erp\Commercial\OfficeErpExecutionContext;
@@ -56,6 +57,15 @@ final class OfficeErpCommercialConcurrencyWorker
         if (($input['source_hashes'] ?? null) !== $identity['source_hashes']) {
             throw new RuntimeException('Parent and worker commercial race sources differ.');
         }
+        if (isset($input['billing_source_hashes']) && ! is_array($input['billing_source_hashes'])) {
+            throw new RuntimeException('Invalid billing source identity payload.');
+        }
+        foreach (($input['billing_source_hashes'] ?? []) as $path => $expectedHash) {
+            if (! is_string($path) || ! is_string($expectedHash) || preg_match('/\A[a-zA-Z0-9_\/. -]+\.php\z/', $path) !== 1
+                || ! hash_equals($expectedHash, (string) hash_file('sha256', base_path($path)))) {
+                throw new RuntimeException('Parent and worker billing race sources differ.');
+            }
+        }
         Http::preventStrayRequests();
         $base = $input['base'];
         self::signal($base.'.ready', $identity);
@@ -81,7 +91,7 @@ final class OfficeErpCommercialConcurrencyWorker
                 }
             });
         }
-        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'owner_setup_accept', 'owner_setup_issue', 'remove_allowance', 'cancel_contract', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'trial_convert', 'erp_register', 'customer_enroll'], true)) {
+        if (! in_array($input['action'], ['reserve', 'issue_period', 'adjust', 'receipt', 'reverse', 'proof_cleanup', 'owner_accept', 'owner_setup_accept', 'owner_setup_issue', 'remove_allowance', 'cancel_contract', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'trial_convert', 'erp_register', 'customer_enroll', 'subscription_assign', 'contract_activate', 'contract_amend'], true)) {
             throw new RuntimeException('Unsupported action in the accepted commercial race subset: '.$input['action']);
         }
         if (isset($input['hold_row_lock']) && (! is_string($input['hold_row_lock']) || preg_match('/\A[a-z_]+\z/', $input['hold_row_lock']) !== 1)) {
@@ -100,6 +110,27 @@ final class OfficeErpCommercialConcurrencyWorker
             $request->attributes->set(CurrentAccount::class, new CurrentAccount($account, $membership));
             $resourceId = $input['contract_id'] ?? $input['trial_link_id'] ?? 0;
             $context = OfficeErpExecutionContext::officeAdmin($account, $actor, 'commercial-race-worker:'.$resourceId);
+        }
+
+        if (isset($input['test_identity_lock_timeout_email'])) {
+            $expectedEmail = mb_strtolower(trim((string) $input['test_identity_lock_timeout_email']));
+            if ($expectedEmail === '' || $expectedEmail !== (string) $input['test_identity_lock_timeout_email']) {
+                throw new RuntimeException('Invalid test-only normalized identity lock timeout selector.');
+            }
+            $extended = false;
+            DB::connection()->beforeExecuting(function (string $query, array $bindings) use ($expectedEmail, &$extended): void {
+                if ($extended || ! str_contains(strtolower($query), 'pg_advisory_xact_lock')
+                    || ! in_array('email:'.$expectedEmail, $bindings, true)) {
+                    return;
+                }
+
+                // The application has already applied its normal 2s bound. Extend only this
+                // deliberately blocked test advisory call so its independent observer can
+                // verify the holder and release it under a busy guarded runtime.
+                $extended = true;
+                DB::statement("SET LOCAL lock_timeout = '10s'");
+                DB::statement("SET LOCAL statement_timeout = '15s'");
+            });
         }
 
         if (($input['hold_account_lock'] ?? false) || ($input['hold_invoice_lock'] ?? false) || ($input['hold_proof_lock'] ?? false) || ($input['hold_after_proof_claim'] ?? false) || ($input['hold_owner_lock'] ?? false) || ($input['hold_plan_lock'] ?? false) || isset($input['hold_row_lock']) || ($input['hold_advisory_lock'] ?? false)) {
@@ -147,12 +178,26 @@ final class OfficeErpCommercialConcurrencyWorker
                 Carbon::setTestNow($frozenNow);
             }
             $contract = null;
-            if (! in_array($input['action'], ['owner_accept', 'owner_setup_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'erp_register', 'customer_enroll'], true)) {
+            if (! in_array($input['action'], ['owner_accept', 'owner_setup_accept', 'remove_allowance', 'generate_recurring', 'trial_register', 'trial_rotate', 'trial_expire', 'erp_register', 'customer_enroll', 'subscription_assign'], true)) {
                 $contract = OfficeErpRecords::query($context, OfficeErpContract::class)
                     ->whereKey($input['contract_id'])
                     ->firstOrFail();
             }
-            if ($input['action'] === 'customer_enroll') {
+            if ($input['action'] === 'subscription_assign') {
+                $outcome = app(OfficeErpAssignments::class)->assign(
+                    $context,
+                    (int) $input['company_id'],
+                    $input['terms'],
+                    (string) $input['idempotency_key'],
+                );
+                $result = ['status' => 201, ...$outcome];
+            } elseif ($input['action'] === 'contract_activate') {
+                $outcome = app(OfficeErpContracts::class)->activate($context, $contract, (string) $input['idempotency_key']);
+                $result = ['status' => 200, ...$outcome];
+            } elseif ($input['action'] === 'contract_amend') {
+                $revision = app(OfficeErpContracts::class)->amend($context, $contract, $input['terms'], (string) $input['idempotency_key']);
+                $result = ['status' => 201, 'revision_id' => (int) $revision->id];
+            } elseif ($input['action'] === 'customer_enroll') {
                 $outcome = app(OfficeErpCustomerEnrollment::class)->enroll(
                     $context,
                     $input['enrollment'],

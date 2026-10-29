@@ -3,7 +3,6 @@
 namespace App\Erp\Commercial;
 
 use App\Erp\ErpCommercialCatalog;
-use App\Erp\ErpCompanyProvisioning;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
@@ -31,9 +30,9 @@ final class OfficeErpCustomerEnrollment
         private readonly ErpCommercialCatalog $catalog,
         private readonly OfficeErpOperations $operations,
         private readonly ClientManager $clients,
-        private readonly ErpCompanyProvisioning $companies,
-        private readonly OfficeErpLicenceAllocator $allocator,
         private readonly OfficeErpContracts $contracts,
+        private readonly OfficeErpCompanyRegistrations $registrations,
+        private readonly OfficeErpAssignments $assignments,
     ) {}
 
     /** @return array{data:list<array{id:int,slug:string,name:string,module_keys:list<string>}>,eligibility:array<string,mixed>} */
@@ -206,34 +205,18 @@ final class OfficeErpCustomerEnrollment
                                 ->lockForUpdate()
                                 ->firstOrFail();
                             abort_unless($client->person_type->value === 'company' && $client->status->value === 'active', 404);
-                            $companyName = $client->name;
-                            $cnpj = $client->tax_id;
                         } else {
                             /** @var array{data:array<string,mixed>,company_payload:array<string,mixed>|null} $prepared */
                             $client = $this->clients->createPreparedCompany($account, $prepared);
-                            $companyName = $client->name;
-                            $cnpj = $client->tax_id;
                         }
 
-                        $companyMatch = ErpCompany::query()->where('cnpj', $cnpj)->lockForUpdate()->first();
-                        abort_if($companyMatch !== null, 409, 'company_association_required');
-
-                        $company = $this->companies->createUnclaimedCompany([
-                            'name' => $companyName,
-                            'cnpj' => $cnpj,
+                        $registered = $this->registrations->provisionClientLocked($ctx, $client, false);
+                        $company = $registered['registration']->company;
+                        $assignment = $this->assignments->assignProvisionedLocked($ctx, $client, $company, (int) $plan->id, [
+                            'price' => $data['price'], 'currency' => 'BRL', 'interval_months' => $data['interval_months'],
+                            'due_in_days' => $data['due_in_days'], 'module_keys' => $modules, 'billing_timezone' => $data['billing_timezone'],
                         ]);
-                        $company->subscription()->update(['erp_plan_id' => $plan->id]);
-                        $frozen = $this->contracts->createProvisioned($ctx, $client, $company, (int) $plan->id, [
-                            'price' => $data['price'],
-                            'currency' => 'BRL',
-                            'interval_months' => $data['interval_months'],
-                            'due_in_days' => $data['due_in_days'],
-                            'module_keys' => $modules,
-                            'billing_timezone' => $data['billing_timezone'],
-                        ], 'office_admin');
-                        $contract = $frozen['contract'];
-                        $allocation = $this->allocator->allocateProvisioned($ctx, $contract, $company);
-                        abort_unless($allocation->state === 'occupied', 409);
+                        $contract = $assignment['contract'];
 
                         $activation = $this->contracts->activateProvisioned(
                             $ctx,

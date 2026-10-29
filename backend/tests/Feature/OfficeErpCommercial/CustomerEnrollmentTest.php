@@ -79,6 +79,7 @@ class CustomerEnrollmentTest extends OfficeErpCommercialTestCase
         self::assertSame(201, $response->status(), json_encode($response->json()));
         $response->assertJsonPath('data.owner_setup_status', 'unclaimed');
         $companyId = $response->json('data.company_id');
+        $this->assertDatabaseHas('office_erp_company_registrations', ['account_id' => $ctx->accountId, 'client_id' => $client->id, 'erp_company_id' => $companyId]);
         $this->assertDatabaseCount('erp_subscriptions', 1);
         $this->assertDatabaseCount('office_erp_invoices', 1);
         $this->assertDatabaseMissing('erp_company_memberships', ['erp_company_id' => $companyId, 'user_id' => $ctx->actor->id]);

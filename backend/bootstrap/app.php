@@ -67,7 +67,12 @@ return Application::configure(basePath: dirname(__DIR__))
                 }
             }
 
-            return response()->json($body, $status, ['Cache-Control' => 'no-store', ...($error instanceof HttpExceptionInterface ? $error->getHeaders() : [])]);
+            $headers = ['Cache-Control' => 'no-store', ...($error instanceof HttpExceptionInterface ? $error->getHeaders() : [])];
+            if ($request->is('api/v1/erp-member-invitations/*', 'api/v1/password-recovery/*')) {
+                $headers['Referrer-Policy'] = 'no-referrer';
+            }
+
+            return response()->json($body, $status, $headers);
         });
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),

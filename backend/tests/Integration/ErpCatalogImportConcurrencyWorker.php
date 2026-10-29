@@ -177,6 +177,18 @@ if (isset($input['ready'])) {
         }
     });
 }
+if (isset($input['preboot_ready'], $input['preboot_release'])) {
+    $privateFiles->contents($input['preboot_ready'], json_encode([
+        'pid' => getmypid(), 'pg_pid' => $pgPid, 'application_name' => $label, 'barrier' => 'preboot',
+    ], JSON_THROW_ON_ERROR));
+    $deadline = microtime(true) + 20;
+    while ($privateFiles->contents($input['preboot_release']) !== 'release') {
+        if (microtime(true) >= $deadline) {
+            throw new RuntimeException('Preboot request barrier timed out.');
+        }
+        usleep(10000);
+    }
+}
 $server = ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json', 'HTTP_ORIGIN' => 'http://localhost:3000', 'HTTP_X_OPMONI_INGRESS_KEY' => 'integration-test-only-key', 'HTTP_X_OPMONI_CLIENT_IP' => $input['client_ip'], 'HTTP_X_OPMONI_CLIENT_PROTO' => 'http'];
 foreach ($input['headers'] ?? [] as $name => $value) {
     $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;

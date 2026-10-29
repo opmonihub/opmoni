@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+export OPMONI_TASK_WORKTREE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+export OPMONI_TASK_UID="$(id -u)" OPMONI_TASK_GID="$(id -g)"
+expected=/home/obsidian/dev/opmoni/.worktrees/manage-office-erp-client-access
+[[ "$OPMONI_TASK_WORKTREE" == "$expected" ]] || { echo 'Unexpected task checkout.' >&2; exit 1; }
+[[ "$(git -C "$expected" branch --show-current)" == codex/manage-office-erp-client-access ]] || { echo 'Unexpected task branch.' >&2; exit 1; }
+compose=(docker compose --project-name opmoni-office-erp-client-access --env-file "$expected/.env" --file "$expected/scripts/office-erp-client-access-runtime/compose.yml")
+browser_compose=("${compose[@]}" --profile browser)
+
+case "${1:-}" in
+  up)
+    "${compose[@]}" config --quiet
+    "${compose[@]}" up -d --no-build
+    ;;
+  frontend)
+    python3 "$expected/scripts/office-erp-client-access-runtime/verify.py"
+    python3 "$expected/scripts/office-erp-client-access-runtime/start-frontend.py"
+    ;;
+  browser-up)
+    python3 "$expected/scripts/office-erp-client-access-runtime/verify.py" --browser-image
+    mkdir -p "$expected/.superpowers/sdd/manage-office-erp-client-access"
+    flock --nonblock --conflict-exit-code 75 "$expected/.superpowers/sdd/manage-office-erp-client-access/browser-up.lock" \
+      python3 "$expected/scripts/office-erp-client-access-runtime/ensure-browser-database.py"
+    "${browser_compose[@]}" config --quiet
+    "${browser_compose[@]}" up -d --no-build --no-deps browser-backend
+    python3 "$expected/scripts/office-erp-client-access-runtime/verify.py" --browser
+    ;;
+  browser-frontend)
+    python3 "$expected/scripts/office-erp-client-access-runtime/verify.py" --browser
+    python3 "$expected/scripts/office-erp-client-access-runtime/start-frontend.py" browser
+    ;;
+  browser-backend)
+    shift
+    python3 "$expected/scripts/office-erp-client-access-runtime/verify.py" --browser
+    mkdir -p "$expected/.superpowers/sdd/manage-office-erp-client-access"
+    exec flock --nonblock --conflict-exit-code 75 "$expected/.superpowers/sdd/manage-office-erp-client-access/browser-command.lock" \
+      "${browser_compose[@]}" exec -T browser-backend "$@"
+    ;;
+  browser-ps)
+    "${browser_compose[@]}" ps
+    ;;
+  verify)
+    python3 "$expected/scripts/office-erp-client-access-runtime/verify.py"
+    ;;
+  backend)
+    shift
+    python3 "$expected/scripts/office-erp-client-access-runtime/verify.py"
+    mkdir -p "$expected/.superpowers/sdd/manage-office-erp-client-access"
+    exec flock --nonblock --conflict-exit-code 75 "$expected/.superpowers/sdd/manage-office-erp-client-access/backend-command.lock" "${compose[@]}" exec -T backend "$@"
+    ;;
+  pgsql)
+    python3 "$expected/scripts/office-erp-client-access-runtime/verify.py"
+    source_identity="$(cat "$expected/.superpowers/sdd/manage-office-erp-client-access/verified-source-identity")"
+    exec flock --nonblock --conflict-exit-code 75 "$expected/.superpowers/sdd/manage-office-erp-client-access/backend-command.lock" "${compose[@]}" exec -T backend env \
+      OPMONI_TEST_SOURCE_CHECKOUT="$expected" OPMONI_TEST_SOURCE_IDENTITY="$source_identity" \
+      ERP_INITIALIZATION_RACES_CHECKOUT=/workspace ERP_COMMERCIAL_TAX_RACES_CHECKOUT=/workspace \
+      ERP_INITIALIZATION_RACES_ISOLATED=opmoni-erp-template:10.1 \
+      ERP_COMMERCIAL_TAX_RACES_ISOLATED=opmoni-erp-template:10.2+10.4 \
+      ERP_ACCOUNTING_OUTBOX_ISOLATED=task16-20261021 ERP_IMPORT_ISOLATED=task6-20261020 \
+      ERP_CATALOG_ATTRIBUTION_ISOLATED=task20-20261022 ERP_COMMERCIAL_ISOLATED=task9-20261020 \
+      ERP_CATALOG_ISOLATED=task5-20261018 ERP_FINANCE_ISOLATED=task8-20261020 \
+      OPERATION_IDENTITY_ISOLATED=task1-20261018 COMPANY_ADMIN_ISOLATED=task2-20261018 \
+      DELEGATED_ACCESS_ISOLATED=task21-20261018 ERP_FISCAL_DURABLE_ISOLATED=task17-20261021 \
+      ERP_ESTABLISHMENT_SCOPE_ISOLATED=task22-20261018 ERP_STOCK_ISOLATED=task7-20261020 \
+      OPENSSL_CONF=/etc/ssl/openssl.cnf FISCAL_ENVIRONMENT=producao \
+      vendor/bin/phpunit -c phpunit.pgsql.xml "${@:2}"
+    ;;
+  ps)
+    "${compose[@]}" ps
+    ;;
+  *)
+    echo 'Usage: scripts/office-erp-client-access-runtime/run {up|frontend|verify|ps|backend COMMAND...|pgsql [PHPUNIT_ARGS...]|browser-up|browser-frontend|browser-backend COMMAND...|browser-ps}' >&2
+    exit 2
+    ;;
+esac

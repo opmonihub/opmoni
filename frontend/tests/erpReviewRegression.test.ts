@@ -12,7 +12,8 @@ import * as productVariantReferences from '../app/utils/erpProductVariantReferen
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 function evaluate(source: string, bindings: Record<string, unknown>, imports: Record<string, unknown> = {}) {
-  const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+  const normalized = source.replaceAll('import.meta.client', 'false').replaceAll('import.meta.server', 'true')
+  const output = ts.transpileModule(normalized, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
   const exports: Record<string, unknown> = {}
   new Function('require', 'exports', ...Object.keys(bindings), output)(
     (name: string) => imports[name], exports, ...Object.values(bindings)

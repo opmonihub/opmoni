@@ -332,6 +332,26 @@ class ErpCatalogImportConcurrencyTest extends TestCase
         $this->fail('HTTP worker did not reach the Company lock barrier: '.$label);
     }
 
+    private function waitForWorkerPreboot(string $label, string $ready, Process $worker): void
+    {
+        $deadline = microtime(true) + 20;
+        do {
+            $contents = $this->readPrivateTemporaryFile($ready);
+            if ($contents !== '') {
+                $facts = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+                $this->assertSame($worker->getPid(), $facts['pid']);
+                $this->assertGreaterThan(0, $facts['pg_pid']);
+                $this->assertSame($label, $facts['application_name']);
+                $this->assertSame('preboot', $facts['barrier']);
+
+                return;
+            }
+            $this->assertTrue($worker->isRunning(), 'Worker exited before its preboot-ready signal.');
+            $this->assertLessThan($deadline, microtime(true), 'Worker did not reach preboot-ready: '.$label);
+            usleep(10000);
+        } while (true);
+    }
+
     private function preview(array $session, string $csv, string $kind = 'products'): string
     {
         $result = $this->request($session + ['method' => 'POST', 'path' => '/api/v1/erp/catalog/import/'.$kind.'/preview', 'csv' => $csv]);
@@ -360,14 +380,29 @@ class ErpCatalogImportConcurrencyTest extends TestCase
     {
         $readyA = $this->temporaryPath();
         $readyB = $this->temporaryPath();
+        $prebootReadyA = $this->temporaryPath();
+        $prebootReadyB = $this->temporaryPath();
+        $prebootReleaseA = $this->temporaryPath();
+        $prebootReleaseB = $this->temporaryPath();
         $label = 'task20-import-'.getmypid().'-'.count($this->workers);
         $workerA = $workerB = null;
-        DB::beginTransaction();
-        DB::table('erp_companies')->where('id', $this->company->id)->lockForUpdate()->first();
         try {
-            $workerA = $this->worker($first + ['label' => $label.'-a', 'ready' => $readyA, 'company_id' => $this->company->id]);
+            $workerA = $this->worker($first + [
+                'label' => $label.'-a', 'ready' => $readyA, 'company_id' => $this->company->id,
+                'preboot_ready' => $prebootReadyA, 'preboot_release' => $prebootReleaseA,
+            ]);
+            $workerB = $this->worker($second + [
+                'label' => $label.'-b', 'ready' => $readyB, 'company_id' => $this->company->id,
+                'preboot_ready' => $prebootReadyB, 'preboot_release' => $prebootReleaseB,
+            ]);
+            $this->waitForWorkerPreboot($label.'-a', $prebootReadyA, $workerA);
+            $this->waitForWorkerPreboot($label.'-b', $prebootReadyB, $workerB);
+
+            DB::beginTransaction();
+            DB::table('erp_companies')->where('id', $this->company->id)->lockForUpdate()->first();
+            $this->privateTemporaryContents($prebootReleaseA, 'release');
             $pgA = $this->waitForCompanyLock($label.'-a', $readyA, $workerA);
-            $workerB = $this->worker($second + ['label' => $label.'-b', 'ready' => $readyB, 'company_id' => $this->company->id]);
+            $this->privateTemporaryContents($prebootReleaseB, 'release');
             $pgB = $this->waitForCompanyLock($label.'-b', $readyB, $workerB);
             $this->assertNotSame($pgA, $pgB);
             DB::commit();
@@ -377,6 +412,8 @@ class ErpCatalogImportConcurrencyTest extends TestCase
 
             return [$a, $b];
         } finally {
+            $this->privateTemporaryContents($prebootReleaseA, 'release');
+            $this->privateTemporaryContents($prebootReleaseB, 'release');
             if (DB::transactionLevel() > 0) {
                 DB::rollBack();
             }

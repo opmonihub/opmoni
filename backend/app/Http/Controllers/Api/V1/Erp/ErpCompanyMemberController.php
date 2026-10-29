@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Erp;
 
 use App\Enums\Erp\ErpCompanyRole;
 use App\Erp\ErpCompanyAdministration;
+use App\Erp\ErpCompanyMemberGrants;
 use App\Erp\ErpCompanyPermissions;
 use App\Http\Controllers\Controller;
 use App\Models\Erp\ErpCompanyMembership;
@@ -18,7 +19,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class ErpCompanyMemberController extends Controller
 {
-    public function __construct(private ErpCompanyAdministration $administration) {}
+    public function __construct(private ErpCompanyAdministration $administration, private ErpCompanyMemberGrants $grants) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -66,6 +67,7 @@ class ErpCompanyMemberController extends Controller
     {
         return $this->administration->mutate($request, true, function (int $companyId) use ($request): JsonResponse {
             $data = $this->memberData($request, true);
+            $data = $this->normalizeMemberGrants($data, $companyId, null, true);
             if (! User::query()->whereKey($data['user_id'])->exists()) {
                 throw ValidationException::withMessages(['user_id' => 'Identidade inválida']);
             }
@@ -89,6 +91,7 @@ class ErpCompanyMemberController extends Controller
             $member = $this->administration->member($companyId, $membership, true);
             abort_if($member->role === 'owner', 403, 'Proprietário não pode ser alterado');
             $data = $this->memberData($request, false);
+            $data = $this->normalizeMemberGrants($data, $companyId, $member, false);
             $member->fill(array_intersect_key($data, array_flip(['role', 'action_permissions'])))->save();
             if (array_key_exists('establishment_scope', $data)) {
                 $member->access_all_establishments = $data['establishment_scope'] === 'all';
@@ -173,5 +176,28 @@ class ErpCompanyMemberController extends Controller
         }
 
         $membership->establishments()->sync(array_fill_keys($data['establishment_ids'] ?? [], ['erp_company_id' => $companyId]));
+    }
+
+    /** @param array<string, mixed> $data @return array<string, mixed> */
+    private function normalizeMemberGrants(array $data, int $companyId, ?ErpCompanyMembership $current, bool $creating): array
+    {
+        $role = (string) ($data['role'] ?? $current?->role);
+        $roleChanged = $current !== null && array_key_exists('role', $data) && $data['role'] !== $current->role;
+        $permissions = array_key_exists('action_permissions', $data)
+            ? $data['action_permissions']
+            : ($roleChanged ? null : $current?->action_permissions);
+        $scope = $data['establishment_scope'] ?? ($current?->hasAllEstablishmentAccess() ? 'all' : 'selected');
+        $ids = $data['establishment_ids'] ?? ($scope === 'all'
+            ? []
+            : ($current?->establishments()->pluck('erp_establishments.id')->all() ?? []));
+        $normalized = $this->grants->normalize($role, $permissions, $scope, $ids);
+        $this->grants->assertEstablishments($companyId, $normalized['establishment_ids']);
+
+        return array_replace($data, [
+            'role' => $normalized['role'],
+            'action_permissions' => $normalized['action_permissions'],
+            'establishment_scope' => $normalized['establishment_scope'],
+            'establishment_ids' => $normalized['establishment_ids'],
+        ]);
     }
 }

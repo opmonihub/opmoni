@@ -9,6 +9,7 @@ use App\Models\AccountMembership;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpAuditEvent;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
+use App\Models\Erp\Commercial\OfficeErpCompanyRegistration;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\Commercial\OfficeErpOwnerInvitation;
@@ -71,6 +72,11 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
         self::assertSame(0, AccountMembership::query()->where('user_id', $owner->id)->count());
         self::assertSame($owner->id, ErpCompanyMembership::query()->where('erp_company_id', $companyId)->where('role', 'owner')->value('user_id'));
         self::assertSame($companyId, OfficeErpContract::query()->findOrFail($issued['contract_id'])->erp_company_id);
+        self::assertDatabaseHas('office_erp_company_registrations', [
+            'account_id' => $issued['context']->accountId,
+            'client_id' => OfficeErpContract::query()->findOrFail($issued['contract_id'])->client_id,
+            'erp_company_id' => $companyId,
+        ]);
         self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $issued['contract_id'])->value('state'));
         self::assertSame('pending', ErpSubscription::query()->where('erp_company_id', $companyId)->value('status'));
         $journal = json_encode([
@@ -89,6 +95,28 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
         self::assertSame($companyId, (int) $retry->json('data.company.id'));
         self::assertSame(1, ErpCompany::query()->whereKey($companyId)->count());
         self::assertSame(1, ErpCompanyMembership::query()->where('erp_company_id', $companyId)->where('user_id', $owner->id)->count());
+    }
+
+    public function test_owner_acceptance_does_not_overwrite_a_conflicting_company_registration(): void
+    {
+        $issued = $this->issueInvitation();
+        $contract = OfficeErpContract::query()->findOrFail($issued['contract_id']);
+        $otherCompany = ErpCompany::factory()->create();
+        OfficeErpCompanyRegistration::factory()->create([
+            'account_id' => $issued['context']->accountId,
+            'client_id' => $contract->client_id,
+            'erp_company_id' => $otherCompany->id,
+        ]);
+        $this->resolve($issued['token']);
+        $beforeCompanyIds = ErpCompany::query()->pluck('id')->all();
+        $beforeAllocationCount = OfficeErpLicenceAllocation::query()->count();
+
+        $this->accept($this->operationKey(), ['password' => 'new-owner-secret'])->assertConflict();
+
+        self::assertSame($beforeCompanyIds, ErpCompany::query()->pluck('id')->all());
+        self::assertNull(OfficeErpContract::query()->findOrFail($contract->id)->erp_company_id);
+        self::assertSame('pending', OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id'])->status);
+        self::assertSame($beforeAllocationCount, OfficeErpLicenceAllocation::query()->count());
     }
 
     public function test_committed_acceptance_replays_after_seller_loses_resale_rights(): void

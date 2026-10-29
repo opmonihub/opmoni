@@ -3,6 +3,7 @@
 namespace App\Erp\Commercial;
 
 use App\Models\Erp\Commercial\OfficeErpInvoice;
+use App\Models\Erp\Commercial\OfficeErpReceiptAllocation;
 
 final class OfficeErpBalances
 {
@@ -31,7 +32,10 @@ final class OfficeErpBalances
         }
 
         $adjustedCharge = $originalTotal;
-        foreach ($invoice->adjustments()->get(['direction', 'amount']) as $adjustment) {
+        $adjustments = $invoice->relationLoaded('adjustments')
+            ? $invoice->adjustments
+            : $invoice->adjustments()->get(['direction', 'amount']);
+        foreach ($adjustments as $adjustment) {
             $amount = OfficeErpMoney::canonical((string) $adjustment->getRawOriginal('amount'), 'amount');
             $adjustedCharge = $adjustment->direction === 'credit'
                 ? OfficeErpMoney::subtract($adjustedCharge, $amount)
@@ -39,9 +43,9 @@ final class OfficeErpBalances
         }
 
         $effectiveReceived = '0.00';
-        $allocations = $invoice->allocations()
-            ->whereDoesntHave('receipt.reversal')
-            ->get(['amount']);
+        $allocations = $invoice->relationLoaded('allocations')
+            ? $invoice->allocations->filter(fn (OfficeErpReceiptAllocation $allocation): bool => ! $allocation->receipt?->reversal)
+            : $invoice->allocations()->whereDoesntHave('receipt.reversal')->get(['amount']);
         foreach ($allocations as $allocation) {
             $effectiveReceived = OfficeErpMoney::add(
                 $effectiveReceived,

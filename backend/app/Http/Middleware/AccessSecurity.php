@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
+use App\Support\AccessSession;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -15,10 +17,32 @@ class AccessSecurity
     {
         $session = $request->session();
         $revoked = Cache::get('revoked:'.hash('sha256', $session->getId()));
-        if (($session->has(Auth::guard('web')->getName()) && (! $session->has('access_deadline') || $session->get('access_authenticated') !== true)) || $revoked || ($session->has('access_deadline') && (int) $session->get('access_deadline') <= time())) {
+        $user = Auth::guard('web')->user();
+        $revisionMismatch = false;
+        $capturedRevision = null;
+        if ($user !== null) {
+            $currentRevision = User::query()->whereKey($user->getAuthIdentifier())->value('access_auth_revision');
+            $capturedRevision = $session->get('access_auth_revision', 0);
+            $revisionMismatch = $currentRevision === null || ! is_int($capturedRevision)
+                || $capturedRevision < 0 || $capturedRevision !== (int) $currentRevision;
+        }
+        $authenticationSessionInvalid = $session->has(Auth::guard('web')->getName())
+            && (! $session->has('access_deadline') || $session->get('access_authenticated') !== true);
+        $deadlineExpired = $session->has('access_deadline') && (int) $session->get('access_deadline') <= time();
+        $completedRecoveryContinuation = null;
+        if ($revisionMismatch && ! $revoked && ! $authenticationSessionInvalid && ! $deadlineExpired
+            && $user !== null && is_int($capturedRevision) && $capturedRevision >= 0) {
+            $completedRecoveryContinuation = AccessSession::preservableCompletedRecoveryForRevisionMismatch(
+                $request,
+                (int) $user->getAuthIdentifier(),
+                $capturedRevision,
+            );
+        }
+        if ($authenticationSessionInvalid || $revoked || $revisionMismatch || $deadlineExpired) {
             Auth::guard('web')->logout();
             $session->invalidate();
             $session->regenerateToken();
+            AccessSession::restoreCompletedRecoveryAfterRevisionMismatch($request, $completedRecoveryContinuation);
         }
         if (! $session->has('access_deadline')) {
             $session->put(['access_deadline' => time() + 1800, 'access_authenticated' => false]);
@@ -32,11 +56,17 @@ class AccessSecurity
         $limit = match ($name) {
             'access.register', 'erp.register', 'erp.trials.register' => 5,
             'access.login', 'access.activate' => 10,
-            'access.csrf', 'access.registration-status', 'access.activation-status', 'erp.registration-status', 'erp.trials.show', 'erp.trials.current' => 30,
+            'access.csrf', 'access.registration-status', 'access.activation-status', 'erp.registration-status', 'erp.trials.show', 'erp.trials.current',
+            'office-erp-member-invitations.resolve', 'office-erp-member-invitations.current',
+            'office-erp-password-recovery.resolve', 'office-erp-password-recovery.current' => 30,
             default => null,
         };
         if ($limit) {
-            $this->budget($name.':ip:'.$ip, $limit);
+            $publicReceiver = in_array($name, [
+                'office-erp-member-invitations.resolve', 'office-erp-member-invitations.current',
+                'office-erp-password-recovery.resolve', 'office-erp-password-recovery.current',
+            ], true);
+            $this->budget($publicReceiver ? 'access.public-receiver:ip:'.$ip : $name.':ip:'.$ip, $limit, $publicReceiver);
             if ($name === 'erp.trials.register' && $request->user() !== null) {
                 $this->budget($name.':actor:'.(int) $request->user()->getAuthIdentifier(), $limit);
             }
@@ -48,10 +78,16 @@ class AccessSecurity
             abort_unless($request->header('Origin') === config('access.origin') && is_string($request->header('X-CSRF-Token')) && hash_equals($session->token(), $request->header('X-CSRF-Token')), 403, 'Solicitação não autorizada');
         }
 
-        return $next($request);
+        $response = $next($request);
+        if (in_array($name, ['office-erp-member-invitations.resolve', 'office-erp-member-invitations.current', 'office-erp-password-recovery.resolve', 'office-erp-password-recovery.current', 'office-erp-password-recovery.complete'], true)) {
+            $response->headers->set('Cache-Control', 'no-store, private');
+            $response->headers->set('Referrer-Policy', 'no-referrer');
+        }
+
+        return $response;
     }
 
-    private function budget(string $key, int $limit): void
+    private function budget(string $key, int $limit, bool $private = false): void
     {
         $key = 'access-limit:'.hash('sha256', $key);
         if (config('cache.default') === 'redis') {
@@ -65,7 +101,12 @@ class AccessSecurity
             Cache::put($key, $count, 60);
             $ttl = 60;
         } if ($count > $limit) {
-            abort(response()->json(['code' => 'rate_limited', 'message' => 'Muitas tentativas. Tente novamente em instantes.'], 429, ['Retry-After' => (string) $ttl]));
+            $response = response()->json(['code' => 'rate_limited', 'message' => 'Muitas tentativas. Tente novamente em instantes.'], 429, ['Retry-After' => (string) $ttl]);
+            if ($private) {
+                $response->headers->set('Cache-Control', 'no-store, private');
+                $response->headers->set('Referrer-Policy', 'no-referrer');
+            }
+            abort($response);
         }
     }
 }

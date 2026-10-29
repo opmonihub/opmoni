@@ -1,0 +1,36 @@
+{
+  "worktree": "/home/obsidian/dev/opmoni/.worktrees/manage-office-erp-client-access",
+  "branch": "codex/manage-office-erp-client-access",
+  "source_head": "e216b26905e581b10382c76e0e580ae6a328caea",
+  "frontend": {
+    "source_paths_matched": 53,
+    "lint": { "command": "pnpm lint", "exit_code": 0 },
+    "typecheck": { "command": "pnpm typecheck", "exit_code": 0 },
+    "tests": { "command": "pnpm test", "total": 2302, "passed": 2302, "suites": 266, "failed": 0, "skipped": 0, "exit_code": 0 },
+    "build": { "command": "pnpm build", "duration": "5m01s", "exit_code": 0 },
+    "limits": "Final serial matrix ran in the isolated frontend worker checkout on matching source. Build completed with font fetch retry and existing BigInt target warnings. The earlier 2299/2301 harness run is superseded."
+  },
+  "backend": {
+    "regular": { "total": 3964, "passed": 3958, "skipped": 6, "assertions": 36104, "exit_code": 0 },
+    "post_integration": { "passed": 87, "assertions": 857, "exit_code": 0 },
+    "pint_exit_code": 0,
+    "skip_scope": "Three SQLite NUMERIC cases and three live SERPRO cases. The NUMERIC cases separately passed in real PostgreSQL."
+  },
+  "postgresql": {
+    "backend_and_runtime_source_paths_matched": 131,
+    "final_races": { "passed": 11, "assertions": 1762, "skipped": 0, "exit_code": 0 },
+    "final_features": { "passed": 36, "assertions": 400, "skipped": 0, "exit_code": 0 },
+    "final_numeric": { "passed": 3, "assertions": 12, "skipped": 0, "exit_code": 0 },
+    "limits": "Composed guarded acceptance, including successful credential methods in the intermediate race run; not a claim of one clean whole 282-test run. Historical fixture failures are described in acceptance.md."
+  },
+  "browser_report": "browser/browser-acceptance.md",
+  "scope_audit": {
+    "unrelated_reference_files_preserved": 5,
+    "known_private_fixture_passwords_checked": 5,
+    "in_memory_outbox_bearers_checked": 2,
+    "versionable_secret_matches": 0,
+    "unexpected_changed_paths": 0,
+    "git_diff_check_exit_code": 0
+  },
+  "deployment_limits": "No SMTP/inbox, live SERPRO/fiscal, payment or WhatsApp acceptance. No deployment, commit, push, merge, canonical spec sync or archive."
+}

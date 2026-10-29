@@ -41,6 +41,10 @@ class ErpCommercialGate
                     : 'erp_subscription_inactive';
             }
 
+            if ($this->serviceHasNotStarted($company, $subscription)) {
+                return 'erp_subscription_inactive';
+            }
+
             return null;
         }
 
@@ -81,7 +85,7 @@ class ErpCommercialGate
 
         if ($subscription->office_erp_contract_id !== null) {
             $trial = $this->trialRecordForSubscription($company, $subscription);
-            $contract = OfficeErpContract::query()->whereKey($subscription->office_erp_contract_id)
+            $contract = OfficeErpContract::query()->with(['currentRevision', 'pendingRevision'])->whereKey($subscription->office_erp_contract_id)
                 ->where('erp_company_id', $company->id)
                 ->where('agreement_status', $trial === null ? 'effective' : 'accepted')
                 ->where('manual_hold', false)
@@ -90,8 +94,10 @@ class ErpCommercialGate
                 || ($trial !== null && ! $this->hasValidTrialContractAndAllocation($company, $subscription, $trial))) {
                 return false;
             }
-            $revision = OfficeErpContractRevision::query()->whereKey($contract->current_revision_id)
-                ->where('contract_id', $contract->id)->first();
+            if ($trial === null && $this->serviceHasNotStarted($company, $subscription)) {
+                return false;
+            }
+            $revision = $this->effectiveRevision($contract);
 
             return in_array($moduleKey, $revision?->module_keys ?? [], true);
         }
@@ -106,6 +112,10 @@ class ErpCommercialGate
     {
         $subscription = $this->subscriptionForCompany($company);
         if ($subscription === null) {
+            return false;
+        }
+
+        if ($subscription->status === ErpSubscriptionStatus::Active->value && $this->serviceHasNotStarted($company, $subscription)) {
             return false;
         }
 
@@ -142,10 +152,35 @@ class ErpCommercialGate
             return false;
         }
 
-        $revision = OfficeErpContractRevision::query()->whereKey($contract->current_revision_id)
-            ->where('contract_id', $contract->id)->first();
+        $contract->loadMissing(['currentRevision', 'pendingRevision']);
+        $revision = $this->effectiveRevision($contract);
 
         return in_array($moduleKey, $revision?->module_keys ?? [], true);
+    }
+
+    private function effectiveRevision(OfficeErpContract $contract): ?OfficeErpContractRevision
+    {
+        $pending = $contract->pendingRevision;
+        if ($pending !== null && $pending->service_period_start !== null
+            && $pending->service_period_start->toDateString() <= CarbonImmutable::now($contract->billing_timezone)->toDateString()) {
+            return $pending;
+        }
+
+        return $contract->currentRevision;
+    }
+
+    private function serviceHasNotStarted(ErpCompany $company, ErpSubscription $subscription): bool
+    {
+        if ($subscription->office_erp_contract_id === null) {
+            return false;
+        }
+        $contract = OfficeErpContract::query()->whereKey($subscription->office_erp_contract_id)
+            ->where('erp_company_id', $company->id)
+            ->where('agreement_status', 'effective')
+            ->first(['id', 'billing_timezone', 'service_anchor_on']);
+
+        return $contract?->service_anchor_on !== null
+            && $contract->service_anchor_on->toDateString() > CarbonImmutable::now($contract->billing_timezone)->toDateString();
     }
 
     private function trialRecordForSubscription(ErpCompany $company, ErpSubscription $subscription): ?ErpSubscriptionTrial

@@ -16,6 +16,32 @@ use Illuminate\Validation\ValidationException;
 
 class AccessAccounts
 {
+    /** @return array{User, int} The revision belongs to this locked password proof. */
+    public function authenticatePassword(string $email, string $password): array
+    {
+        return DB::transaction(function () use ($email, $password): array {
+            $email = mb_strtolower(trim($email));
+            $this->advisory('email:'.$email);
+            $user = User::query()->where('email', $email)->lockForUpdate()->first();
+            $dummy = '$argon2id$v=19$m=65536,t=2,p=1$QWxwaGFCZXRhR2FtbWFEZQ$LAoqYUN2TrYY82BVhXA/LAihsqHFvlalWNKBJVqsMXA';
+            $hash = $user?->password ?? $dummy;
+            $valid = match (password_get_info($hash)['algoName']) {
+                'bcrypt' => strlen($password) <= 72 && Hash::driver('bcrypt')->check($password, $hash),
+                'argon2id' => Hash::check($password, $hash),
+                default => false,
+            };
+            if (! $user || ! $valid) {
+                throw ValidationException::withMessages(['email' => 'Email ou senha inválidos']);
+            }
+            if (Hash::needsRehash($user->password)) {
+                $user->password = Hash::make($password);
+                $user->save();
+            }
+
+            return [$user, (int) $user->access_auth_revision];
+        });
+    }
+
     public function advisory(string $key): void
     {
         AccessTransaction::boundLockWaits();

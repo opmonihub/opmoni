@@ -138,33 +138,80 @@ class ErpCommercialWorkflowConcurrencyTest extends TestCase
         return $result['body']['data'];
     }
 
+    private function waitForCompanyLock(Process $worker, string $label, string $marker): void
+    {
+        $deadline = microtime(true) + 10;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $row = DB::selectOne("select pid from pg_stat_activity where application_name = ? and wait_event_type = 'Lock'", [$label]);
+            if ($row && file_exists($marker) && (int) file_get_contents($marker) === (int) $row->pid) {
+                fwrite(STDERR, 'Company lock barrier '.$label.' backend PID '.$row->pid."\n");
+
+                return;
+            }
+            $this->assertTrue($worker->isRunning(), 'Worker exited before waiting on the actual Company lock.');
+            usleep(10000);
+        } while (microtime(true) < $deadline);
+
+        $this->fail('Worker must wait on actual Company lock: '.$label);
+    }
+
     private function race(array $a, array $b): array
     {
         $suffix = bin2hex(random_bytes(5));
         $workers = [];
         $markers = [];
-        DB::beginTransaction();
-        DB::table('erp_companies')->where('id', $this->company->id)->lockForUpdate()->first();
+        $companyReady = [];
+        $prebootReady = [];
+        $prebootRelease = [];
+        foreach ([0, 1] as $index) {
+            $prebootReady[$index] = tempnam(sys_get_temp_dir(), 'erp-commercial-');
+            $prebootRelease[$index] = tempnam(sys_get_temp_dir(), 'erp-commercial-');
+            $this->assertIsString($prebootReady[$index]);
+            $this->assertIsString($prebootRelease[$index]);
+            unlink($prebootReady[$index]);
+            unlink($prebootRelease[$index]);
+            $markers[] = $prebootReady[$index];
+            $markers[] = $prebootRelease[$index];
+        }
         try {
             foreach ([$a, $b] as $index => $input) {
                 $label = 'erp-commercial-'.$suffix.'-'.$index;
                 $marker = tempnam(sys_get_temp_dir(), 'erp-commercial-');
+                $this->assertIsString($marker);
                 unlink($marker);
                 $markers[] = $marker;
-                $workers[] = $this->worker($input + ['label' => $label, 'ready' => $marker]);
-                $deadline = microtime(true) + 10;
+                $companyReady[] = $marker;
+                $workers[] = $this->worker($input + [
+                    'label' => $label, 'ready' => $marker,
+                    'preboot_ready' => $prebootReady[$index], 'preboot_release' => $prebootRelease[$index],
+                ]);
+            }
+            foreach ($workers as $index => $worker) {
+                $label = 'erp-commercial-'.$suffix.'-'.$index;
+                $deadline = microtime(true) + 20;
                 do {
-                    DB::select('select pg_stat_clear_snapshot()');
-                    $row = DB::selectOne("select pid from pg_stat_activity where application_name = ? and wait_event_type = 'Lock'", [$label]);
-                    if ($row && file_exists($marker) && (int) file_get_contents($marker) === (int) $row->pid) {
-                        fwrite(STDERR, 'Company lock barrier '.$label.' backend PID '.$row->pid."\n");
+                    $readyContents = file_exists($prebootReady[$index]) ? (string) file_get_contents($prebootReady[$index]) : '';
+                    if ($readyContents !== '') {
+                        $facts = json_decode($readyContents, true, flags: JSON_THROW_ON_ERROR);
+                        $this->assertSame($worker->getPid(), $facts['pid']);
+                        $this->assertGreaterThan(0, $facts['backend_pid']);
+                        $this->assertSame($label, $facts['label']);
                         break;
                     }
+                    $this->assertTrue($worker->isRunning(), 'Worker exited before completing application bootstrap.');
+                    $this->assertLessThan($deadline, microtime(true), 'Worker did not complete application bootstrap: '.$label);
                     usleep(10000);
-                } while (microtime(true) < $deadline);
-                $this->assertNotNull($row, 'Worker must wait on actual Company lock');
-                $this->assertFileExists($marker);
+                } while (true);
             }
+
+            DB::beginTransaction();
+            DB::table('erp_companies')->where('id', $this->company->id)->lockForUpdate()->first();
+            touch($prebootRelease[0]);
+            $this->waitForCompanyLock($workers[0], 'erp-commercial-'.$suffix.'-0', $companyReady[0]);
+            touch($prebootRelease[1]);
+            $this->waitForCompanyLock($workers[1], 'erp-commercial-'.$suffix.'-1', $companyReady[1]);
+
             DB::commit();
             $results = array_map(fn ($worker) => $this->response($worker), $workers);
             $this->assertNotSame($results[0]['pid'], $results[1]['pid']);
@@ -175,6 +222,11 @@ class ErpCommercialWorkflowConcurrencyTest extends TestCase
 
             return $results;
         } finally {
+            foreach ($prebootRelease as $release) {
+                if (is_string($release)) {
+                    @touch($release);
+                }
+            }
             if (DB::transactionLevel() > 0) {
                 DB::rollBack();
             }

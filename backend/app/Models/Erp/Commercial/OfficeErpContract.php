@@ -23,6 +23,7 @@ class OfficeErpContract extends Model
     protected $fillable = [
         'account_id', 'client_id', 'sales_plan_id', 'erp_company_id', 'agreement_status', 'current_revision_id',
         'pending_revision_id', 'service_anchor_on', 'billing_timezone', 'next_period_index',
+        'planned_start_on',
         'next_period_month_offset', 'cancel_effective_on', 'manual_hold', 'accepted_at', 'effective_at',
         'canceled_at', 'cancellation_reason', 'provisioning_source', 'erp_plan_id', 'authorized_by_user_id', 'authorized_at',
     ];
@@ -31,6 +32,7 @@ class OfficeErpContract extends Model
     {
         return [
             'service_anchor_on' => 'date',
+            'planned_start_on' => 'date',
             'cancel_effective_on' => 'date',
             'next_period_index' => 'integer',
             'next_period_month_offset' => 'integer',

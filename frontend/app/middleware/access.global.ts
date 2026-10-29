@@ -1,12 +1,20 @@
 import { accessDestination } from '#shared/utils/access'
 import { isOfficeErpAdmin } from '~/utils/sidebarNav'
+import { captureAccessContinuationFromRoute } from '~/utils/accessContinuationFragment'
 
 export default defineNuxtRouteMiddleware(async (to) => {
+  const continuationKind = to.path === '/erp/convite'
+    ? 'member-invitation'
+    : to.path === '/redefinir-senha' ? 'password-recovery' : null
+  if (import.meta.client && continuationKind && to.hash && captureAccessContinuationFromRoute(continuationKind, to.hash))
+    return navigateTo(to.fullPath.split('#', 1)[0]!, { replace: true })
+
   const { user, resolved, refresh } = useAuth()
   const { api } = useAccessApi()
   const ownerActivationPage = to.path === '/erp/ativar'
   const publicTrialSignup = /^\/erp\/testar\/[^/]+$/.test(to.path)
-  const publicPage = ['/login', '/onboarding', '/primeiro-acesso', '/erp/cadastro', '/erp/ativar'].includes(to.path) || publicTrialSignup
+  const accessContinuation = ['/erp/convite', '/redefinir-senha'].includes(to.path)
+  const publicPage = ['/login', '/onboarding', '/primeiro-acesso', '/erp/cadastro', '/erp/ativar', '/erp/convite', '/redefinir-senha'].includes(to.path) || publicTrialSignup
   if (!resolved.value) {
     try {
       await refresh()
@@ -16,7 +24,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
       return
     }
   }
-  if (ownerActivationPage || publicTrialSignup)
+  if (ownerActivationPage || publicTrialSignup || accessContinuation)
     return
   if (!user.value) {
     if (to.path === '/primeiro-acesso' || to.path === '/erp/cadastro')

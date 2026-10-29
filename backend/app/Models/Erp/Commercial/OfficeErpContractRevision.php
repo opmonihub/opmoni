@@ -17,6 +17,7 @@ class OfficeErpContractRevision extends Model
     protected $fillable = [
         'account_id', 'contract_id', 'revision_number', 'sales_plan_revision_id', 'price', 'currency', 'interval_months', 'due_in_days',
         'module_keys', 'service_period_start', 'service_period_end', 'reason', 'created_by_user_id',
+        'superseded_at',
     ];
 
     protected function casts(): array
@@ -26,6 +27,7 @@ class OfficeErpContractRevision extends Model
             'module_keys' => 'array',
             'service_period_start' => 'date',
             'service_period_end' => 'date',
+            'superseded_at' => 'immutable_datetime',
         ];
     }
 
@@ -36,7 +38,12 @@ class OfficeErpContractRevision extends Model
 
     protected static function booted(): void
     {
-        static::updating(static function (): never {
+        static::updating(static function (self $revision): void {
+            if (array_diff(array_keys($revision->getDirty()), ['superseded_at', 'updated_at']) === []
+                && $revision->getRawOriginal('superseded_at') === null
+                && $revision->superseded_at !== null) {
+                return;
+            }
             throw new LogicException('Office ERP contract revisions are immutable.');
         });
         static::deleting(static function (): never {

@@ -1,0 +1,41 @@
+{
+  "runtime": "Chromium named own session via localhost3350/browser backend18871; owned DB; separate before/after fixtures created through real services; no clock override or scheduler",
+  "fixtures": {
+    "before": {
+      "company_id": 10,
+      "contract_id": 5,
+      "invoice_id": 5,
+      "boundary": "2026-10-29"
+    },
+    "after": {
+      "company_id": 11,
+      "contract_id": 6,
+      "invoice_id": 6,
+      "boundary": "2026-10-28"
+    }
+  },
+  "auth": "same synthetic direct Owner; actual company context picker; explicit matching X-Company-Id header",
+  "before": [
+    {
+      "path": "/api/v1/erp/purchases",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/erp/stock/transfers",
+      "status": 200
+    }
+  ],
+  "after": [
+    {
+      "path": "/api/v1/erp/purchases",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/erp/stock/transfers",
+      "status": 403,
+      "code": "erp_module_disabled"
+    }
+  ],
+  "setup": "forward actual registration/assignment/activation/amendment services; original calendar anchors; pending130.50/purchases versus current125.50/purchases+stock_transfers; invoices retain prior issued terms; all existing identity/company/contract/invoice rows snapshot-equal; new invoice counter reservations expected",
+  "limits": "HTTP evidence collected in actual authenticated browser; not a production scheduler/live provider acceptance; initial probes lacking company assertion header correctly returned422 and are excluded from acceptance"
+}

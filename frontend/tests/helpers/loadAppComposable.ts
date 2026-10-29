@@ -50,7 +50,10 @@ export function loadAppComposable<T extends Record<string, unknown>>(
     const module = { exports: {} as Record<string, unknown> }
     modules.set(filename, module)
     const source = readFileSync(filename, 'utf8')
-    const compiled = ts.transpileModule(source, {
+    // Nuxt replaces these build-time flags; composable unit tests run in the
+    // server context unless they explicitly use the SFC client harness.
+    const normalized = source.replaceAll('import.meta.client', 'false').replaceAll('import.meta.server', 'true')
+    const compiled = ts.transpileModule(normalized, {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
     }).outputText
     const localRequire = (dependency: string) => load(filename, dependency)

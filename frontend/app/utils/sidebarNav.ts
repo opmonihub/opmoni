@@ -105,7 +105,7 @@ export function officeErpSidebarItem(path: string) {
     children: [
       { label: 'Visão geral', to: '/gestao-erp', exact: true, active: path === '/gestao-erp' },
       { label: 'Planos', to: '/gestao-erp/planos', exact: true, active: path === '/gestao-erp/planos' },
-      { label: 'Clientes ERP', to: '/gestao-erp/clientes', exact: true, active: path === '/gestao-erp/clientes' },
+      { label: 'Empresas', to: '/gestao-erp/empresas', exact: false, active: path === '/gestao-erp/empresas' || path.startsWith('/gestao-erp/empresas/') },
       { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: path.startsWith('/gestao-erp/assinaturas') },
       { label: 'Faturas', to: '/gestao-erp/faturas', exact: false, active: sidebarParentActive('/gestao-erp/faturas', path) },
       { label: 'Recebimentos', to: '/gestao-erp/recebimentos', exact: true, active: path === '/gestao-erp/recebimentos' },

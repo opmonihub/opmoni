@@ -35,7 +35,7 @@ class AccessConcurrencyTest extends TestCase
     {
         $process = new Process([PHP_BINARY, base_path('tests/Integration/request-worker.php')], base_path());
         $process->setInput(json_encode($input, JSON_THROW_ON_ERROR));
-        $process->setTimeout(30);
+        $process->setTimeout(125);
 
         return $process;
     }
@@ -59,16 +59,53 @@ class AccessConcurrencyTest extends TestCase
     private function concurrent(array $inputs): array
     {
         $barrier = sys_get_temp_dir().'/opmoni-race-'.bin2hex(random_bytes(8));
-        $workers = array_map(fn (array $input) => $this->worker($input + ['barrier' => $barrier]), $inputs);
+        $readyFiles = [];
+        $workers = [];
+        foreach ($inputs as $index => $input) {
+            $readyFiles[] = $barrier.'.ready.'.$index;
+            $workers[] = $this->worker(array_replace($input, [
+                'barrier' => $barrier,
+                'bootstrap_ready' => $barrier.'.ready.'.$index,
+            ]));
+        }
         try {
             foreach ($workers as $worker) {
                 $worker->start();
             }
+            $bootstrapDeadline = microtime(true) + 60;
+            foreach ($workers as $index => $worker) {
+                while (! file_exists($readyFiles[$index])) {
+                    $this->assertTrue($worker->isRunning(), 'Worker exited before completing application bootstrap.');
+                    $this->assertLessThan($bootstrapDeadline, microtime(true), 'Workers did not complete application bootstrap within 60 seconds.');
+                    usleep(10000);
+                }
+            }
             touch($barrier);
+            $raceDeadline = microtime(true) + 60;
+            do {
+                $running = false;
+                foreach ($workers as $worker) {
+                    $running = $worker->isRunning() || $running;
+                }
+                if (! $running) {
+                    break;
+                }
+                $this->assertLessThan($raceDeadline, microtime(true), 'Concurrent requests did not complete within 60 seconds.');
+                usleep(10000);
+            } while (true);
 
             return array_map(fn (Process $worker) => $this->response($worker), $workers);
         } finally {
+            touch($barrier);
+            foreach ($workers as $worker) {
+                if ($worker->isRunning()) {
+                    $worker->stop(1);
+                }
+            }
             @unlink($barrier);
+            foreach ($readyFiles as $readyFile) {
+                @unlink($readyFile);
+            }
         }
     }
 
@@ -177,6 +214,13 @@ class AccessConcurrencyTest extends TestCase
 
     public function test_normalized_email_rate_budget_is_atomic_across_instances(): void
     {
+        DB::table('users')->insert([
+            'name' => 'Rate Budget Fixture',
+            'email' => 'rate@example.test',
+            'password' => Hash::driver('argon2id')->make('unused-known-password', ['memory' => 1024, 'time' => 1, 'threads' => 1]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $inputs = [];
         for ($index = 0; $index < 12; $index++) {
             $inputs[] = $this->mutation($this->anonymous('192.0.2.'.($index + 20)), '/api/v1/login', ['email' => $index % 2 ? 'rate@example.test' : ' RATE@EXAMPLE.TEST ', 'password' => 'wrong']);

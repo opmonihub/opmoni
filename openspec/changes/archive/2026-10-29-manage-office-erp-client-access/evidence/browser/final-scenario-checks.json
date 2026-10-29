@@ -1,0 +1,18 @@
+{
+  "runtime": "actual authenticated Chromium office-only commercial session through localhost3350 and isolated browser backend",
+  "selection_across_search": {
+    "initial_selected_client": "07",
+    "filter_08": { "header_checked": false, "selected_count": 1 },
+    "select_visible_header": { "visible_08_checked": true, "selected_count": 2 },
+    "filter_back_07": { "header_checked": true, "visible_07_checked": true },
+    "clear_visible_header": { "visible_07_checked": false, "selected_count": 1 },
+    "result": "only visible eligible rows affected; off-page selection preserved; dialog closed without registration POST"
+  },
+  "commercial_only_authority": {
+    "fixture_company_id": 9,
+    "company_switch_status": 403,
+    "operating_purchases_status": 403,
+    "matching_company_header": true,
+    "selected_company_unchanged": true
+  }
+}

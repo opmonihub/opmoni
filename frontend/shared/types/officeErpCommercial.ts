@@ -17,6 +17,7 @@ export interface OfficeErpCapabilities {
   can_provision: boolean
   can_start_trial: boolean
   can_manage_trial_link: boolean
+  can_register_company?: boolean
   capability_reasons: Record<string, string[]>
   capability_key: string
   reasons: Record<string, string[]>
@@ -161,6 +162,7 @@ export interface OfficeErpPortfolioClient {
   name: string
   trade_name: string | null
   tax_id: string | null
+  erp_registration: { registration_id: number, company_id: number } | null
   subscription?: OfficeErpClientSubscriptionSummary | null
 }
 
@@ -184,6 +186,59 @@ export interface OfficeErpClientSubscriptionSummary {
 export interface OfficeErpPortfolioClientListResponse {
   data: OfficeErpPortfolioClient[]
   meta: { current_page: number, last_page: number, per_page: 25 | 50 | 100, total: number }
+}
+
+export type OfficeErpCompanyRelationship = 'current' | 'unassigned' | 'historical'
+
+export interface OfficeErpCompanyCapabilities {
+  relationship: OfficeErpCompanyRelationship
+  can_edit_profile: boolean
+  can_assign: boolean
+  can_manage_members: boolean
+  capability_key: string
+}
+
+export interface OfficeErpCompanyProfile {
+  name: string
+  trade_name: string | null
+  tax_regime: OfficeErpNewClientInput['tax_regime']
+  contact_person: string | null
+  email: string | null
+  phone: string | null
+  whatsapp: string | null
+  street_type: string | null
+  street: string | null
+  address_number: string | null
+  address_complement: string | null
+  district: string | null
+  postal_code: string | null
+  city: string | null
+  state: string | null
+  ie: string | null
+}
+
+export interface OfficeErpCompany {
+  id: number
+  registration_id: number
+  client_id: number
+  name: string
+  cnpj: string
+  registered_at: string
+  owner_setup_status: 'unclaimed' | 'claimed'
+  current_contract_id: number | null
+  capabilities: OfficeErpCompanyCapabilities
+  profile?: OfficeErpCompanyProfile
+  profile_version?: string
+}
+
+export interface OfficeErpCompanyListResponse {
+  data: OfficeErpCompany[]
+  meta: { current_page: number, last_page: number, per_page: 25 | 50 | 100, total: number }
+}
+
+export interface OfficeErpCompanyRegistrationOutcome {
+  created: Array<{ registration_id: number, client_id: number, company_id: number }>
+  unchanged: Array<{ registration_id: number, client_id: number, company_id: number }>
 }
 
 export interface OfficeErpCommercialSummary {

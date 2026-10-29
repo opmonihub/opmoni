@@ -60,7 +60,8 @@ function harness(override?: (path: string, options?: Record<string, unknown>) =>
   }
   function mount(path: string) {
     const mounted: Array<() => void> = []
-    const globals = { ...bindings, onMounted: (callback: () => void) => mounted.push(callback) }
+    const unmounted: Array<() => void> = []
+    const globals = { ...bindings, onMounted: (callback: () => void) => mounted.push(callback), onBeforeUnmount: (callback: () => void) => unmounted.push(callback) }
     const source = readFileSync(new URL(`../app/pages/gestao-erp/${path}`, import.meta.url), 'utf8')
     const { descriptor } = parse(source)
     const script = compileScript(descriptor, { id: path })
@@ -75,7 +76,10 @@ function harness(override?: (path: string, options?: Record<string, unknown>) =>
     const scope = Vue.effectScope()
     const state = scope.run(() => exports.default!.setup({}, { expose() {} }))!
     mounted.forEach(callback => scope.run(callback))
-    return { state, stop: () => scope.stop() }
+    return { state, stop: () => {
+      unmounted.forEach(callback => callback())
+      scope.stop()
+    } }
   }
   return { mount, calls, user, route, confirmations: () => confirmations, setCapability: (key: string) => {
     capabilityKey = key
@@ -94,7 +98,7 @@ it('cold configuration confirms context once before each distinct card read', as
   assert.equal((page.state.trialLinkLoading as Vue.Ref).value, false)
 })
 
-for (const [path, endpoint] of [['planos.vue', 'plans'], ['clientes/index.vue', 'clients'], ['assinaturas/index.vue', 'contracts'], ['faturas/index.vue', 'invoices'], ['recebimentos.vue', 'receipts']]) {
+for (const [path, endpoint] of [['planos.vue', 'plans'], ['empresas/index.vue', 'companies'], ['assinaturas/index.vue', 'subscription-companies'], ['assinaturas/contratos.vue', 'contracts'], ['faturas/index.vue', 'invoices'], ['recebimentos.vue', 'receipts']]) {
   it(`cold ${path} confirms once and reads its list once`, async (t) => {
     const h = harness()
     const page = h.mount(path!)
@@ -170,18 +174,18 @@ it('leaving during shared confirmation cancels only the departed resource consum
     ? confirmation
     : { data: [], meta: { total: 0, current_page: 1, last_page: 1, per_page: 25 } })
   const departed = h.mount('planos.vue')
-  const current = h.mount('clientes/index.vue')
+  const current = h.mount('empresas/index.vue')
   departed.stop()
   resolve({ data: caps() })
   await flush()
-  assert.deepEqual(h.calls.map(call => call.path), ['/erp-commercial/context', '/erp-commercial/clients'])
+  assert.deepEqual(h.calls.map(call => call.path), ['/erp-commercial/context', '/erp-commercial/companies'])
   current.stop()
 })
 
 for (const [path, endpoint, filter, value, parameter] of [
   ['planos.vue', 'plans', 'query', 'Plano anual', 'q'],
-  ['clientes/index.vue', 'clients', 'query', 'Cliente matriz', 'q'],
-  ['assinaturas/index.vue', 'contracts', 'query', 'Contrato anual', 'q'],
+  ['empresas/index.vue', 'companies', 'query', 'Empresa matriz', 'search'],
+  ['assinaturas/contratos.vue', 'contracts', 'query', 'Contrato anual', 'q'],
   ['faturas/index.vue', 'invoices', 'status', 'issued', 'status'],
   ['recebimentos.vue', 'receipts', 'from', '2026-10-01', 'received_from']
 ]) {
@@ -209,7 +213,10 @@ for (const [path, endpoint, filter, value, parameter] of [
     assert.equal((restored.options?.params as Record<string, unknown>)[parameter!], value)
     assert.equal((restored.options?.params as Record<string, unknown>).page, 3)
     const before = h.calls.length
-    ;(returned.state[filter!] as Vue.Ref).value = filter === 'from' ? '2026-10-02' : filter === 'status' ? 'draft' : 'Nova busca'
+    if (path === 'empresas/index.vue')
+      (returned.state.updateQuery as (value: string) => void)('Nova busca')
+    else
+      (returned.state[filter!] as Vue.Ref).value = filter === 'from' ? '2026-10-02' : filter === 'status' ? 'draft' : 'Nova busca'
     await flush()
     const reads = h.calls.slice(before).filter(call => call.path === '/erp-commercial/' + endpoint)
     assert.equal(reads.length, 1)
@@ -218,19 +225,19 @@ for (const [path, endpoint, filter, value, parameter] of [
   })
 }
 
-it('portfolio explicit q/pagina and history take priority over remembered criteria', async () => {
+it('company URL criteria override remembered filters and update together', async () => {
   const h = harness(async (url, options) => url === '/erp-commercial/context'
     ? { data: caps() }
     : {
         data: [], meta: { total: 150, current_page: (options?.params as Record<string, number>)?.page ?? 1, last_page: 6, per_page: 25 }
       })
-  const first = h.mount('clientes/index.vue')
+  const first = h.mount('empresas/index.vue')
   await flush()
   ;(first.state.query as Vue.Ref).value = 'Lembrada'
   await flush()
   first.stop()
   h.route.query = { q: 'URL', pagina: '4', origem: 'existing' }
-  const current = h.mount('clientes/index.vue')
+  const current = h.mount('empresas/index.vue')
   await flush()
   assert.equal((current.state.query as Vue.Ref).value, 'URL')
   assert.equal((current.state.page as Vue.Ref).value, 4)
@@ -239,9 +246,9 @@ it('portfolio explicit q/pagina and history take priority over remembered criter
   await flush()
   assert.equal((current.state.query as Vue.Ref).value, 'Histórico')
   assert.equal((current.state.page as Vue.Ref).value, 2)
-  const reads = h.calls.slice(before).filter(call => call.path === '/erp-commercial/clients')
+  const reads = h.calls.slice(before).filter(call => call.path === '/erp-commercial/companies')
   assert.equal(reads.length, 1)
-  assert.deepEqual(reads[0]!.options?.params, { q: 'Histórico', page: 2, per_page: 25 })
+  assert.deepEqual(reads[0]!.options?.params, { page: 2, per_page: 25, search: 'Histórico' })
   assert.equal(h.route.query.origem, 'existing')
   current.stop()
 })
@@ -253,12 +260,12 @@ it('server totals bound a remembered page and fetch the last available page', as
         data: [], meta: { total: 30, current_page: (options?.params as Record<string, number>)?.page ?? 1, last_page: 2, per_page: 25 }
       })
   h.route.query = { q: 'URL', pagina: '6' }
-  const current = h.mount('clientes/index.vue')
+  const current = h.mount('empresas/index.vue')
   await flush()
   await flush()
   assert.equal((current.state.page as Vue.Ref).value, 2)
   assert.equal((current.state.total as Vue.Ref).value, 30)
-  assert.deepEqual(h.calls.filter(call => call.path === '/erp-commercial/clients').map(call => (call.options?.params as Record<string, number>).page), [6, 2])
+  assert.deepEqual(h.calls.filter(call => call.path === '/erp-commercial/companies').map(call => (call.options?.params as Record<string, number>).page), [6, 2])
   current.stop()
 })
 
@@ -345,41 +352,41 @@ for (const field of ['role', 'status', 'removed'] as const) {
   })
 }
 
-it('portfolio history applies q and pagina atomically with the real VueUse debounce', async () => {
+it('company URL search is atomic while interactive search uses VueUse debounce', async () => {
   const h = harness(async (url, options) => url === '/erp-commercial/context'
     ? { data: caps() }
     : {
         data: [], meta: { total: 150, current_page: (options?.params as Record<string, number>)?.page ?? 1, last_page: 6, per_page: 25 }
       }, true)
   h.route.query = { q: 'Primeiro', pagina: '4' }
-  const page = h.mount('clientes/index.vue')
+  const page = h.mount('empresas/index.vue')
   await flush()
   const before = h.calls.length
   h.route.query = { q: 'Histórico', pagina: '2' }
   await flush()
   await new Promise(resolve => setTimeout(resolve, 350))
   await flush()
-  const reads = h.calls.slice(before).filter(call => call.path === '/erp-commercial/clients')
+  const reads = h.calls.slice(before).filter(call => call.path === '/erp-commercial/companies')
   assert.equal(reads.length, 1)
-  assert.deepEqual(reads[0]!.options?.params, { q: 'Histórico', page: 2, per_page: 25 })
+  assert.deepEqual(reads[0]!.options?.params, { page: 2, per_page: 25, search: 'Histórico' })
   assert.equal((page.state.query as Vue.Ref).value, 'Histórico')
   assert.equal((page.state.page as Vue.Ref).value, 2)
   const beforeManual = h.calls.length
-  ;(page.state.query as Vue.Ref).value = 'Manual'
+  ;(page.state.updateQuery as (value: string) => void)('Manual')
   await flush()
   assert.equal(h.calls.length, beforeManual)
   await new Promise(resolve => setTimeout(resolve, 350))
   await flush()
-  const manualReads = h.calls.slice(beforeManual).filter(call => call.path === '/erp-commercial/clients')
+  const manualReads = h.calls.slice(beforeManual).filter(call => call.path === '/erp-commercial/companies')
   assert.equal(manualReads.length, 1)
-  assert.deepEqual(manualReads[0]!.options?.params, { q: 'Manual', page: 1, per_page: 25 })
+  assert.deepEqual(manualReads[0]!.options?.params, { page: 1, per_page: 25, search: 'Manual' })
   page.stop()
 })
 
 for (const [path, endpoint, field] of [
   ['planos.vue', 'plans', 'name'],
-  ['clientes/index.vue', 'clients', 'name'],
-  ['assinaturas/index.vue', 'contracts', 'client'],
+  ['empresas/index.vue', 'companies', 'name'],
+  ['assinaturas/contratos.vue', 'contracts', 'client'],
   ['faturas/index.vue', 'invoices', 'due_on'],
   ['recebimentos.vue', 'receipts', 'received_on']
 ] as const) {
@@ -412,19 +419,19 @@ it('commercial URL ordering wins over memory and invalid history restores legacy
     ? { data: caps() }
     : { data: [], meta: { total: 150, current_page: (options?.params as Record<string, number>)?.page ?? 1, last_page: 6, per_page: 25 } })
   h.route.query = { sort: 'name', direction: 'desc', pagina: '3' }
-  const page = h.mount('clientes/index.vue')
+  const page = h.mount('empresas/index.vue')
   t.after(page.stop)
   await flush()
-  assert.deepEqual(h.calls.filter(call => call.path === '/erp-commercial/clients').at(-1)?.options?.params,
+  assert.deepEqual(h.calls.filter(call => call.path === '/erp-commercial/companies').at(-1)?.options?.params,
     { page: 3, per_page: 25, sort: 'name', direction: 'desc' })
   const before = h.calls.length
   h.route.query = { sort: 'id', direction: 'asc', pagina: '2' }
   await flush()
-  const reads = h.calls.slice(before).filter(call => call.path === '/erp-commercial/clients')
+  const reads = h.calls.slice(before).filter(call => call.path === '/erp-commercial/companies')
   assert.equal(reads.length, 1)
-  assert.deepEqual(reads[0]!.options?.params, { page: 2, per_page: 25, sort: 'id', direction: 'asc' })
+  assert.deepEqual(reads[0]!.options?.params, { page: 2, per_page: 25 })
   h.route.query = { sort: 'amount', direction: 'invalid' }
   await flush()
-  assert.deepEqual(h.calls.filter(call => call.path === '/erp-commercial/clients').at(-1)?.options?.params,
+  assert.deepEqual(h.calls.filter(call => call.path === '/erp-commercial/companies').at(-1)?.options?.params,
     { page: 1, per_page: 25 })
 })
