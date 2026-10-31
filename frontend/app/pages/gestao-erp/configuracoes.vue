@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { settingsFieldRowClass } from '~/utils/formPresentation'
+import { focusFormError, settingsFieldRowClass } from '~/utils/formPresentation'
+import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
 import { pageFormMeasureClass } from '~/utils/pageShell'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
@@ -66,6 +67,14 @@ const previewLoading = ref(false)
 const previewError = ref('')
 const page = ref(1)
 const confirmOpen = ref(false)
+const restorePolicyFocus = useModalFocusReturn(confirmOpen)
+const trialLinkFieldErrors = ref<Record<string, string[]>>({})
+watch(fieldErrors, () => {
+  void focusFormError(undefined, 'office-erp-policy')
+})
+watch(trialLinkFieldErrors, () => {
+  void focusFormError(undefined, 'office-erp-trial-link')
+})
 const commandBusy = ref(false)
 const commandBusyGeneration = ref(0)
 const recoveryMessage = ref('')
@@ -166,6 +175,7 @@ function clearProtectedState() {
   trialLinkPlanId.value = null
   trialLinkEnabled.value = false
   trialLinkError.value = ''
+  trialLinkFieldErrors.value = {}
   trialLinkLoading.value = false
   trialLinkBusy.value = false
 }
@@ -224,6 +234,7 @@ function applyTrialLinkResult(result: OfficeErpCommandResult<TrialLinkResource>,
     recoveryMessage.value = 'O link não foi atualizado com confirmação. Consulte a operação original antes de tentar novamente.'
   } else if (result.status === 'failed') {
     trialLinkError.value = result.failure.message
+    trialLinkFieldErrors.value = result.failure.errors ?? {}
   }
   return false
 }
@@ -480,10 +491,19 @@ onMounted(() => {
 
 <template>
   <div :class="[pageFormMeasureClass, 'flex flex-col gap-6']">
-    <header class="space-y-1">
+    <header class="flex flex-wrap items-center justify-between gap-3">
       <h2 class="text-base font-semibold text-highlighted">
         Configurações comerciais
       </h2>
+      <UButton
+        to="/gestao-erp/planos"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-tags"
+        size="sm"
+      >
+        Gerenciar planos
+      </UButton>
     </header>
 
     <UAlert
@@ -541,7 +561,15 @@ onMounted(() => {
         </div>
       </template>
       <USkeleton v-if="trialLinkLoading" class="h-36 w-full" />
-      <div v-else class="space-y-5">
+      <UForm
+        v-else
+        id="office-erp-trial-link"
+        :state="{ erp_plan_id: trialLinkPlanId, enabled: trialLinkEnabled }"
+        :disabled="trialLinkBusy || commandBusy || command.pending.value"
+        class="space-y-4"
+        @submit="saveTrialLink"
+        @error="event => focusFormError(event, 'office-erp-trial-link')"
+      >
         <UAlert
           v-if="trialLinkError"
           color="error"
@@ -592,7 +620,12 @@ onMounted(() => {
           description="O escritório precisa de capacidade ERP e módulos liberados pela plataforma para configurar um link de teste."
         />
         <div v-else class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <UFormField label="Plano ERP do teste" required>
+          <UFormField
+            name="erp_plan_id"
+            :error="trialLinkFieldErrors.erp_plan_id?.[0]"
+            label="Plano ERP do teste"
+            required
+          >
             <USelect
               v-model="trialLinkPlanSelectModel"
               :items="trialLinkPlans.map(plan => ({ label: plan.name, value: plan.id }))"
@@ -600,10 +633,12 @@ onMounted(() => {
               class="w-full"
             />
           </UFormField>
-          <USwitch v-model="trialLinkEnabled" label="Link ativo" :disabled="trialLinkBusy || commandBusy || command.pending.value" />
+          <UFormField name="enabled" :error="trialLinkFieldErrors.enabled?.[0]">
+            <USwitch v-model="trialLinkEnabled" label="Link ativo" :disabled="trialLinkBusy || commandBusy || command.pending.value" />
+          </UFormField>
         </div>
         <div class="flex flex-wrap items-center gap-3 border-t border-default pt-5">
-          <UButton :loading="trialLinkBusy" :disabled="!trialLinkPlanId || !trialLinkPlans.length || trialLinkBusy || commandBusy || command.pending.value" @click="saveTrialLink">
+          <UButton type="submit" :loading="trialLinkBusy" :disabled="!trialLinkPlanId || !trialLinkPlans.length || trialLinkBusy || commandBusy || command.pending.value">
             {{ trialLink?.configured ? 'Salvar link' : 'Criar link' }}
           </UButton>
           <UButton
@@ -617,7 +652,7 @@ onMounted(() => {
             Renovar endereço do link
           </UButton>
         </div>
-      </div>
+      </UForm>
     </UPageCard>
     <UAlert
       v-if="recoveryKey && recoveryAction === 'trial-link'"
@@ -693,8 +728,15 @@ onMounted(() => {
             </UPopover>
           </div>
         </template>
-        <div class="space-y-4">
-          <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <UForm
+          id="office-erp-policy"
+          :state="settings"
+          :disabled="!canConfigure || commandBusy || command.pending.value"
+          class="space-y-4"
+          @submit="savePolicy(false)"
+          @error="event => focusFormError(event, 'office-erp-policy')"
+        >
+          <UFormField name="mode" :error="fieldErrors.mode" class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div class="max-w-2xl space-y-1">
               <p class="font-medium text-highlighted">
                 Automatizar suspensão por atraso
@@ -706,7 +748,7 @@ onMounted(() => {
               aria-label="Automatizar suspensão por atraso"
               @update:model-value="(enabled: boolean) => { settings.mode = enabled ? 'automatic' : 'manual' }"
             />
-          </div>
+          </UFormField>
 
           <UFormField
             name="grace_days"
@@ -756,14 +798,14 @@ onMounted(() => {
             </UButton>
             <UButton
               id="save-policy"
+              type="submit"
               :loading="commandBusy"
               :disabled="saveDisabled"
-              @click="savePolicy(false)"
             >
               Salvar configuração
             </UButton>
           </div>
-        </div>
+        </UForm>
       </UPageCard>
 
       <UAlert
@@ -845,9 +887,21 @@ onMounted(() => {
       </UPageCard>
     </template>
 
-    <UModal v-model:open="confirmOpen" title="Confirmar política automática" description="A suspensão por atraso será aplicada aos contratos que atendam às condições da pré-visualização.">
+    <UModal
+      v-model:open="confirmOpen"
+      title="Confirmar política automática"
+      description="A suspensão por atraso será aplicada aos contratos que atendam às condições da pré-visualização."
+      :ui="{ footer: 'shrink-0 flex-wrap justify-end' }"
+      @after:leave="restorePolicyFocus"
+    >
       <template #body>
-        <div class="space-y-3 text-sm">
+        <UForm
+          id="office-erp-confirm-policy"
+          :state="settings"
+          class="space-y-3 text-sm"
+          @submit="savePolicy(true)"
+          @error="event => focusFormError(event, 'office-erp-confirm-policy')"
+        >
           <p>Confirme somente depois de revisar a quantidade e a lista de contratos afetados.</p>
           <p class="text-muted">
             A confirmação salva a configuração. O controle de rascunho, por si só, não altera contratos.
@@ -861,7 +915,7 @@ onMounted(() => {
             title="Não foi possível salvar"
             :description="draftError"
           />
-        </div>
+        </UForm>
       </template>
       <template #footer>
         <div class="flex w-full flex-wrap justify-end gap-2">
@@ -877,7 +931,8 @@ onMounted(() => {
             color="neutral"
             :loading="commandBusy"
             :disabled="!preview || saveDisabled"
-            @click="savePolicy(true)"
+            type="submit"
+            form="office-erp-confirm-policy"
           >
             Confirmar ativação automática
           </UButton>

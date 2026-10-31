@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, toRef, watch } from 'vue'
+import { computed, reactive, ref, toRef, watch } from 'vue'
+import { focusFormError } from '~/utils/formPresentation'
 import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
 import type { OfficeErpOffer, OfficeErpOfferTerms } from '#shared/types/officeErpCommercial'
 import { officeErpModuleOptions, parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
@@ -37,7 +38,6 @@ const form = reactive({
   moduleKeys: [] as string[],
   published: false
 })
-const formElement = ref<HTMLFormElement | null>(null)
 const initialDraft = ref('')
 const discardOpen = ref(false)
 const restoreEditorFocus = useModalFocusReturn(toRef(props, 'open'))
@@ -76,7 +76,7 @@ function requestClose() {
 }
 
 function focusInvalidField() {
-  void nextTick(() => formElement.value?.querySelector<HTMLElement>('[aria-invalid="true"], [role="alert"]')?.focus())
+  void focusFormError(undefined, 'office-erp-plan-form')
 }
 
 watch(() => props.fieldErrors, (errors) => {
@@ -131,7 +131,7 @@ defineExpose({ form, submit })
     description="Cada alteração cria uma revisão para novas vendas. Contratos existentes preservam os termos aceitos."
     :dismissible="!saving && !recoveryKey"
     :close="!saving && !recoveryKey"
-    :ui="{ content: 'w-[calc(100%-2rem)] max-w-2xl', footer: 'justify-end' }"
+    :ui="{ content: 'max-w-2xl', body: 'min-h-0 overflow-y-auto', footer: 'shrink-0 flex-wrap justify-end' }"
     @update:open="value => { if (!value) requestClose() }"
     @after:leave="restoreEditorFocus"
   >
@@ -167,11 +167,13 @@ defineExpose({ form, submit })
           </template>
         </UAlert>
 
-        <form
+        <UForm
           id="office-erp-plan-form"
-          ref="formElement"
+          :state="form"
+          :disabled="!canSellNew || saving || !!recoveryKey"
           class="flex min-h-0 flex-1 flex-col"
-          @submit.prevent="submit"
+          @submit="submit"
+          @error="event => focusFormError(event, 'office-erp-plan-form')"
         >
           <div class="flex-1 space-y-4 overflow-y-auto pe-1">
             <UFormField
@@ -187,7 +189,7 @@ defineExpose({ form, submit })
                 class="w-full"
               />
             </UFormField>
-            <UFormField name="description" label="Descrição">
+            <UFormField name="description" label="Descrição" :error="fieldErrors.description?.[0]">
               <UTextarea
                 v-model="form.description"
                 :rows="3"
@@ -250,12 +252,14 @@ defineExpose({ form, submit })
               </p>
             </UFormField>
 
-            <UCheckbox v-model="form.published" label="Publicar esta revisão para novas vendas" :disabled="!canSellNew || saving" />
+            <UFormField name="published" :error="fieldErrors.published?.[0]">
+              <UCheckbox v-model="form.published" label="Publicar esta revisão para novas vendas" :disabled="!canSellNew || saving" />
+            </UFormField>
             <p class="text-sm text-muted">
               A publicação não altera o valor nem os módulos de contratos já aceitos.
             </p>
           </div>
-        </form>
+        </UForm>
       </div>
     </template>
     <template #footer>

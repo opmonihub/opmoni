@@ -2,6 +2,7 @@
 import { computed, ref, toRef, watch } from 'vue'
 import { officeErpModuleOptions } from '#shared/utils/officeErpCommercial'
 import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
+import { focusFormError } from '~/utils/formPresentation'
 
 interface Revision {
   id?: number
@@ -34,12 +35,14 @@ const props = withDefaults(defineProps<{
   pending?: boolean
   error?: string | null
   recoveryKey?: string | null
+  fieldErrors?: Record<string, string[]>
 }>(), {
   companyId: null,
   planName: 'Plano ERP',
   pending: false,
   error: null,
-  recoveryKey: null
+  recoveryKey: null,
+  fieldErrors: () => ({})
 })
 
 const emit = defineEmits<{
@@ -53,6 +56,9 @@ const sourceRevision = computed(() => props.pendingRevision ?? props.currentRevi
 const selected = ref<string[]>([])
 const discardOpen = ref(false)
 const localError = ref('')
+watch([localError, () => props.fieldErrors], () => {
+  if (props.open) void focusFormError(undefined, 'office-erp-modules')
+})
 const initialSelection = ref('')
 const working = computed(() => props.pending)
 const blocked = computed(() => working.value || !!props.recoveryKey)
@@ -197,20 +203,29 @@ watch(() => [props.companyId, props.contractId] as const, (current, previous) =>
           Escolha os recursos previstos para o próximo ciclo. Os módulos vigentes continuam disponíveis até a data de aplicação.
         </p>
 
-        <div class="divide-y divide-default" aria-label="Seleção de módulos para o próximo ciclo">
-          <div v-for="module in catalog" :key="module.value" class="flex min-w-0 items-center justify-between gap-4 py-4">
-            <span class="min-w-0 flex-1">
-              <span class="block text-sm font-medium text-highlighted">{{ module.label }}</span>
-              <span class="mt-1 block text-xs text-muted">{{ currentKeys.includes(module.value) ? 'Habilitado atualmente' : 'Desabilitado atualmente' }}<template v-if="pendingRevision && pendingKeys.includes(module.value) !== currentKeys.includes(module.value)"> · {{ pendingKeys.includes(module.value) ? 'incluído' : 'remoção' }} no próximo ciclo</template></span>
-            </span>
-            <USwitch
-              :model-value="selected.includes(module.value)"
-              :aria-label="module.label"
-              :disabled="!canAmend || blocked || !eligibleForNextCycle(module.value)"
-              @update:model-value="toggleModule(module.value, $event)"
-            />
-          </div>
-        </div>
+        <UForm
+          id="office-erp-modules"
+          :state="{ module_keys: selected }"
+          @submit="submit"
+          @error="event => focusFormError(event, 'office-erp-modules')"
+        >
+          <UFormField name="module_keys" :error="localError || fieldErrors.module_keys?.[0]" :error-pattern="/^module_keys\..*/">
+            <div class="divide-y divide-default" aria-label="Seleção de módulos para o próximo ciclo">
+              <div v-for="module in catalog" :key="module.value" class="flex min-w-0 items-center justify-between gap-4 py-4">
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-medium text-highlighted">{{ module.label }}</span>
+                  <span class="mt-1 block text-xs text-muted">{{ currentKeys.includes(module.value) ? 'Habilitado atualmente' : 'Desabilitado atualmente' }}<template v-if="pendingRevision && pendingKeys.includes(module.value) !== currentKeys.includes(module.value)"> · {{ pendingKeys.includes(module.value) ? 'incluído' : 'remoção' }} no próximo ciclo</template></span>
+                </span>
+                <USwitch
+                  :model-value="selected.includes(module.value)"
+                  :aria-label="module.label"
+                  :disabled="!canAmend || blocked || !eligibleForNextCycle(module.value)"
+                  @update:model-value="toggleModule(module.value, $event)"
+                />
+              </div>
+            </div>
+          </UFormField>
+        </UForm>
 
         <UAlert
           color="neutral"
@@ -249,7 +264,8 @@ watch(() => [props.companyId, props.contractId] as const, (current, previous) =>
         :loading="pending"
         :disabled="!canAmend || blocked || !dirty || !sourceRevision"
         class="min-h-11 sm:min-h-0"
-        @click="submit"
+        type="submit"
+        form="office-erp-modules"
       >
         Agendar alterações
       </UButton>

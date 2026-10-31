@@ -5,9 +5,14 @@ const perPage = defineModel<25 | 50 | 100>('perPage', { required: true })
 </script>
 
 <template>
-  <footer class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-    <p class="text-sm text-muted" aria-live="polite">
-      {{ total }} {{ label }} · página {{ page }} de {{ Math.max(1, Math.ceil(total / perPage)) }}
+  <footer class="flex flex-col gap-2 pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+    <p class="min-w-0 text-sm text-muted" aria-live="polite" :aria-busy="loading">
+      <template v-if="loading && total === 0">
+        Carregando resultados…
+      </template>
+      <template v-else>
+        {{ total }} {{ label }} · página {{ page }} de {{ Math.max(1, Math.ceil(total / perPage)) }}
+      </template>
     </p>
     <div class="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
       <USelect

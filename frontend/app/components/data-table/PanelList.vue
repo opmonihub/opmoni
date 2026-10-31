@@ -52,6 +52,9 @@ withDefaults(defineProps<{
     orientation="horizontal"
     :ui="{ root: pageHeadingClass, ...ui?.heading }"
   >
+    <template v-if="$slots.title" #title>
+      <slot name="title" />
+    </template>
     <div v-if="$slots.action" :class="pageHeadingActionsClass">
       <slot name="action" />
     </div>

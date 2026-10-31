@@ -91,6 +91,8 @@ function mount(component: Vue.Component) {
     UPagination: { props: ['page', 'total'], setup: (props, context) => () => Vue.h('nav', { 'data-total': props.total, 'data-page': props.page, 'onUpdate:page': context.emit.bind(null, 'update:page') }) }
   }
   for (const [name, component] of Object.entries(components)) app.component(name, component)
+  app.component('UForm', { emits: ['submit'], setup: (_props, context) => () => Vue.h('form', { ...context.attrs, onSubmit: () => context.emit('submit', {}) }, context.slots.default?.()) })
+  app.component('UPopover', { setup: (_props, context) => () => Vue.h('div', context.slots.default?.()) })
   app.mount(root)
   return { app, root }
 }
@@ -541,7 +543,7 @@ describe('Office ERP policy settings page', () => {
     await flush()
     const save = find(view.root, node => node.tag === 'button' && renderText(node).includes('Salvar configuração'))[0]
     assert.ok(save)
-    ;(save.props.onClick as () => void)()
+    ;(find(view.root, node => node.tag === 'form' && node.props.id === 'office-erp-policy')[0]!.props.onSubmit as () => void)()
     await flush()
     assert.equal(view.executeCalls.length, 0)
     const preview = find(view.root, node => node.tag === 'button' && renderText(node).includes('Pré-visualizar consequências'))[0]!
@@ -549,7 +551,7 @@ describe('Office ERP policy settings page', () => {
     await flush()
     const confirm = find(view.root, node => node.tag === 'button' && renderText(node).includes('Confirmar ativação automática'))[0]
     assert.ok(confirm)
-    ;(confirm.props.onClick as () => void)()
+    ;(find(view.root, node => node.tag === 'form' && node.props.id === confirm.props.form)[0]!.props.onSubmit as () => void)()
     await flush()
     assert.equal(view.executeCalls.length, 1)
     assert.deepEqual(view.executeCalls[0], ['policy.configure', '/erp-commercial/settings', { mode: 'automatic', grace_days: 0, billing_timezone: 'America/Sao_Paulo', confirm_automatic: true }, 'PATCH'])
@@ -563,13 +565,14 @@ describe('Office ERP policy settings page', () => {
     const view = fixture({ execute: async () => ({ status: 'unknown', key }), recover: async () => ({ status: 'unknown', key }) })
     await flush()
     const save = find(view.root, node => node.tag === 'button' && renderText(node).includes('Salvar configuração'))[0]!
-    ;(save.props.onClick as () => void)()
+    assert.ok(save)
+    ;(find(view.root, node => node.tag === 'form' && node.props.id === 'office-erp-policy')[0]!.props.onSubmit as () => void)()
     await flush()
     assert.equal(view.executeCalls.length, 1)
     assert.equal(view.command.recoveryKey.value, key)
     const duplicateSave = find(view.root, node => node.tag === 'button' && renderText(node).includes('Salvar configuração'))[0]!
     assert.equal(duplicateSave.props.disabled, true)
-    ;(duplicateSave.props.onClick as () => void)()
+    ;(find(view.root, node => node.tag === 'form' && node.props.id === 'office-erp-policy')[0]!.props.onSubmit as () => void)()
     await flush()
     assert.equal(view.executeCalls.length, 1)
     const recover = find(view.root, node => node.tag === 'button' && renderText(node).includes('Verificar resultado'))[0]
@@ -658,7 +661,8 @@ describe('Office ERP policy settings page', () => {
     assert.match(renderText(view.root), /Cliente atual/)
 
     const save = find(view.root, node => node.tag === 'button' && renderText(node).includes('Salvar configuração'))[0]!
-    ;(save.props.onClick as () => void)()
+    assert.ok(save)
+    ;(find(view.root, node => node.tag === 'form' && node.props.id === 'office-erp-policy')[0]!.props.onSubmit as () => void)()
     await flush()
     const confirm = find(view.root, node => node.tag === 'button' && renderText(node).includes('Confirmar ativação automática'))[0]
     assert.ok(confirm)
@@ -757,7 +761,7 @@ describe('Office ERP policy settings page', () => {
       await flush()
       const save = find(view.root, node => node.tag === 'button' && renderText(node).includes('Salvar link'))[0]
       assert.ok(save)
-      ;(save.props.onClick as () => void)()
+      ;(find(view.root, node => node.tag === 'form' && node.props.id === 'office-erp-trial-link')[0]!.props.onSubmit as () => void)()
       await flush()
       assert.match(renderText(view.root), /ERP Essencial/)
       assert.equal(find(view.root, node => node.tag === 'select').length, 1)
@@ -819,7 +823,7 @@ describe('Office ERP policy settings page', () => {
 
       const confirm = find(view.root, node => node.tag === 'button' && renderText(node).includes('Confirmar conversão e emitir primeira fatura'))[0]
       assert.ok(confirm)
-      ;(confirm.props.onClick as () => void)()
+      ;(find(view.root, node => node.tag === 'form' && node.props.id === 'office-erp-trial-conversion')[0]!.props.onSubmit as () => void)()
       await flush()
       assert.deepEqual(view.executeCalls[0], [
         'trial.convert', '/erp-commercial/contracts/31/convert-trial',

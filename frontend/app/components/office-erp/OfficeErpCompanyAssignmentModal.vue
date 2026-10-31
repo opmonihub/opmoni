@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onScopeDispose } from 'vue'
+import { focusFormError } from '~/utils/formPresentation'
 import type { OfficeErpCommandResult } from '#shared/types/officeErpCommercial'
 import { parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
@@ -43,6 +44,10 @@ const dueDays = ref('0')
 const startOn = ref('')
 const timezone = ref('America/Sao_Paulo')
 const error = ref('')
+const fieldErrors = ref<Record<string, string[]>>({})
+watch(fieldErrors, (errors) => {
+  if (open.value && Object.keys(errors).length) void focusFormError(undefined, 'office-erp-assignment')
+})
 const notice = ref('')
 const recoveryKey = ref<string | null>(null)
 const activeRecoveryKey = computed(() => recoveryKey.value ?? command.recoveryKey.value)
@@ -55,6 +60,7 @@ function todayLocalDate() {
   return [value.getFullYear(), String(value.getMonth() + 1).padStart(2, '0'), String(value.getDate()).padStart(2, '0')].join('-')
 }
 function clearDraft() {
+  fieldErrors.value = {}
   plans.value = []
   planId.value = undefined
   price.value = ''
@@ -148,16 +154,24 @@ async function submit() {
   if (!props.canAssign || !Number.isSafeInteger(targetCompanyId) || !targetCompanyId || !planId.value || submitting.value || recovering.value || activeRecoveryKey.value || command.pending.value) return
   const identity = authorityStamp.value
   const mutation = ++mutationGeneration
+  fieldErrors.value = {}
   let canonicalPrice: string
   try {
     canonicalPrice = parseOfficeErpMoney(price.value.trim())
   } catch {
-    error.value = 'Informe um preço em reais com até duas casas decimais.'
+    fieldErrors.value = { price: ['Informe um preço em reais com até duas casas decimais.'] }
+    error.value = fieldErrors.value.price![0]!
     return
   }
   const intervalMonths = Number(interval.value)
   const dueInDays = Number(dueDays.value)
   if (![1, 3, 6, 12].includes(intervalMonths) || !Number.isInteger(dueInDays) || dueInDays < 0 || dueInDays > 65535 || !/^\d{4}-\d{2}-\d{2}$/.test(startOn.value) || !timezone.value.trim()) {
+    fieldErrors.value = {
+      ...(![1, 3, 6, 12].includes(intervalMonths) ? { interval_months: ['Selecione um ciclo válido.'] } : {}),
+      ...(!Number.isInteger(dueInDays) || dueInDays < 0 || dueInDays > 65535 ? { due_in_days: ['Informe de 0 a 65.535 dias.'] } : {}),
+      ...(!/^\d{4}-\d{2}-\d{2}$/.test(startOn.value) ? { start_on: ['Informe a data de início.'] } : {}),
+      ...(!timezone.value.trim() ? { billing_timezone: ['Informe o fuso horário.'] } : {})
+    }
     error.value = 'Confira o ciclo, prazo de vencimento, data de início e fuso horário.'
     return
   }
@@ -182,8 +196,10 @@ async function submit() {
     } else if (result.status === 'unknown') {
       recoveryKey.value = result.key
       error.value = 'O resultado ainda não foi confirmado. Consulte a operação ' + result.key + ' antes de tentar novamente.'
-    } else if (result.status === 'failed') error.value = result.failure.message || 'Não foi possível iniciar a assinatura.'
-    else error.value = 'O contexto do escritório mudou. Confira a conta selecionada.'
+    } else if (result.status === 'failed') {
+      fieldErrors.value = result.failure.errors ?? {}
+      error.value = result.failure.message || 'Não foi possível iniciar a assinatura.'
+    } else error.value = 'O contexto do escritório mudou. Confira a conta selecionada.'
   } finally {
     if (mutation === mutationGeneration) submitting.value = false
   }
@@ -249,7 +265,7 @@ onScopeDispose(() => {
     v-model:open="open"
     :title="'Iniciar assinatura · ' + (companyName || 'empresa')"
     description="A atribuição reserva uma licença; a emissão da primeira fatura acontece na ativação."
-    :ui="{ content: 'sm:max-w-3xl', header: 'pr-12' }"
+    :ui="{ content: 'sm:max-w-3xl', header: 'shrink-0', body: 'min-h-0 overflow-y-auto', footer: 'shrink-0 flex-wrap justify-end' }"
     @after:leave="restoreModalFocus"
   >
     <template #body>
@@ -280,8 +296,20 @@ onScopeDispose(() => {
           title="Estado da operação"
           :description="notice"
         />
-        <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField label="Plano ERP" required>
+        <UForm
+          id="office-erp-assignment"
+          :state="{ erp_plan_id: planId, price, interval_months: interval, due_in_days: dueDays, start_on: startOn, billing_timezone: timezone }"
+          :disabled="loading || submitting || recovering || !!activeRecoveryKey"
+          class="grid gap-4 sm:grid-cols-2"
+          @submit="submit"
+          @error="event => focusFormError(event, 'office-erp-assignment')"
+        >
+          <UFormField
+            name="erp_plan_id"
+            :error="fieldErrors.erp_plan_id?.[0]"
+            label="Plano ERP"
+            required
+          >
             <USelect
               v-model="planId"
               :items="plans.map(plan => ({ label: plan.name, value: plan.id }))"
@@ -290,7 +318,13 @@ onScopeDispose(() => {
               :disabled="loading || !!recoveryKey"
             />
           </UFormField>
-          <UFormField label="Preço em reais" required hint="Até duas casas decimais.">
+          <UFormField
+            name="price"
+            :error="fieldErrors.price?.[0]"
+            label="Preço em reais"
+            required
+            hint="Até duas casas decimais."
+          >
             <UInput
               v-model="price"
               inputmode="decimal"
@@ -299,7 +333,12 @@ onScopeDispose(() => {
               :disabled="!!recoveryKey"
             />
           </UFormField>
-          <UFormField label="Ciclo de cobrança" required>
+          <UFormField
+            name="interval_months"
+            :error="fieldErrors.interval_months?.[0]"
+            label="Ciclo de cobrança"
+            required
+          >
             <USelect
               v-model="interval"
               :items="[{ label: 'Mensal', value: '1' }, { label: 'A cada 3 meses', value: '3' }, { label: 'A cada 6 meses', value: '6' }, { label: 'Anual', value: '12' }]"
@@ -307,7 +346,12 @@ onScopeDispose(() => {
               :disabled="!!recoveryKey"
             />
           </UFormField>
-          <UFormField label="Dias até o vencimento" required>
+          <UFormField
+            name="due_in_days"
+            :error="fieldErrors.due_in_days?.[0]"
+            label="Dias até o vencimento"
+            required
+          >
             <UInput
               v-model="dueDays"
               type="number"
@@ -318,7 +362,12 @@ onScopeDispose(() => {
               :disabled="!!recoveryKey"
             />
           </UFormField>
-          <UFormField label="Início do serviço" required>
+          <UFormField
+            name="start_on"
+            :error="fieldErrors.start_on?.[0]"
+            label="Início do serviço"
+            required
+          >
             <UInput
               v-model="startOn"
               type="date"
@@ -326,7 +375,12 @@ onScopeDispose(() => {
               :disabled="!!recoveryKey"
             />
           </UFormField>
-          <UFormField label="Fuso horário" required>
+          <UFormField
+            name="billing_timezone"
+            :error="fieldErrors.billing_timezone?.[0]"
+            label="Fuso horário"
+            required
+          >
             <UInput
               v-model="timezone"
               autocomplete="off"
@@ -334,7 +388,7 @@ onScopeDispose(() => {
               :disabled="!!recoveryKey"
             />
           </UFormField>
-        </div>
+        </UForm>
         <p v-if="plans.find(plan => plan.id === planId)" class="text-sm text-muted">
           Módulos do plano: {{ plans.find(plan => plan.id === planId)?.module_keys.join(', ') || 'Nenhum' }}.
         </p>
@@ -350,7 +404,12 @@ onScopeDispose(() => {
         >
           Cancelar
         </UButton>
-        <UButton :loading="submitting" :disabled="loading || submitting || recovering || !!activeRecoveryKey || command.pending.value || !planId" @click="submit">
+        <UButton
+          type="submit"
+          form="office-erp-assignment"
+          :loading="submitting"
+          :disabled="loading || submitting || recovering || !!activeRecoveryKey || command.pending.value || !planId"
+        >
           Confirmar assinatura
         </UButton>
       </div>

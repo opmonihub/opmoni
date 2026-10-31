@@ -1,22 +1,11 @@
 import type { Ref } from 'vue'
 import type { ClientSheet } from '~/types/client'
-import { formatDate } from '~/utils'
-import { clientDocumentStateOptions } from '~/utils/clientListFilterOptions'
-import {
-  clientSheetTaxIdLabel,
-  clientStatusPresentation,
-  taxRegimeLabel
-} from '~/utils/portfolioLabels'
+import { clientExportFields } from '~/utils/clientExportColumns'
 
 type UseClientListExportOptions = {
   rows: Ref<ClientSheet[]>
-  columnVisibility: Ref<Record<string, boolean>>
   isClientSelected: (id: number) => boolean
   selectedCount: Ref<number>
-}
-
-function choiceLabel(options: readonly { label: string, value: string }[], value: string | null | undefined) {
-  return options.find(option => option.value === value)?.label ?? ''
 }
 
 /**
@@ -57,7 +46,7 @@ function downloadCsv(fileName: string, body: string) {
 export function useClientListExport(options: UseClientListExportOptions) {
   const toast = useToast()
 
-  function exportClients(onlySelection = false) {
+  function exportClients(onlySelection = false, columnIds: readonly string[] = []) {
     const source = onlySelection
       ? options.rows.value.filter(client => options.isClientSelected(client.id))
       : options.rows.value
@@ -66,49 +55,9 @@ export function useClientListExport(options: UseClientListExportOptions) {
       return
     }
 
-    const visible = (id: string) => options.columnVisibility.value[id] !== false
-    const fields: { header: string, value: (client: ClientSheet) => string }[] = []
-    if (visible('name')) {
-      fields.push(
-        { header: 'Nome/Razão social', value: client => client.name },
-        { header: 'CPF/CNPJ', value: client => clientSheetTaxIdLabel(client) }
-      )
-    }
-    if (visible('tags')) {
-      fields.push({ header: 'Tags', value: client => client.tags?.map(tag => tag.name).join(', ') ?? '' })
-    }
-    if (visible('tax_regime')) {
-      fields.push({
-        header: 'Regime',
-        value: client => client.tax_regime ? (taxRegimeLabel[client.tax_regime] ?? client.tax_regime) : ''
-      })
-    }
-    if (visible('status')) {
-      fields.push({
-        header: 'Situação',
-        value: client => clientStatusPresentation[client.status]?.label ?? client.status
-      })
-    }
-    if (visible('certificate')) {
-      fields.push(
-        { header: 'Cert. A1', value: client => choiceLabel(clientDocumentStateOptions, client.certificate_status) },
-        {
-          header: 'Validade do certificado',
-          value: client => client.certificate?.valid_until ? formatDate(client.certificate.valid_until) : ''
-        }
-      )
-    }
-    if (visible('ecac_power_of_attorney')) {
-      fields.push(
-        { header: 'e-CAC', value: client => choiceLabel(clientDocumentStateOptions, client.ecac_power_of_attorney_status) },
-        {
-          header: 'Validade da procuração',
-          value: client => client.ecac_power_of_attorney?.expires_on ? formatDate(client.ecac_power_of_attorney.expires_on) : ''
-        }
-      )
-    }
+    const fields = clientExportFields(columnIds)
     if (!fields.length) {
-      toast.add({ title: 'Nenhuma coluna visível para exportar', color: 'warning' })
+      toast.add({ title: 'Escolha ao menos uma coluna', color: 'warning' })
       return
     }
 

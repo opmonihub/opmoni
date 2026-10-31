@@ -38,4 +38,4 @@ export const pageRecordScrollClass = 'h-full overflow-y-auto' as const
  * with a `dl` grid and a two-column body stops being readable well before that,
  * and the cap is what keeps the left edge from drifting on a wide monitor.
  */
-export const pageDetailClass = 'mx-auto flex w-full max-w-6xl flex-col gap-3 p-3 sm:p-4' as const
+export const pageDetailClass = 'mx-auto flex w-full max-w-6xl flex-col gap-4 p-3 sm:gap-5 sm:p-4 lg:p-5' as const

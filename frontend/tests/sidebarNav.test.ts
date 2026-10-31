@@ -11,26 +11,19 @@ describe('office ERP sidebar entry', () => {
     assert.equal(isOfficeErpAdmin(null), false)
   })
 
-  it('exposes plans in primary navigation and marks only the matching destination active', () => {
-    assert.deepEqual(officeErpSidebarItem('/gestao-erp/planos').children, [
-      { label: 'Visão geral', to: '/gestao-erp', exact: true, active: false },
-      { label: 'Planos', to: '/gestao-erp/planos', exact: true, active: true },
-      { label: 'Empresas', to: '/gestao-erp/empresas', exact: false, active: false },
-      { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: false },
-      { label: 'Faturas', to: '/gestao-erp/faturas', exact: false, active: false },
-      { label: 'Recebimentos', to: '/gestao-erp/recebimentos', exact: true, active: false },
-      { label: 'Configurações', to: '/gestao-erp/configuracoes', exact: true, active: false }
+  it('groups management into five destinations without losing financial or plan context', () => {
+    assert.deepEqual(officeErpSidebarItem('/gestao-erp').children.map(item => [item.label, item.to]), [
+      ['Visão geral', '/gestao-erp'], ['Empresas', '/gestao-erp/empresas'],
+      ['Assinaturas', '/gestao-erp/assinaturas'], ['Financeiro', '/gestao-erp/faturas'],
+      ['Configurações', '/gestao-erp/configuracoes']
     ])
-    assert.equal(officeErpSidebarItem('/gestao-erp/planos-antigos').children[1]?.active, false)
-    assert.equal(officeErpSidebarItem('/gestao-erp/empresas').children[2]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/assinaturas/123').children[3]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/faturas').children[4]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/faturas/123/imprimir').children[4]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/recebimentos').children[5]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/configuracoes').children[6]?.active, true)
-    assert.equal(officeErpSidebarItem('/gestao-erp/faturas-antigas').children[4]?.active, false)
-    assert.equal(officeErpSidebarItem('/gestao-erp/faturas/123/imprimir').children[0]?.active, false)
-    assert.equal(sidebarOpenGroupFromPath('/gestao-erp/planos'), 'gestao-erp')
+    for (const [path, label] of [
+      ['/gestao-erp/planos', 'Configurações'], ['/gestao-erp/configuracoes', 'Configurações'],
+      ['/gestao-erp/empresas/nova', 'Empresas'], ['/gestao-erp/assinaturas/123', 'Assinaturas'],
+      ['/gestao-erp/faturas/123/imprimir', 'Financeiro'], ['/gestao-erp/recebimentos', 'Financeiro']
+    ]) assert.deepEqual(officeErpSidebarItem(path!).children.filter(item => item.active).map(item => item.label), [label])
+    for (const path of ['/gestao-erp/planos-antigos', '/gestao-erp/faturas-antigas', '/gestao-erp/assinaturas-antigas'])
+      assert.deepEqual(officeErpSidebarItem(path).children.filter(item => item.active), [])
   })
 
   it('links directly to the overview and marks the exact root route active', () => {

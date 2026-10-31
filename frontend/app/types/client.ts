@@ -10,17 +10,6 @@ export interface ClientTag {
   color: ClientTagColor
 }
 
-export interface ClientSavedFilter {
-  id: number
-  name: string
-  q: string | null
-  filters: {
-    columnId: string
-    operator: string
-    values: Array<string | number>
-  }[]
-}
-
 export interface ClientCertificate {
   id: number
   subject: string

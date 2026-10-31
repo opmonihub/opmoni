@@ -5,7 +5,8 @@ import { describe, it } from 'node:test'
 import * as Vue from 'vue'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
-import { compileVueComponent, evaluateVueBindings, vueSource } from './helpers/compileVueComponent.ts'
+import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import { officeErpSidebarItem } from '../app/utils/sidebarNav.ts'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import type { Identity, Membership } from '../shared/types/access.ts'
 import * as officeErpMoney from '../shared/utils/officeErpCommercial.ts'
@@ -132,6 +133,7 @@ function mountRenderedComponent(component: Vue.Component, components: Record<str
   const app = renderer.createApp(component)
   for (const [name, registered] of Object.entries(components)) app.component(name, registered)
   registerOfficeErpPresentationStubs(app)
+  app.component('UForm', { emits: ['submit'], setup: (_props, context) => () => Vue.h('form', { ...context.attrs, onSubmit: () => context.emit('submit', {}) }, context.slots.default?.()) })
   app.mount(root)
   return { app, root }
 }
@@ -171,13 +173,14 @@ function mountPlansPage(command: Record<string, unknown>) {
         'data-loading': String(props.loading ?? false)
       }, setupContext.slots.default?.())
     },
-    UAlert: { setup: (_props, setupContext) => () => Vue.h('aside', {}, [setupContext.slots.default?.(), setupContext.slots.description?.()]) },
+    UAlert: { props: ['title', 'description'], setup: (props, setupContext) => () => Vue.h('aside', {}, [props.title, props.description, setupContext.slots.default?.(), setupContext.slots.description?.()]) },
     USlideover: {
       props: ['open'],
       setup: (props, setupContext) => () => Vue.h('section', {}, props.open ? setupContext.slots.body?.() : [])
     },
     UModal: { props: ['open'], setup: (props, setupContext) => () => Vue.h('section', {}, props.open ? [setupContext.slots.body?.(), setupContext.slots.footer?.()] : []) },
     DataTablePanelList: { setup: (_props, setupContext) => () => Vue.h('main', {}, [setupContext.slots.action?.(), setupContext.slots.toolbar?.(), setupContext.slots.default?.()]) },
+    OfficeErpPanel: { setup: (_props, setupContext) => () => Vue.h('main', {}, [setupContext.slots.action?.(), setupContext.slots.toolbar?.(), setupContext.slots.default?.()]) },
     UTable: { props: ['data'], setup: (props, setupContext) => () => Vue.h('div', {}, (props.data as unknown[]).length ? [] : setupContext.slots.empty?.()) },
     UPagination: { setup: () => () => Vue.h('nav') },
     UBadge: { setup: () => () => Vue.h('span') },
@@ -269,15 +272,14 @@ describe('Office ERP navigation and access', () => {
     assert.deepEqual(navs, ['/', '/acesso-indisponivel', '/acesso-indisponivel'])
   })
 
-  it('keeps the overview and plans tabs active only on their matching routes', () => {
-    const tabsAt = (path: string) => (evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { computed: Vue.computed, route: { path } }).pageTabs as Vue.ComputedRef<Array<Array<{ label: string, to: string, active: boolean }>>>).value
-    const overview = tabsAt('/gestao-erp').flat()
+  it('keeps the overview and plans sidebar destinations active only on their matching routes', () => {
+    const overview = officeErpSidebarItem('/gestao-erp').children
     assert.equal(overview.find(item => item.to === '/gestao-erp')?.active, true)
     assert.deepEqual(overview.filter(item => item.active).map(item => item.label), ['Visão geral'])
 
-    const plans = tabsAt('/gestao-erp/planos').flat()
+    const plans = officeErpSidebarItem('/gestao-erp/planos').children
     assert.equal(plans.find(item => item.to === '/gestao-erp')?.active, false)
-    assert.deepEqual(plans.filter(item => item.active).map(item => item.label), ['Planos'])
+    assert.deepEqual(plans.filter(item => item.active).map(item => item.label), ['Configurações'])
   })
 
   it('keeps legacy plan bookmarks privileged and redirects only after office authorization', async () => {

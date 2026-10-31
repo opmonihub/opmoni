@@ -190,11 +190,6 @@ export function useClientListFilters(options: UseClientListFiltersOptions) {
     navigation.filterModels.value = models
   }
 
-  function applySavedFilter(preset: { q: string, filters: DataTableFilterModel[] }) {
-    search.value = preset.q
-    onFilters(preset.filters)
-  }
-
   function clearAppliedFilters() {
     onFilters([])
   }
@@ -217,7 +212,6 @@ export function useClientListFilters(options: UseClientListFiltersOptions) {
     filterModels,
     activeFilterCount,
     onFilters,
-    applySavedFilter,
     clearAppliedFilters,
     clearSearch
   }

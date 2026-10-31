@@ -51,9 +51,9 @@ const tabItems: TabsItem[] = [
 ]
 
 const recordCardUi = {
-  header: 'px-3 py-2.5 sm:px-4',
-  body: 'flex flex-col gap-3 p-3 sm:p-4',
-  footer: 'px-3 py-2.5 sm:px-4'
+  header: 'px-4 py-3 sm:px-5',
+  body: 'flex flex-col gap-4 p-4 sm:p-5',
+  footer: 'px-4 py-3 sm:px-5'
 } as const
 
 function openSection(next: typeof tab.value) {
@@ -211,19 +211,6 @@ const mapsUrl = computed(() => {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
 })
 
-const phoneLabel = computed(() => {
-  const phone = client.value?.phone ?? ''
-  const digits = phone.replace(/\D/g, '')
-  if (digits.length === 11) return digits.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
-  if (digits.length === 10) return digits.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3')
-  return phone || '—'
-})
-
-const clientContactFacts = computed<MetaListItem[]>(() => [
-  { label: 'E-mail', value: client.value?.email ?? '—', truncate: true },
-  { label: 'Telefone', value: phoneLabel.value, mono: true }
-])
-
 const certStatus = computed<DeadlineStatus>(() => client.value?.certificate_status ?? 'missing')
 const poaStatus = computed<DeadlineStatus>(() => client.value?.ecac_power_of_attorney_status ?? 'missing')
 
@@ -368,7 +355,6 @@ const summaryText = computed(() => {
     `Situação: ${clientStatusLabel[c.status]} · Regime: ${regimeLabel.value}`,
     `Receita: ${c.registration_status ?? '—'} · Abertura: ${c.opened_at ? formatDate(c.opened_at) : '—'}${openedAge.value ? ` · Idade: ${openedAge.value}` : ''}`,
     `Endereço: ${hasAddress.value ? [addressLine1.value, c.address?.district, cityLabel.value, addressCep.value ? `CEP ${addressCep.value}` : null].filter(Boolean).join(', ') : '—'}`,
-    `E-mail: ${c.email ?? '—'} · Telefone: ${phoneLabel.value}`,
     dispatchContacts.value.length
       ? dispatchContacts.value.map(item => `${item.channel === 'whatsapp' ? 'WhatsApp' : 'E-mail'}: ${whatsappDispatchContactValueLabel(item)}`).join(' · ')
       : 'Contatos de envio: —',
@@ -416,10 +402,30 @@ function onCopySummary() {
   void copyText(summaryText.value, 'Resumo')
 }
 
-function contactCaption(item: ClientDispatchContact): string | null {
+function contactHasName(item: ClientDispatchContact): boolean {
   const label = item.label?.trim()
-  if (!label || label === whatsappDispatchContactValueLabel(item)) return null
-  return label
+  return Boolean(label && label !== whatsappDispatchContactValueLabel(item))
+}
+
+function contactInitials(item: ClientDispatchContact): string | null {
+  const label = item.label?.trim()
+  if (!label) return null
+  const letters = label.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() ?? '').join('')
+  return letters || null
+}
+
+function contactMenu(item: ClientDispatchContact): DropdownMenuItem[][] {
+  return [[
+    { label: 'Editar', icon: 'i-lucide-pencil', onSelect: () => openDispatchContactForm(item) },
+    {
+      label: 'Remover',
+      icon: 'i-lucide-trash-2',
+      color: 'error',
+      onSelect: () => {
+        dispatchContactDeleting.value = item
+      }
+    }
+  ]]
 }
 
 const primaryActivityLabel = computed(() => {
@@ -565,17 +571,6 @@ function openDispatchContactForm(contact: ClientDispatchContact | null) {
 const overviewContacts = computed(() => dispatchContacts.value.slice(0, 3))
 const overviewContactsExtra = computed(() => Math.max(0, dispatchContacts.value.length - overviewContacts.value.length))
 
-const contactEmptyActions = computed(() => {
-  if (!canManageClients.value) return undefined
-  return [{
-    label: 'Adicionar',
-    icon: 'i-lucide-plus',
-    color: 'neutral' as const,
-    variant: 'outline' as const,
-    onClick: () => openDispatchContactForm(null)
-  }]
-})
-
 async function removeDispatchContact(contact: ClientDispatchContact) {
   if (!client.value) return
   const isCurrent = commandOwner()
@@ -601,7 +596,6 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
   if (!canManageClients.value) return [[copyItem]]
   return [[
     { label: 'Editar cadastro', icon: 'i-lucide-pencil', onSelect: () => { cadastroOpen.value = true } },
-    { label: 'Editar contato', icon: 'i-lucide-mail', onSelect: () => { contactOpen.value = true } },
     { label: 'Gerenciar tags', icon: 'i-lucide-tags', onSelect: () => { tagsOpen.value = true } },
     copyItem
   ], [
@@ -617,7 +611,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
       <template v-if="loading">
         <USkeleton class="h-28 w-full rounded-lg" />
         <USkeleton class="h-9 w-full" />
-        <div class="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.7fr)]">
+        <div class="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.7fr)]">
           <USkeleton class="h-64 w-full rounded-lg" />
           <USkeleton class="h-64 w-full rounded-lg" />
         </div>
@@ -633,47 +627,45 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
       />
 
       <template v-else>
-        <UCard :ui="{ body: 'px-3 py-2 sm:px-3.5 sm:py-2' }">
-          <div class="flex items-start gap-2.5">
-            <UAvatar
-              :text="initials"
-              :alt="client.name"
-              size="md"
-              class="mt-0.5"
-              color="primary"
-            />
-            <div class="min-w-0 flex-1">
-              <div class="flex items-start gap-2">
-                <div class="min-w-0 flex-1">
-                  <h1 class="truncate text-base font-semibold leading-tight text-highlighted">
+        <UCard :ui="{ body: 'p-4 sm:p-5' }">
+          <div class="flex flex-col gap-4">
+            <div class="flex items-start gap-4">
+              <UAvatar
+                :text="initials"
+                :alt="client.name"
+                size="lg"
+                color="primary"
+              />
+              <div class="flex min-w-0 flex-1 items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <h1 class="truncate text-lg font-semibold tracking-tight text-highlighted">
                     {{ client.name }}
                   </h1>
-                  <p v-if="tradeName" class="truncate text-xs leading-4 text-muted">
+                  <p v-if="tradeName" class="mt-0.5 truncate text-sm text-muted">
                     {{ tradeName }}
                   </p>
-                  <div class="mt-0.5 flex flex-wrap items-center gap-x-0.5 gap-y-0.5">
-                    <p class="text-xs tabular-nums text-muted">
+                  <div class="mt-1 flex items-center gap-1">
+                    <p class="text-sm tabular-nums text-muted">
                       {{ documentKind }} {{ documentLabel }}
                     </p>
                     <UButton
                       icon="i-lucide-copy"
                       color="neutral"
                       variant="ghost"
-                      size="xs"
-                      class="-my-0.5"
+                      size="sm"
                       :aria-label="`Copiar ${documentKind}`"
                       @click="copyText(client.tax_id ?? '', documentKind)"
                     />
                   </div>
                 </div>
-                <div class="flex shrink-0 items-center gap-1">
+                <div class="flex shrink-0 items-center gap-2">
                   <UButton
                     v-if="canManageClients"
                     :label="client.status === 'active' ? 'Inativar' : 'Ativar'"
                     icon="i-lucide-power"
                     color="neutral"
                     variant="outline"
-                    size="xs"
+                    size="sm"
                     class="hidden sm:inline-flex"
                     :loading="togglingStatus"
                     @click="toggleStatus"
@@ -683,79 +675,75 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
                       icon="i-lucide-ellipsis-vertical"
                       color="neutral"
                       variant="ghost"
-                      size="xs"
+                      size="sm"
                       :aria-label="`Mais ações para ${client.name}`"
                     />
                   </UDropdownMenu>
                 </div>
               </div>
-              <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <div class="flex flex-wrap items-center gap-1">
-                  <UBadge
-                    :color="statusColor"
-                    variant="subtle"
-                    size="sm"
-                    :label="clientStatusLabel[client.status]"
-                  />
-                  <UBadge
-                    color="neutral"
-                    variant="subtle"
-                    size="sm"
-                    :label="personTypeLabel"
-                  />
-                  <UBadge
-                    color="neutral"
-                    variant="subtle"
-                    size="sm"
-                    :label="regimeLabel"
-                  />
-                  <UBadge
-                    v-if="client.registration_status"
-                    :color="registrationTone"
-                    variant="subtle"
-                    size="sm"
-                    :label="client.registration_status"
-                  />
-                </div>
-                <div class="flex flex-wrap items-center gap-1">
-                  <UBadge
-                    :color="deadlinePresentation[certStatus].color"
-                    variant="subtle"
-                    size="sm"
-                    :icon="deadlinePresentation[certStatus].icon"
-                    :label="`A1: ${deadlinePresentation[certStatus].label}`"
-                  />
-                  <UBadge
-                    :color="deadlinePresentation[poaStatus].color"
-                    variant="subtle"
-                    size="sm"
-                    :icon="deadlinePresentation[poaStatus].icon"
-                    :label="`e-CAC: ${deadlinePresentation[poaStatus].label}`"
-                  />
-                </div>
-              </div>
-              <div class="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs leading-4 text-muted">
-                <span v-if="cityLabel" class="inline-flex items-center gap-1">
-                  <UIcon name="i-lucide-map-pin" class="size-3.5 shrink-0" />
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge
+                :color="statusColor"
+                variant="subtle"
+                size="sm"
+                :label="clientStatusLabel[client.status]"
+              />
+              <UBadge
+                color="neutral"
+                variant="subtle"
+                size="sm"
+                :label="personTypeLabel"
+              />
+              <UBadge
+                color="neutral"
+                variant="subtle"
+                size="sm"
+                :label="regimeLabel"
+              />
+              <UBadge
+                v-if="client.registration_status"
+                :color="registrationTone"
+                variant="subtle"
+                size="sm"
+                :label="client.registration_status"
+              />
+              <UBadge
+                :color="deadlinePresentation[certStatus].color"
+                variant="subtle"
+                size="sm"
+                :icon="deadlinePresentation[certStatus].icon"
+                :label="`A1: ${deadlinePresentation[certStatus].label}`"
+              />
+              <UBadge
+                :color="deadlinePresentation[poaStatus].color"
+                variant="subtle"
+                size="sm"
+                :icon="deadlinePresentation[poaStatus].icon"
+                :label="`e-CAC: ${deadlinePresentation[poaStatus].label}`"
+              />
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
+                <span v-if="cityLabel" class="inline-flex items-center gap-1.5">
+                  <UIcon name="i-lucide-map-pin" class="size-4 shrink-0" />
                   {{ cityLabel }}
                 </span>
-                <span v-if="openedAge" class="inline-flex items-center gap-1">
-                  <UIcon name="i-lucide-calendar" class="size-3.5 shrink-0" />
+                <span v-if="openedAge" class="inline-flex items-center gap-1.5">
+                  <UIcon name="i-lucide-calendar" class="size-4 shrink-0" />
                   {{ openedAge }}
                 </span>
-                <span class="inline-flex items-center gap-1">
-                  <UIcon name="i-lucide-refresh-cw" class="size-3.5 shrink-0" />
+                <span class="inline-flex items-center gap-1.5">
+                  <UIcon name="i-lucide-refresh-cw" class="size-4 shrink-0" />
                   {{ syncedText }}
                 </span>
               </div>
-              <div v-if="client.tags?.length" class="mt-1.5">
-                <CustomersClientTags :tags="client.tags" />
-              </div>
+              <CustomersClientTags v-if="client.tags?.length" :tags="client.tags" />
             </div>
           </div>
         </UCard>
 
-        <div class="sticky top-0 z-20 -mx-3 bg-default px-3 sm:-mx-4 sm:px-4">
+        <div class="sticky top-0 z-20 -mx-3 bg-default px-3 sm:-mx-4 sm:px-4 lg:-mx-5 lg:px-5">
           <UTabs
             v-model="tab"
             :items="tabItems"
@@ -765,10 +753,10 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
           />
         </div>
 
-        <div v-if="tab === 'visao'" class="grid items-start gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.7fr)]">
+        <div v-if="tab === 'visao'" class="grid items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.7fr)]">
           <UCard :ui="recordCardUi">
-            <section class="flex flex-col gap-2.5">
-              <div class="flex items-center justify-between gap-2">
+            <section class="flex flex-col gap-3">
+              <div class="flex items-center justify-between gap-3">
                 <h2 class="text-sm font-semibold text-highlighted">
                   Cadastro
                 </h2>
@@ -787,7 +775,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
                   { label: 'Regime', value: regimeLabel },
                   { label: 'Na Receita', value: client.registration_status ?? '—' }
                 ]"
-                columns="grid-cols-2 gap-x-4 gap-y-2"
+                columns="grid-cols-2 gap-x-6 gap-y-3"
               />
               <p v-if="isCompany" class="text-sm text-default">
                 <span class="mb-0.5 block text-xs text-muted">Atividade principal</span>
@@ -797,8 +785,8 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
 
             <USeparator />
 
-            <section class="flex flex-col gap-2.5">
-              <div class="flex items-center justify-between gap-2">
+            <section class="flex flex-col gap-3">
+              <div class="flex items-center justify-between gap-3">
                 <h2 class="text-sm font-semibold text-highlighted">
                   Endereço
                 </h2>
@@ -827,8 +815,8 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
           </UCard>
 
           <UCard :ui="recordCardUi">
-            <section class="flex flex-col gap-2.5">
-              <div class="flex items-center justify-between gap-2">
+            <section class="flex flex-col gap-3">
+              <div class="flex items-center justify-between gap-3">
                 <h2 class="text-sm font-semibold text-highlighted">
                   Acesso
                 </h2>
@@ -880,8 +868,8 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
 
             <USeparator />
 
-            <section class="flex flex-col gap-2.5">
-              <div class="flex items-center justify-between gap-2">
+            <section class="flex flex-col gap-3">
+              <div class="flex items-center justify-between gap-3">
                 <h2 class="text-sm font-semibold text-highlighted">
                   Contato
                 </h2>
@@ -895,11 +883,6 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
                   @click="openSection('contato')"
                 />
               </div>
-              <DataTableMetaList
-                v-if="client.email || client.phone"
-                :items="clientContactFacts.filter(item => item.value !== '—')"
-                layout="stack"
-              />
               <p v-if="dispatchContactsLoading && dispatchContacts.length === 0" class="text-sm text-muted">
                 Carregando Contatos de envio…
               </p>
@@ -911,13 +894,20 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
               <p v-else-if="dispatchContacts.length === 0" class="text-sm text-muted">
                 Nenhum Contato de envio cadastrado.
               </p>
-              <ul v-else class="flex flex-col gap-2">
+              <ul v-else class="flex flex-col gap-3">
                 <li
                   v-for="item in overviewContacts"
                   :key="item.id"
-                  class="flex items-center justify-between gap-2 text-sm"
+                  class="flex items-center justify-between gap-3"
                 >
-                  <span class="min-w-0 truncate tabular-nums text-default">{{ whatsappDispatchContactValueLabel(item) }}</span>
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-medium text-highlighted">
+                      {{ whatsappDispatchContactName(item) }}
+                    </p>
+                    <p v-if="contactHasName(item)" class="truncate text-sm tabular-nums text-muted">
+                      {{ whatsappDispatchContactValueLabel(item) }}
+                    </p>
+                  </div>
                   <UBadge
                     :color="item.channel === 'whatsapp' ? 'success' : 'neutral'"
                     variant="subtle"
@@ -933,7 +923,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
           </UCard>
         </div>
 
-        <div v-else-if="tab === 'acesso'" class="flex flex-col gap-3">
+        <div v-else-if="tab === 'acesso'" class="flex flex-col gap-4">
           <UAlert
             v-if="certStatus === 'expired'"
             color="error"
@@ -963,7 +953,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
             ].filter(Boolean).join(' ')"
           />
 
-          <div class="grid items-stretch gap-3 sm:grid-cols-2">
+          <div class="grid items-stretch gap-4 sm:grid-cols-2">
             <UCard :ui="recordCardUi">
               <template #header>
                 <div class="flex items-center gap-2">
@@ -1073,7 +1063,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
           </div>
         </div>
 
-        <div v-else-if="tab === 'cadastro'" class="flex flex-col gap-3">
+        <div v-else-if="tab === 'cadastro'" class="flex flex-col gap-4">
           <UCard :ui="recordCardUi">
             <template #header>
               <div class="flex items-center justify-between gap-2">
@@ -1118,46 +1108,25 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
           </UCard>
         </div>
 
-        <div v-else-if="tab === 'contato'" class="flex flex-col gap-3">
-          <UCard :ui="recordCardUi">
-            <template #header>
-              <div class="flex items-center justify-between gap-2">
-                <h2 class="text-sm font-semibold text-highlighted">
-                  Contato do cadastro
-                </h2>
-                <UButton
-                  v-if="canManageClients"
-                  label="Editar contato"
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  @click="contactOpen = true"
-                />
-              </div>
-            </template>
-            <DataTableMetaList :items="clientContactFacts" layout="stack" />
-          </UCard>
-
-          <UCard :ui="recordCardUi">
-            <template #header>
-              <div class="flex items-center justify-between gap-2">
-                <h2 class="text-sm font-semibold text-highlighted">
+        <div v-else-if="tab === 'contato'" class="flex flex-col gap-4">
+          <section class="flex flex-col gap-3">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h2 class="text-base font-semibold text-highlighted">
                   Contatos de envio
                 </h2>
-                <UButton
-                  v-if="canManageClients && dispatchContacts.length > 0"
-                  label="Adicionar"
-                  icon="i-lucide-plus"
-                  color="neutral"
-                  variant="ghost"
-                  size="xs"
-                  @click="openDispatchContactForm(null)"
-                />
+                <p class="mt-1 text-sm text-muted">
+                  Cada linha é um nome com telefone ou e-mail. Só o WhatsApp recebe guias.
+                </p>
               </div>
-            </template>
-            <p class="text-xs text-muted">
-              Destinos do Enviar guias. Apenas as linhas de WhatsApp recebem guias.
-            </p>
+              <UButton
+                v-if="canManageClients"
+                label="Novo contato"
+                icon="i-lucide-plus"
+                size="sm"
+                @click="openDispatchContactForm(null)"
+              />
+            </div>
 
             <USkeleton v-if="dispatchContactsLoading && dispatchContacts.length === 0" class="h-16 w-full" />
 
@@ -1171,29 +1140,35 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
               :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => loadDispatchContacts() }]"
             />
 
-            <UEmpty
-              v-else-if="dispatchContacts.length === 0"
-              variant="naked"
-              size="sm"
-              icon="i-lucide-phone"
-              title="Nenhum Contato de envio"
-              description="Cadastre um destino. O envio de guias usa as linhas de WhatsApp."
-              :actions="contactEmptyActions"
-              :ui="{ root: 'px-2 py-4 sm:px-3' }"
-            />
+            <UCard v-else-if="dispatchContacts.length === 0" :ui="recordCardUi">
+              <UEmpty
+                variant="naked"
+                size="sm"
+                icon="i-lucide-phone"
+                title="Nenhum Contato de envio"
+                description="Cadastre um nome com telefone ou e-mail. O envio de guias usa as linhas de WhatsApp."
+                :ui="{ root: 'px-2 py-4 sm:px-3' }"
+              />
+            </UCard>
 
-            <ul v-else class="flex flex-col divide-y divide-default">
+            <ul v-else class="flex flex-col gap-2">
               <li
                 v-for="item in dispatchContacts"
                 :key="item.id"
-                class="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0"
+                class="flex items-center gap-3 rounded-lg bg-elevated/50 px-4 py-3 ring ring-default"
               >
+                <UAvatar
+                  :text="contactInitials(item) ?? undefined"
+                  :icon="contactInitials(item) ? undefined : (item.channel === 'whatsapp' ? 'i-lucide-phone' : 'i-lucide-mail')"
+                  :alt="whatsappDispatchContactName(item)"
+                  size="md"
+                />
                 <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm tabular-nums text-default">
-                    {{ whatsappDispatchContactValueLabel(item) }}
+                  <p class="truncate text-sm font-semibold text-highlighted">
+                    {{ whatsappDispatchContactName(item) }}
                   </p>
-                  <p v-if="contactCaption(item)" class="truncate text-xs text-muted">
-                    {{ contactCaption(item) }}
+                  <p v-if="contactHasName(item)" class="truncate text-sm tabular-nums text-muted">
+                    {{ whatsappDispatchContactValueLabel(item) }}
                   </p>
                 </div>
                 <UBadge
@@ -1203,31 +1178,22 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
                   :icon="item.channel === 'whatsapp' ? 'i-lucide-message-circle' : 'i-lucide-mail'"
                   :label="item.channel === 'whatsapp' ? 'WhatsApp' : 'E-mail'"
                 />
-                <template v-if="canManageClients">
+                <UDropdownMenu v-if="canManageClients" :items="contactMenu(item)" :content="{ align: 'end' }">
                   <UButton
-                    icon="i-lucide-pencil"
+                    icon="i-lucide-ellipsis"
                     color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    :aria-label="`Editar ${whatsappDispatchContactName(item)}`"
-                    @click="openDispatchContactForm(item)"
-                  />
-                  <UButton
-                    icon="i-lucide-trash-2"
-                    color="error"
-                    variant="ghost"
-                    size="xs"
+                    variant="outline"
+                    size="sm"
                     :loading="dispatchContactDeleting?.id === item.id"
-                    :aria-label="`Remover ${whatsappDispatchContactName(item)}`"
-                    @click="dispatchContactDeleting = item"
+                    :aria-label="`Ações de ${whatsappDispatchContactName(item)}`"
                   />
-                </template>
+                </UDropdownMenu>
               </li>
             </ul>
-          </UCard>
+          </section>
         </div>
 
-        <div v-else-if="tab === 'endereco'" class="flex flex-col gap-3">
+        <div v-else-if="tab === 'endereco'" class="flex flex-col gap-4">
           <UCard :ui="recordCardUi">
             <template #header>
               <div class="flex items-center justify-between gap-2">
@@ -1252,7 +1218,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
               </p>
               <DataTableMetaList
                 :items="addressFacts"
-                columns="grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3"
+                columns="grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3"
               />
               <p v-if="isCompany" class="text-xs text-muted">
                 Endereço de empresa vem da Receita Federal. Para corrigir, use Conferir na Receita no cadastro.
@@ -1280,7 +1246,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
           </UCard>
         </div>
 
-        <div v-else class="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div v-else class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <UCard :ui="recordCardUi">
             <template #header>
               <h2 class="text-sm font-semibold text-highlighted">
@@ -1305,7 +1271,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
             />
           </UCard>
 
-          <div class="flex min-w-0 flex-col gap-3">
+          <div class="flex min-w-0 flex-col gap-4">
             <UCard :ui="recordCardUi">
               <template #header>
                 <div class="flex items-center justify-between gap-2">

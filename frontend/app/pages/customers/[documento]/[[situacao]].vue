@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { DropdownMenuItem } from '@nuxt/ui'
 import type {
   Client,
   ClientListParams,
@@ -7,7 +6,7 @@ import type {
   ClientPortfolioView,
   DeadlineStatus
 } from '~/types/client'
-import { sheetBodyClass } from '~/components/data-table/sheet'
+import { clientExportColumns } from '~/utils/clientExportColumns'
 import { customerDetailPath, customerListPath, parseCustomerList } from '~/utils/customerRoutes'
 import { deadlineStatusAppearance } from '~/utils/portfolioLabels'
 
@@ -67,7 +66,6 @@ const {
   filterModels,
   activeFilterCount,
   onFilters,
-  applySavedFilter,
   clearAppliedFilters,
   clearSearch
 } = useClientListFilters({
@@ -177,14 +175,10 @@ async function loadMore() {
 }
 
 const columnVisibility = ref<Record<string, boolean>>({})
-const hideableColumns = [
-  { id: 'name', label: 'Nome/Razão social' },
-  { id: 'tags', label: 'Tags' },
-  { id: 'tax_regime', label: 'Regime' },
-  { id: 'status', label: 'Situação' },
-  { id: 'certificate', label: 'Cert. A1' },
-  { id: 'ecac_power_of_attorney', label: 'e-CAC' }
-]
+const hideableColumns = [...clientExportColumns]
+const exportOpen = ref(false)
+const exportSelectionOnly = ref(false)
+const exportColumnIds = ref<string[]>([])
 
 const desktopTable = useClientMediaQuery('(min-width: 768px)')
 
@@ -232,10 +226,21 @@ watch(readLifecycle.authority, clearSelection, { flush: 'sync' })
 
 const { exportClients } = useClientListExport({
   rows,
-  columnVisibility,
   isClientSelected,
   selectedCount
 })
+
+function openExport(onlySelection = false) {
+  exportSelectionOnly.value = onlySelection
+  const visible = hideableColumns.filter(column => columnVisibility.value[column.id] !== false).map(column => column.id)
+  exportColumnIds.value = visible.length ? visible : hideableColumns.map(column => column.id)
+  exportOpen.value = true
+}
+
+function confirmExport(columnIds: string[]) {
+  exportClients(exportSelectionOnly.value, columnIds)
+  exportOpen.value = false
+}
 
 const tagsOpen = ref(false)
 const tagsIntent = ref<'selection' | 'catalog'>('selection')
@@ -246,26 +251,6 @@ function openTags(intent: 'selection' | 'catalog', focusCreate = false) {
   tagsFocusCreate.value = focusCreate
   tagsOpen.value = true
 }
-
-const selectionMenu = computed<DropdownMenuItem[][]>(() => [[
-  ...(canManageClients.value
-    ? [{
-        label: 'Tags',
-        icon: 'i-lucide-tags',
-        onSelect: () => openTags('selection')
-      }]
-    : []),
-  {
-    label: 'Exportar seleção',
-    icon: 'i-lucide-file-spreadsheet',
-    onSelect: () => exportClients(true)
-  },
-  {
-    label: 'Cancelar seleção',
-    icon: 'i-lucide-x',
-    onSelect: clearSelection
-  }
-]])
 
 type SortKey = ClientListParams['sort']
 
@@ -404,7 +389,7 @@ const canLoadMore = computed(() =>
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-1 flex-col">
-    <div :class="sheetBodyClass">
+    <div class="relative flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden p-4 sm:gap-6 sm:p-6">
       <CustomersClientListToolbar
         :status-cards="statusCards"
         :loading="summaryStatus === 'pending'"
@@ -413,20 +398,16 @@ const canLoadMore = computed(() =>
       <CustomersClientListFilters
         v-model:search="search"
         v-model:column-visibility="columnVisibility"
-        :document-status="documentStatus"
         :filter-columns="filterColumns"
         :filter-models="filterModels"
         :can-manage-clients="canManageClients"
         :is-loading="isLoading"
-        :selected-count="selectedCount"
         :desktop-table="desktopTable"
         :rows-length="rows.length"
-        :selection-menu="selectionMenu"
         :hideable-columns="hideableColumns"
         @update:filter-models="onFilters"
-        @apply-saved-filter="applySavedFilter"
         @open-tags="openTags"
-        @export="exportClients(false)"
+        @export="openExport(false)"
       />
 
       <ErrorRetryAlert
@@ -451,22 +432,24 @@ const canLoadMore = computed(() =>
         </div>
       </div>
 
-      <CustomersClientPortfolioEmpty
-        v-else-if="!rows.length"
-        :document="documentTab"
-        :status="documentStatus"
-        :portfolio-total="summary?.total"
-        :search="debouncedSearch"
-        :has-filters="activeFilterCount > 0"
-        :can-manage-clients="canManageClients"
-        @create="openCreate"
-        @clear-filters="clearAppliedFilters"
-        @clear-search="clearSearch"
-        @refresh="refreshPortfolio"
-      />
-
       <template v-else>
+        <CustomersClientPortfolioEmpty
+          v-if="!rows.length"
+          class="md:hidden"
+          :document="documentTab"
+          :status="documentStatus"
+          :portfolio-total="summary?.total"
+          :search="debouncedSearch"
+          :has-filters="activeFilterCount > 0"
+          :can-manage-clients="canManageClients"
+          @create="openCreate"
+          @clear-filters="clearAppliedFilters"
+          @clear-search="clearSearch"
+          @refresh="refreshPortfolio"
+        />
+
         <CustomersClientPortfolioMobileList
+          v-else
           :rows="rows"
           :list-epoch="listEpoch"
           :is-loading="isLoading"
@@ -501,7 +484,22 @@ const canLoadMore = computed(() =>
           @toggle-sort="toggleSort"
           @open-certificate="openCertificate"
           @remember-focus="rememberFocus"
-        />
+        >
+          <template #empty>
+            <CustomersClientPortfolioEmpty
+              :document="documentTab"
+              :status="documentStatus"
+              :portfolio-total="summary?.total"
+              :search="debouncedSearch"
+              :has-filters="activeFilterCount > 0"
+              :can-manage-clients="canManageClients"
+              @create="openCreate"
+              @clear-filters="clearAppliedFilters"
+              @clear-search="clearSearch"
+              @refresh="refreshPortfolio"
+            />
+          </template>
+        </CustomersClientPortfolioTable>
       </template>
 
       <Transition
@@ -519,6 +517,7 @@ const canLoadMore = computed(() =>
           :disabled="isLoading || selectingAll"
           @clear="clearSelection"
           @tags="openTags('selection')"
+          @export="openExport(true)"
         />
       </Transition>
     </div>
@@ -543,6 +542,14 @@ const canLoadMore = computed(() =>
       :focus-create="tagsFocusCreate"
       @applied="refreshPortfolio"
       @changed="refreshPortfolio"
+    />
+
+    <CustomersClientExportModal
+      v-model:open="exportOpen"
+      :columns="hideableColumns"
+      :selected-ids="exportColumnIds"
+      :selection-only="exportSelectionOnly"
+      @export="confirmExport"
     />
 
     <CustomersClientDeleteModal

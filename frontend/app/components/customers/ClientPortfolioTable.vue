@@ -155,8 +155,12 @@ onMounted(() => {
       :columns="columns"
       :loading="isLoading || loadingMore"
       class="h-full min-h-0 w-full flex-1"
-      :ui="sheetTableUi"
+      :ui="{ ...sheetTableUi, empty: 'p-0' }"
     >
+      <template #empty>
+        <slot name="empty" />
+      </template>
+
       <template #name-cell="{ row }">
         <DataTableIdentity :title="row.original.name" :meta="clientSheetTaxIdLabel(row.original)" />
       </template>

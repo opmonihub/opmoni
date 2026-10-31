@@ -6,6 +6,7 @@ import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
 import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
+import { focusFormError } from '~/utils/formPresentation'
 
 const open = defineModel<boolean>('open', { required: true })
 const restoreModalFocus = useModalFocusReturn(open)
@@ -245,7 +246,7 @@ async function recover() {
     v-model:open="open"
     title="Escolher clientes da carteira"
     description="Selecione clientes para registrar no ERP. Limite: 100 por operação."
-    :ui="{ content: 'w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] flex flex-col overflow-hidden sm:max-h-[calc(100dvh-3rem)] sm:max-w-4xl', header: 'pr-12', body: 'min-h-0 overflow-y-auto' }"
+    :ui="{ content: 'max-w-4xl', body: 'min-h-0 overflow-y-auto', footer: 'shrink-0 flex-wrap justify-end' }"
     @after:leave="restoreModalFocus"
   >
     <template #body>
@@ -292,71 +293,80 @@ async function recover() {
           title="Nenhum cliente encontrado"
           description="Ajuste a busca ou cadastre um novo cliente."
         />
-        <OfficeErpDataTable
-          :columns="columns"
-          :data="rows"
-          :loading="loading"
-          :get-row-id="row => String(row.id)"
-          :mobile-columns="['select', 'name', 'actions']"
-          compact
-          label="Clientes da carteira"
+        <UForm
+          id="office-erp-register-selection"
+          :state="{ client_ids: selected }"
+          @submit="submit"
+          @error="event => focusFormError(event, 'office-erp-register-selection')"
         >
-          <template #select-header>
-            <div class="flex items-center gap-2">
-              <UCheckbox
-                :model-value="allSelected ? true : someSelected ? 'indeterminate' : false"
-                aria-label="Selecionar a página atual"
-                :ui="checkboxHitTargetUi"
-                @update:model-value="togglePage"
-              />
-              <span class="hidden sm:inline">Página</span>
-            </div>
-          </template>
-          <template #select-cell="{ row }">
-            <UCheckbox
-              :model-value="selected.includes(row.original.id)"
-              :disabled="!!row.original.erp_registration"
-              class="mx-auto size-11"
-              :aria-label="row.original.erp_registration ? `${row.original.name} já está registrado` : `Selecionar ${row.original.name}`"
-              :ui="checkboxHitTargetUi"
-              @update:model-value="value => toggle(row.original.id, value)"
-            />
-          </template>
-          <template #name-cell="{ row }">
-            <div class="min-w-0 space-y-1">
-              <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <span class="min-w-0 break-words font-medium text-default">{{ row.original.name }}</span>
-                <UBadge
-                  v-if="row.original.erp_registration"
+          <UFormField name="client_ids">
+            <OfficeErpDataTable
+              :columns="columns"
+              :data="rows"
+              :loading="loading"
+              :get-row-id="row => String(row.id)"
+              :mobile-columns="['select', 'name', 'actions']"
+              compact
+              label="Clientes da carteira"
+            >
+              <template #select-header>
+                <div class="flex items-center gap-2">
+                  <UCheckbox
+                    :model-value="allSelected ? true : someSelected ? 'indeterminate' : false"
+                    aria-label="Selecionar a página atual"
+                    :ui="checkboxHitTargetUi"
+                    @update:model-value="togglePage"
+                  />
+                  <span class="hidden sm:inline">Página</span>
+                </div>
+              </template>
+              <template #select-cell="{ row }">
+                <UCheckbox
+                  :model-value="selected.includes(row.original.id)"
+                  :disabled="!!row.original.erp_registration"
+                  class="mx-auto size-11"
+                  :aria-label="row.original.erp_registration ? `${row.original.name} já está registrado` : `Selecionar ${row.original.name}`"
+                  :ui="checkboxHitTargetUi"
+                  @update:model-value="value => toggle(row.original.id, value)"
+                />
+              </template>
+              <template #name-cell="{ row }">
+                <div class="min-w-0 space-y-1">
+                  <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span class="min-w-0 break-words font-medium text-default">{{ row.original.name }}</span>
+                    <UBadge
+                      v-if="row.original.erp_registration"
+                      color="neutral"
+                      variant="subtle"
+                      class="shrink-0"
+                    >
+                      Já registrada
+                    </UBadge>
+                  </div>
+                  <p v-if="row.original.tax_id" class="text-xs text-muted">
+                    {{ row.original.tax_id }}
+                  </p>
+                </div>
+              </template>
+              <template #tax_id-cell="{ row }">
+                {{ row.original.tax_id ?? '—' }}
+              </template>
+              <template #actions-cell="{ row }">
+                <UButton
+                  v-if="!row.original.erp_registration"
                   color="neutral"
-                  variant="subtle"
-                  class="shrink-0"
-                >
-                  Já registrada
-                </UBadge>
-              </div>
-              <p v-if="row.original.tax_id" class="text-xs text-muted">
-                {{ row.original.tax_id }}
-              </p>
-            </div>
-          </template>
-          <template #tax_id-cell="{ row }">
-            {{ row.original.tax_id ?? '—' }}
-          </template>
-          <template #actions-cell="{ row }">
-            <UButton
-              v-if="!row.original.erp_registration"
-              color="neutral"
-              variant="ghost"
-              size="sm"
-              icon="i-lucide-plus"
-              class="size-11 min-w-11 p-0"
-              :aria-label="`Registrar ${row.original.name}`"
-              :disabled="submitting || command.pending.value"
-              @click="registerOne(row.original)"
-            />
-          </template>
-        </OfficeErpDataTable>
+                  variant="ghost"
+                  size="sm"
+                  icon="i-lucide-plus"
+                  class="size-11 min-w-11 p-0"
+                  :aria-label="`Registrar ${row.original.name}`"
+                  :disabled="submitting || command.pending.value"
+                  @click="registerOne(row.original)"
+                />
+              </template>
+            </OfficeErpDataTable>
+          </UFormField>
+        </UForm>
         <footer class="flex flex-col gap-3 border-t border-default pt-3 sm:flex-row sm:items-center sm:justify-between sm:pt-4">
           <div class="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm text-muted sm:justify-start sm:gap-3">
             <span aria-live="polite">{{ selected.length }} selecionados · limite {{ maxSelection }}</span><USelect
@@ -396,7 +406,8 @@ async function recover() {
           :aria-label="`Registrar ${selected.length} empresas selecionadas no ERP`"
           :disabled="selected.length === 0 || submitting || command.pending.value"
           :loading="submitting"
-          @click="submit"
+          type="submit"
+          form="office-erp-register-selection"
         >
           <span class="sm:hidden">Adicionar ({{ selected.length }})</span>
           <span class="hidden sm:inline">Registrar selecionados</span>

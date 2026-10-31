@@ -35,16 +35,31 @@ const empty = computed(() => summary.value !== null
   && summary.value.effective_received === '0.00'
   && summary.value.outstanding === '0.00'
   && summary.value.overdue === '0.00')
-const metrics = computed(() => summary.value
+const periodMovements = computed(() => summary.value
   ? [
-      { label: 'Licenças contratadas', value: String(summary.value.contracted_licences), icon: 'i-lucide-key-round', detail: 'Acessos ocupados por contratos aceitos' },
-      { label: 'Reservas pendentes', value: String(summary.value.reserved_licences), icon: 'i-lucide-hourglass', detail: 'Vagas temporariamente reservadas' },
-      { label: 'Movimentação faturada', value: formatOfficeErpMoney(summary.value.invoiced_movement), icon: 'i-lucide-file-text', detail: `${formatDate(summary.value.from_on)} a ${formatDate(summary.value.to_on)}` },
-      { label: 'Recebido efetivamente', value: formatOfficeErpMoney(summary.value.effective_received), icon: 'i-lucide-circle-check', detail: 'Recebimentos não estornados no período' },
-      { label: 'Saldo em aberto', value: formatOfficeErpMoney(summary.value.outstanding), icon: 'i-lucide-wallet', detail: 'Saldo atual das cobranças emitidas' },
-      { label: 'Saldo vencido', value: formatOfficeErpMoney(summary.value.overdue), icon: 'i-lucide-calendar-clock', detail: 'Saldo atual de cobranças vencidas' }
+      { label: 'Faturado', value: formatOfficeErpMoney(summary.value.invoiced_movement) },
+      { label: 'Recebido', value: formatOfficeErpMoney(summary.value.effective_received) }
     ]
   : [])
+const currentBalances = computed(() => summary.value
+  ? [
+      { label: 'Em aberto', value: formatOfficeErpMoney(summary.value.outstanding) },
+      { label: 'Vencido', value: formatOfficeErpMoney(summary.value.overdue) }
+    ]
+  : [])
+const licenceCounts = computed(() => summary.value
+  ? [
+      { label: 'Contratadas', value: String(summary.value.contracted_licences) },
+      { label: 'Reservas pendentes', value: String(summary.value.reserved_licences) }
+    ]
+  : [])
+const summaryPeriod = computed(() => summary.value ? `${formatDate(summary.value.from_on)} a ${formatDate(summary.value.to_on)}` : '')
+const balanceDueCriteria = computed(() => {
+  if (summary.value?.due_from && summary.value.due_to) return `Vencimentos de ${formatDate(summary.value.due_from)} a ${formatDate(summary.value.due_to)}`
+  if (summary.value?.due_from) return `Vencimentos a partir de ${formatDate(summary.value.due_from)}`
+  if (summary.value?.due_to) return `Vencimentos até ${formatDate(summary.value.due_to)}`
+  return 'Todos os vencimentos'
+})
 const saleReasons = computed(() => {
   const reasons = capabilities.value?.reasons ?? {}
   return Object.keys(reasons).map((reason) => {
@@ -143,20 +158,16 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex shrink-0 flex-col gap-5">
-    <header class="flex flex-wrap items-start justify-between gap-4">
-      <div class="max-w-2xl">
-        <h1 class="text-base font-semibold text-highlighted">
-          Visão geral
-        </h1>
-        <p class="mt-2 text-sm text-muted">
-          Empresas, assinaturas e cobranças do escritório.
-        </p>
-      </div>
+  <div class="flex min-w-0 shrink-0 flex-col gap-4">
+    <header class="flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-base font-semibold text-highlighted">
+        Resumo
+      </h2>
       <UButton
         color="neutral"
         variant="outline"
         icon="i-lucide-refresh-cw"
+        size="sm"
         :loading="refreshing"
         :disabled="loading || refreshing"
         @click="loadSummary"
@@ -164,31 +175,6 @@ onMounted(() => {
         Atualizar
       </UButton>
     </header>
-
-    <section aria-labelledby="erp-start" class="flex flex-col gap-5 rounded-xl border border-default bg-default p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-      <div class="max-w-2xl space-y-2">
-        <h2 id="erp-start" class="text-lg font-semibold text-highlighted">
-          Cadastre uma empresa ou acompanhe o ERP
-        </h2>
-        <p class="text-sm text-muted">
-          Registre uma empresa sem assinatura ou consulte as assinaturas existentes.
-        </p>
-      </div>
-      <div class="flex shrink-0 flex-col gap-2">
-        <UButton to="/gestao-erp/empresas/nova" icon="i-lucide-user-plus" class="justify-center">
-          Nova empresa
-        </UButton>
-        <UButton
-          to="/gestao-erp/empresas"
-          color="neutral"
-          variant="ghost"
-          trailing-icon="i-lucide-arrow-right"
-          class="justify-center"
-        >
-          Consultar empresas da carteira
-        </UButton>
-      </div>
-    </section>
 
     <UAlert
       v-if="permissionMessage"
@@ -232,11 +218,12 @@ onMounted(() => {
 
     <div
       v-if="loading && !summary"
-      class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+      class="flex min-w-0 flex-col gap-4"
       aria-label="Carregando resumo comercial"
       aria-busy="true"
     >
-      <div v-for="item in 6" :key="item" class="h-36 animate-pulse rounded-lg border border-muted bg-elevated/50" />
+      <USkeleton class="h-52 rounded-lg lg:h-40" />
+      <USkeleton class="h-24 rounded-lg sm:h-16" />
     </div>
     <template v-else-if="summary">
       <UAlert
@@ -246,50 +233,78 @@ onMounted(() => {
         title="Ainda não há movimentação comercial"
         description="Os indicadores serão atualizados quando houver contratos ou cobranças neste escritório."
       />
-      <section aria-labelledby="erp-summary" class="space-y-4">
-        <h2 id="erp-summary" class="text-base font-semibold text-highlighted">
-          Resumo comercial
-        </h2>
-        <dl class="grid grid-cols-1 gap-x-8 gap-y-5 border-y border-default py-5 sm:grid-cols-2 xl:grid-cols-3">
-          <div v-for="metric in metrics" :key="metric.label" class="min-w-0 space-y-1">
-            <dt class="text-sm text-muted">
-              {{ metric.label }}
-            </dt>
-            <dd class="break-words text-xl font-semibold tabular-nums text-highlighted">
-              {{ metric.value }}
-            </dd>
-            <dd class="text-xs text-muted">
-              {{ metric.detail }}
-            </dd>
+      <section aria-label="Resumo comercial" class="flex min-w-0 flex-col gap-4">
+        <UCard
+          as="article"
+          aria-labelledby="erp-financial-summary"
+          variant="subtle"
+          class="min-w-0"
+          :ui="{ header: 'px-4 py-3 sm:px-4', body: 'p-0 sm:p-0' }"
+        >
+          <template #header>
+            <h3 id="erp-financial-summary" class="text-sm font-semibold text-highlighted">
+              Financeiro
+            </h3>
+          </template>
+          <div class="grid min-w-0 divide-y divide-default lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+            <section aria-labelledby="erp-period-movements" class="min-w-0">
+              <h4 id="erp-period-movements" class="px-4 pt-3 text-xs font-medium text-muted">
+                {{ summaryPeriod }}
+              </h4>
+              <dl class="grid min-w-0 divide-y divide-default sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                <div v-for="metric in periodMovements" :key="metric.label" class="min-w-0 space-y-1 px-4 py-3">
+                  <dt class="text-xs text-muted">
+                    {{ metric.label }}
+                  </dt>
+                  <dd class="min-w-0 text-xl font-semibold wrap-anywhere tabular-nums text-highlighted">
+                    {{ metric.value }}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+            <section aria-labelledby="erp-current-balances" class="min-w-0">
+              <div class="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-4 pt-3">
+                <h4 id="erp-current-balances" class="text-xs font-medium text-muted">
+                  Saldos atuais
+                </h4>
+                <p class="text-xs text-muted">
+                  {{ balanceDueCriteria }}
+                </p>
+              </div>
+              <dl class="grid min-w-0 divide-y divide-default sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                <div v-for="metric in currentBalances" :key="metric.label" class="min-w-0 space-y-1 px-4 py-3">
+                  <dt class="text-xs text-muted">
+                    {{ metric.label }}
+                  </dt>
+                  <dd class="min-w-0 text-xl font-semibold wrap-anywhere tabular-nums text-highlighted">
+                    {{ metric.value }}
+                  </dd>
+                </div>
+              </dl>
+            </section>
           </div>
-        </dl>
+        </UCard>
+        <UCard
+          as="article"
+          aria-labelledby="erp-licence-summary"
+          class="min-w-0"
+          :ui="{ body: 'flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:px-4 sm:py-3' }"
+        >
+          <h3 id="erp-licence-summary" class="shrink-0 text-sm font-semibold text-highlighted">
+            Licenças
+          </h3>
+          <dl class="grid min-w-0 gap-x-6 gap-y-2 sm:grid-cols-2 sm:gap-x-8 sm:border-l sm:border-default sm:pl-4">
+            <div v-for="metric in licenceCounts" :key="metric.label" class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+              <dt class="text-sm text-muted">
+                {{ metric.label }}
+              </dt>
+              <dd class="min-w-0 text-base font-semibold wrap-anywhere tabular-nums text-highlighted">
+                {{ metric.value }}
+              </dd>
+            </div>
+          </dl>
+        </UCard>
       </section>
     </template>
-
-    <section aria-labelledby="atalhos-comerciais" class="space-y-3">
-      <h2 id="atalhos-comerciais" class="text-base font-semibold text-highlighted">
-        Continue a operação
-      </h2>
-      <div class="divide-y divide-default">
-        <NuxtLink
-          v-for="item in [
-            { title: 'Assinaturas', detail: 'Acompanhe contratos, licenças e acesso dos responsáveis.', to: '/gestao-erp/assinaturas', icon: 'i-lucide-file-key' },
-            { title: 'Faturas e cobranças', detail: 'Consulte valores em aberto, vencimentos e documentos emitidos.', to: '/gestao-erp/faturas', icon: 'i-lucide-receipt' },
-            { title: 'Recebimentos', detail: 'Registre pagamentos e acompanhe suas alocações.', to: '/gestao-erp/recebimentos', icon: 'i-lucide-banknote' },
-            { title: 'Planos do escritório', detail: 'Prepare os termos comerciais para novas vendas.', to: '/gestao-erp/planos', icon: 'i-lucide-tags' }
-          ]"
-          :key="item.to"
-          :to="item.to"
-          class="group flex items-center gap-3 rounded-lg px-2 py-4 transition-colors hover:bg-elevated focus-visible:outline-2 focus-visible:outline-primary"
-        >
-          <UIcon :name="item.icon" class="size-5 shrink-0 text-muted" />
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-highlighted">{{ item.title }}</p>
-            <p class="mt-0.5 text-sm text-muted">{{ item.detail }}</p>
-          </div>
-          <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted" />
-        </NuxtLink>
-      </div>
-    </section>
   </div>
 </template>

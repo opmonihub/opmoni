@@ -6,6 +6,7 @@ import { apiErrorMessage } from '~/composables/useApiError'
 import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { focusFormError } from '~/utils/formPresentation'
 
 defineProps<{ embedded?: boolean }>()
 interface MemberRow {
@@ -52,6 +53,12 @@ const loading = ref(false)
 const optionsLoading = ref(false)
 const optionsError = ref('')
 const error = ref('')
+const editorError = ref('')
+const editorNotice = ref('')
+const fieldErrors = ref<Record<string, string[]>>({})
+watch(fieldErrors, () => {
+  void focusFormError(undefined, 'office-erp-member-editor')
+})
 const notice = ref('')
 const delivery = ref<AccessDelivery | null>(null)
 const deliveryLoading = ref(false)
@@ -196,6 +203,9 @@ watch(identityStamp, () => {
   optionsLoading.value = false
   target.value = null
   editorOpen.value = false
+  fieldErrors.value = {}
+  editorError.value = ''
+  editorNotice.value = ''
   name.value = ''
   email.value = ''
   role.value = 'operator'
@@ -236,6 +246,9 @@ onBeforeUnmount(() => {
 })
 
 function resetEditor() {
+  fieldErrors.value = {}
+  editorError.value = ''
+  editorNotice.value = ''
   name.value = ''
   email.value = ''
   role.value = 'operator'
@@ -283,13 +296,18 @@ function bodyForEditor() {
       : null
 }
 async function saveEditor() {
-  const payload = bodyForEditor()
-  if (!payload) {
-    error.value = 'Selecione ao menos uma permissão explícita e uma filial quando usar escopo selecionado.'
-    return
+  fieldErrors.value = {}
+  const invalid: Record<string, string[]> = {}
+  if (scope.value === 'selected' && !establishmentIds.value.length) invalid.establishment_ids = ['Selecione ao menos um estabelecimento.']
+  if (permissionMode.value === 'explicit' && !permissions.value.length) invalid.permissions = ['Selecione ao menos uma permissão explícita.']
+  if (editorMode.value === 'invite') {
+    if (name.value.trim().length < 2) invalid.name = ['Informe um nome válido para o convite.']
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) invalid.email = ['Informe um e-mail válido para o convite.']
   }
-  if (editorMode.value === 'invite' && (name.value.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim()))) {
-    error.value = 'Informe nome e e-mail válidos para o convite.'
+  const payload = bodyForEditor()
+  if (Object.keys(invalid).length || !payload) {
+    fieldErrors.value = invalid
+    editorError.value = 'Revise os campos do acesso.'
     return
   }
   if (!companyId.value || submitting.value || command.pending.value) return
@@ -297,7 +315,8 @@ async function saveEditor() {
   const identity = identityStamp.value
   const mutation = ++mutationGeneration
   submitting.value = true
-  error.value = ''
+  editorError.value = ''
+  editorNotice.value = ''
   try {
     const isMembership = editorMode.value === 'edit' && target.value?.kind === 'membership'
     const path = isMembership
@@ -317,9 +336,11 @@ async function saveEditor() {
         ? 'A operação foi confirmada. Atualize os dados desta empresa para conferir o estado atual.'
         : editorMode.value === 'edit' ? 'Acesso atualizado.' : 'Convite preparado para entrega. O link não fica visível nesta carteira.'
       await loadMembers()
-    } else if (result.status === 'unknown') notice.value = `O resultado ainda não foi confirmado. Recupere a operação ${result.key}.`
-    else if (result.status === 'failed') error.value = result.failure.message
-    else error.value = 'O contexto da empresa mudou. A operação não foi repetida.'
+    } else if (result.status === 'unknown') editorNotice.value = `O resultado ainda não foi confirmado. Recupere a operação ${result.key}.`
+    else if (result.status === 'failed') {
+      fieldErrors.value = result.failure.errors ?? {}
+      editorError.value = result.failure.message
+    } else editorError.value = 'O contexto da empresa mudou. A operação não foi repetida.'
   } finally {
     if (mutation === mutationGeneration) submitting.value = false
   }
@@ -401,8 +422,14 @@ async function recover() {
       if (deliveryReceipt) delivery.value = { ...deliveryReceipt, expires_at: '', authority_invalidated_at: null }
       notice.value = matchesCompany ? 'Operação da empresa confirmada.' : 'Uma operação foi confirmada. Consulte os dados atualizados desta empresa.'
       await loadMembers()
-    } else if (result.status === 'unknown') notice.value = `A operação ${key} ainda não foi confirmada.`
-    else error.value = result.status === 'failed' ? result.failure.message : 'A operação pertence a outro contexto.'
+    } else if (result.status === 'unknown') {
+      if (editorOpen.value) editorNotice.value = `A operação ${key} ainda não foi confirmada.`
+      else notice.value = `A operação ${key} ainda não foi confirmada.`
+    } else if (editorOpen.value) {
+      editorNotice.value = ''
+      fieldErrors.value = result.status === 'failed' ? result.failure.errors ?? {} : {}
+      editorError.value = result.status === 'failed' ? result.failure.message : 'A operação pertence a outro contexto.'
+    } else error.value = result.status === 'failed' ? result.failure.message : 'A operação pertence a outro contexto.'
   } finally {
     if (mutation === mutationGeneration) submitting.value = false
   }
@@ -648,21 +675,56 @@ async function loadDelivery() {
       v-model:open="editorOpen"
       :title="editorMode === 'invite' ? 'Convidar usuário' : 'Administrar usuário'"
       :description="editorMode === 'invite' ? 'Defina o papel e as permissões para esta empresa.' : target ? `${memberName(target)} · ${memberEmail(target)}` : undefined"
-      :ui="{ content: 'max-w-3xl max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden', body: 'min-h-0 flex-1 overflow-y-auto', footer: 'justify-end' }"
+      :ui="{ content: 'max-w-3xl', body: 'min-h-0 overflow-y-auto', footer: 'shrink-0 flex-wrap justify-end' }"
       @after:leave="restoreEditorFocus"
     >
       <template #body>
-        <div class="space-y-4">
+        <UForm
+          id="office-erp-member-editor"
+          :state="{ name, email, role, permissions_mode: permissionMode, permissions, establishment_scope: scope, establishment_ids: establishmentIds }"
+          :disabled="submitting || command.pending.value"
+          class="space-y-4"
+          @submit="saveEditor"
+          @error="event => focusFormError(event, 'office-erp-member-editor')"
+        >
           <UAlert
-            v-if="error"
+            v-if="editorError"
             color="error"
             title="Revise as permissões"
-            :description="error"
+            :description="editorError"
           />
+          <UAlert
+            v-if="editorNotice || command.recoveryKey.value"
+            color="warning"
+            title="Estado da operação"
+            :description="editorNotice || 'Consulte a operação original antes de iniciar outra alteração.'"
+          >
+            <template #actions>
+              <UButton
+                v-if="command.recoveryKey.value"
+                color="neutral"
+                variant="outline"
+                :loading="submitting"
+                @click="recover"
+              >
+                Recuperar operação
+              </UButton>
+            </template>
+          </UAlert>
           <div v-if="editorMode === 'invite'" class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="Nome" required>
+            <UFormField
+              name="name"
+              :error="fieldErrors.name?.[0]"
+              label="Nome"
+              required
+            >
               <UInput v-model="name" autocomplete="name" class="w-full" />
-            </UFormField><UFormField label="E-mail" required>
+            </UFormField><UFormField
+              name="email"
+              :error="fieldErrors.email?.[0]"
+              label="E-mail"
+              required
+            >
               <UInput
                 v-model="email"
                 type="email"
@@ -671,7 +733,12 @@ async function loadDelivery() {
               />
             </UFormField>
           </div>
-          <UFormField label="Papel" required>
+          <UFormField
+            name="role"
+            :error="fieldErrors.role?.[0]"
+            label="Papel"
+            required
+          >
             <USelect
               v-model="role"
               :items="roles.map(item => ({ label: roleLabel(item.role), value: item.role }))"
@@ -679,18 +746,29 @@ async function loadDelivery() {
               :disabled="target?.kind === 'membership' && target.role === 'owner'"
             />
           </UFormField>
-          <UFormField label="Permissões">
+          <UFormField name="permissions_mode" :error="fieldErrors.permissions_mode?.[0]" label="Permissões">
             <USelect v-model="permissionMode" :items="[{ label: 'Padrões do papel', value: 'defaults' }, { label: 'Selecionar permissões', value: 'explicit' }]" class="w-full" />
           </UFormField>
-          <fieldset v-if="permissionMode === 'explicit'" class="space-y-2 rounded-lg border border-default p-3">
-            <legend class="px-1 text-sm font-medium">
-              Permissões da empresa
-            </legend><UCheckboxGroup v-model="permissions" :items="selectablePermissions.map(item => ({ label: item.label, value: item.permission }))" orientation="vertical" />
-          </fieldset>
-          <UFormField label="Estabelecimentos">
+          <UFormField
+            v-if="permissionMode === 'explicit'"
+            name="permissions"
+            label="Permissões da empresa"
+            :error="fieldErrors.permissions?.[0] ?? fieldErrors.action_permissions?.[0]"
+            :error-pattern="/^(permissions|action_permissions)\..*/"
+          >
+            <UCheckboxGroup v-model="permissions" :items="selectablePermissions.map(item => ({ label: item.label, value: item.permission }))" orientation="vertical" />
+          </UFormField>
+          <UFormField name="establishment_scope" :error="fieldErrors.establishment_scope?.[0]" label="Estabelecimentos">
             <USelect v-model="scope" :items="[{ label: 'Todos os estabelecimentos', value: 'all' }, { label: 'Selecionar estabelecimentos', value: 'selected' }]" class="w-full" />
           </UFormField>
-          <UFormField v-if="scope === 'selected'" label="Estabelecimentos permitidos" required>
+          <UFormField
+            v-if="scope === 'selected'"
+            name="establishment_ids"
+            :error="fieldErrors.establishment_ids?.[0]"
+            :error-pattern="/^establishment_ids\..*/"
+            label="Estabelecimentos permitidos"
+            required
+          >
             <USelectMenu
               v-model="establishmentIds"
               :items="(options?.establishments ?? []).filter(item => item.status === 'active').map(item => ({ label: `${item.name} · ${item.cnpj}`, value: item.id }))"
@@ -699,7 +777,7 @@ async function loadDelivery() {
               class="w-full"
             />
           </UFormField>
-        </div>
+        </UForm>
       </template>
       <template #footer>
         <div class="flex flex-wrap justify-end gap-2">
@@ -710,7 +788,12 @@ async function loadDelivery() {
             @click="editorOpen = false"
           >
             Cancelar
-          </UButton><UButton :loading="submitting || command.pending.value" :disabled="submitting || command.pending.value" @click="saveEditor">
+          </UButton><UButton
+            type="submit"
+            form="office-erp-member-editor"
+            :loading="submitting"
+            :disabled="submitting || command.pending.value"
+          >
             {{ editorMode === 'invite' ? 'Preparar convite' : 'Salvar configuração' }}
           </UButton>
         </div>

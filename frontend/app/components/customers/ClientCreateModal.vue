@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { FormErrorEvent, FormSubmitEvent } from '@nuxt/ui'
-import type { Client, ClientWritePayload, CnpjPreview } from '~/types/client'
+import type { Client, ClientWritePayload, CnpjPreview, DeadlineStatus } from '~/types/client'
 import type { ClientMonitoringModules } from '~/types/serpro'
-import { companyTaxIdEntry, taxIdEditInvalidatesLookup } from '~/utils/taxId'
+import { companyTaxIdEntry, formatTaxId, taxIdEditInvalidatesLookup } from '~/utils/taxId'
+import { deadlinePresentation } from '~/utils/portfolioLabels'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '~/composables/useApiError'
 import {
   initialMonitoringModuleSelection,
@@ -31,6 +32,7 @@ const isOpen = computed({
 })
 
 const { lookupCnpj, create, monitoringModules, confirmMonitoringModules } = useClients()
+const { create: createDispatchContact } = useDispatchContacts()
 const { canManageClients } = useAuth()
 const toast = useToast()
 const form = useTemplateRef('form')
@@ -41,9 +43,7 @@ const companySchema = z.object({
   name: z.string().max(255, 'Nome muito longo')
     .refine(value => preview.value !== null || value.trim().length >= 2, { message: 'Informe a razão social' }),
   status: z.enum(['active', 'inactive']),
-  tax_regime: z.enum(['mei', 'simple_national', 'presumed_profit', 'actual_profit', 'other']),
-  email: z.email('Email inválido').or(z.literal('')).optional(),
-  phone: z.string().max(20, 'Telefone muito longo').optional()
+  tax_regime: z.enum(['mei', 'simple_national', 'presumed_profit', 'actual_profit', 'other'])
 })
 
 const individualSchema = z.object({
@@ -52,8 +52,6 @@ const individualSchema = z.object({
   name: z.string().min(2, 'Informe o nome completo').max(255, 'Nome muito longo'),
   status: z.enum(['active', 'inactive']),
   tax_regime: z.literal('not_applicable'),
-  email: z.email('Email inválido').or(z.literal('')).optional(),
-  phone: z.string().max(20, 'Telefone muito longo').optional(),
   street_type: z.string().max(40).optional(),
   street: z.string().max(255).optional(),
   address_number: z.string().max(30).optional(),
@@ -73,8 +71,6 @@ interface ClientFormState {
   name: string
   status: 'active' | 'inactive'
   tax_regime: string
-  email: string
-  phone: string
   street_type: string
   street: string
   address_number: string
@@ -91,8 +87,6 @@ const state = reactive<ClientFormState>({
   name: '',
   status: 'active',
   tax_regime: 'presumed_profit',
-  email: '',
-  phone: '',
   street_type: '',
   street: '',
   address_number: '',
@@ -109,8 +103,6 @@ const lookingUp = ref(false)
 const submitting = ref(false)
 const lookupError = ref<string | null>(null)
 const submitError = ref<string | null>(null)
-const contactEdited = reactive({ email: false, phone: false })
-let applyingContacts = false
 let lookupGeneration = 0
 
 // Etapa de módulos: o cliente já foi salvo quando ela abre, e o que ela faz é
@@ -122,9 +114,85 @@ const modulesLoading = ref(false)
 const modulesError = ref(false)
 const modulesSelected = ref<Set<string>>(new Set())
 const modulesSubmitting = ref(false)
+const dispatchContactsOutcome = ref<'none' | 'saved' | 'failed'>('none')
 let formGeneration = 0
 
 const modulesGroups = computed(() => monitoringModuleGroups({ obligations: modules.value?.obligations ?? [] }))
+const moduleItems = computed(() => modulesGroups.value.flatMap(group => group.items))
+
+interface RegistrationStep {
+  id: string
+  label: string
+  icon: string
+  done: boolean
+  tone: 'success' | 'warning' | 'error' | 'neutral'
+  statusLabel: string
+}
+
+function deadlineStep(id: string, label: string, icon: string, status: DeadlineStatus | undefined): RegistrationStep {
+  const resolved = status ?? 'missing'
+  const tone = resolved === 'valid'
+    ? 'success'
+    : resolved === 'expiring'
+      ? 'warning'
+      : resolved === 'expired'
+        ? 'error'
+        : 'neutral'
+
+  return {
+    id,
+    label,
+    icon,
+    done: resolved === 'valid' || resolved === 'expiring',
+    tone,
+    statusLabel: deadlinePresentation[resolved].label
+  }
+}
+
+const registrationSteps = computed<RegistrationStep[]>(() => {
+  const steps: RegistrationStep[] = [
+    { id: 'cadastro', label: 'Cadastro do cliente', icon: 'i-lucide-building-2', done: true, tone: 'success', statusLabel: 'Concluído' }
+  ]
+
+  if (dispatchContactsOutcome.value === 'saved') {
+    steps.push({ id: 'contacts', label: 'Contatos de envio', icon: 'i-lucide-send', done: true, tone: 'success', statusLabel: 'Concluído' })
+  } else if (dispatchContactsOutcome.value === 'failed') {
+    steps.push({ id: 'contacts', label: 'Contatos de envio', icon: 'i-lucide-send', done: false, tone: 'error', statusLabel: 'Não concluído' })
+  }
+
+  steps.push(
+    { id: 'xml', label: 'Captura de XML', icon: 'i-lucide-file-code-2', done: true, tone: 'success', statusLabel: 'Incluída' },
+    deadlineStep('certificate', 'Certificado digital', 'i-lucide-key-round', savedClient.value?.certificate_status),
+    deadlineStep('poa', 'Procuração e-CAC', 'i-lucide-file-badge', savedClient.value?.ecac_power_of_attorney_status)
+  )
+
+  return steps
+})
+
+const registrationProgress = computed(() => {
+  const steps = registrationSteps.value
+  if (steps.length === 0) return 0
+  return Math.round((steps.filter(item => item.done).length / steps.length) * 100)
+})
+
+const registrationComplete = computed(() => registrationProgress.value === 100)
+
+const registrationProgressLabel = computed(() =>
+  registrationComplete.value ? 'Todas as etapas finalizadas' : 'Etapas do cadastro'
+)
+
+const registrationSummary = computed(() =>
+  registrationComplete.value
+    ? 'Todas as etapas deste cadastro foram concluídas.'
+    : 'O cliente foi salvo. Confira as etapas e as obrigações de monitoramento.'
+)
+
+const registrationStatusClass: Record<RegistrationStep['tone'], string> = {
+  success: 'text-success',
+  warning: 'text-warning',
+  error: 'text-error',
+  neutral: 'text-muted'
+}
 
 const regimeLocked = computed(() => {
   if (preview.value?.mei) return 'mei' as const
@@ -148,34 +216,139 @@ const statusOptions = [
 ]
 
 const personTypeOptions = [
-  { label: 'Pessoa jurídica (CNPJ)', value: 'company' },
-  { label: 'Pessoa física (CPF)', value: 'individual' }
+  { label: 'Pessoa jurídica', value: 'company' },
+  { label: 'Pessoa física', value: 'individual' }
 ]
 
 const entry = computed(() => companyTaxIdEntry(state.tax_id))
 const canLookup = computed(() => state.person_type === 'company' && entry.value === 'lookup')
 
-// A consulta só preenche contato ainda não editado, inclusive quando o usuário
-// digitou e apagou um valor. Alterações programáticas não tornam o campo manual.
-for (const field of ['email', 'phone'] as const) {
-  watch(() => state[field], () => {
-    if (!applyingContacts) contactEdited[field] = true
-  }, { flush: 'sync' })
+interface ActivityRow {
+  key: number
+  code: string
+  description: string
+}
+
+// A consulta pública e o cadastro guardam uma atividade principal. Linhas a
+// mais ficam só neste formulário: o payload de criação não tem campo para elas.
+const activities = ref<ActivityRow[]>([])
+let activityKey = 0
+
+function createActivity(code = '', description = ''): ActivityRow {
+  activityKey += 1
+  return { key: activityKey, code, description }
+}
+
+function activityRowsFromPreview(data: CnpjPreview): ActivityRow[] {
+  const code = data.primary_activity_code?.trim() ?? ''
+  const description = data.primary_activity_description?.trim() ?? ''
+  if (code === '' && description === '') return []
+  return [createActivity(code, description)]
+}
+
+function activityLineName(row: ActivityRow, index: number): string {
+  const code = row.code.trim()
+  const description = row.description.trim()
+  if (code !== '' && description !== '') return `${code} — ${description}`
+  if (code !== '') return code
+  if (description !== '') return description
+  return `linha ${index + 1}`
+}
+
+function addActivity() {
+  activities.value.push(createActivity())
+}
+
+function removeActivity(key: number) {
+  activities.value = activities.value.filter(row => row.key !== key)
+}
+
+function activityIndex(row: ActivityRow) {
+  const index = activities.value.findIndex(item => item.key === row.key)
+  return index === -1 ? 0 : index
+}
+
+function activityRowId(row: ActivityRow) {
+  return String(row.key)
+}
+
+const activityColumns = [
+  { accessorKey: 'code', header: 'Código' },
+  { accessorKey: 'description', header: 'Descrição' },
+  { id: 'actions', header: 'Ações' }
+]
+
+interface ContactDraft {
+  key: number
+  channel: 'email' | 'whatsapp'
+  name: string
+  value: string
+}
+
+const contactChannel = ref<'email' | 'whatsapp'>('email')
+const contacts = ref<ContactDraft[]>([])
+let contactKey = 0
+
+function contactCount(channel: 'email' | 'whatsapp') {
+  return contacts.value.filter(row => row.channel === channel).length
+}
+
+const contactTabItems = computed(() => [
+  { label: 'E-mail', value: 'email' as const, badge: contactCount('email') },
+  { label: 'WhatsApp', value: 'whatsapp' as const, badge: contactCount('whatsapp') }
+])
+
+const addContactLabel = computed(() => contactChannel.value === 'email'
+  ? 'Novo contato de e-mail'
+  : 'Novo contato de WhatsApp')
+
+const visibleContacts = computed(() => contacts.value.filter(row => row.channel === contactChannel.value))
+
+function addContact() {
+  contactKey += 1
+  contacts.value.push({ key: contactKey, channel: contactChannel.value, name: '', value: '' })
+}
+
+function removeContact(key: number) {
+  contacts.value = contacts.value.filter(row => row.key !== key)
+}
+
+function contactLineName(row: ContactDraft, index: number) {
+  const name = row.name.trim()
+  return name || `linha ${index + 1}`
+}
+
+function dispatchContactPayloads(): Array<{ label: string, channel: 'email' | 'whatsapp', value: string }> | string {
+  const payloads: Array<{ label: string, channel: 'email' | 'whatsapp', value: string }> = []
+  for (const row of contacts.value) {
+    const name = row.name.trim()
+    const raw = row.value.trim()
+    if (!name && !raw) continue
+    if (!name || !raw) {
+      return row.channel === 'email'
+        ? 'Informe o nome e o e-mail de cada contato.'
+        : 'Informe o nome e o telefone de cada contato.'
+    }
+    if (row.channel === 'whatsapp') {
+      const digits = raw.replace(/\D+/g, '')
+      if (digits.length < 10 || digits.length > 13) return 'O telefone está fora do padrão para envio por WhatsApp.'
+      payloads.push({ label: name, channel: 'whatsapp', value: digits })
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+      return 'O e-mail informado não é válido.'
+    } else {
+      payloads.push({ label: name, channel: 'email', value: raw.toLowerCase() })
+    }
+  }
+  return payloads
 }
 
 function invalidateLookup() {
   lookupGeneration++
   lookingUp.value = false
   lookupError.value = null
-  const previous = preview.value
-  if (previous) {
-    applyingContacts = true
-    for (const field of ['email', 'phone'] as const) {
-      if (!contactEdited[field] && state[field] === (previous[field] ?? '')) state[field] = ''
-    }
-    applyingContacts = false
-  }
+  const hadPreview = preview.value !== null
   preview.value = null
+  if (hadPreview) activities.value = []
   if (state.tax_regime === 'mei' || state.tax_regime === 'simple_national') {
     state.tax_regime = state.person_type === 'individual' ? 'not_applicable' : 'presumed_profit'
   }
@@ -188,12 +361,6 @@ function resetForm() {
   state.name = ''
   state.status = 'active'
   state.tax_regime = 'presumed_profit'
-  applyingContacts = true
-  state.email = ''
-  state.phone = ''
-  applyingContacts = false
-  contactEdited.email = false
-  contactEdited.phone = false
   state.street_type = ''
   state.street = ''
   state.address_number = ''
@@ -202,6 +369,9 @@ function resetForm() {
   state.postal_code = ''
   state.city = ''
   state.state = ''
+  activities.value = []
+  contacts.value = []
+  contactChannel.value = 'email'
   step.value = 'registration'
   invalidateLookup()
   submitError.value = null
@@ -213,6 +383,7 @@ function resetForm() {
   modulesError.value = false
   modulesSelected.value = new Set()
   modulesSubmitting.value = false
+  dispatchContactsOutcome.value = 'none'
 }
 
 watch(() => props.open, (open) => {
@@ -222,6 +393,7 @@ watch(() => props.open, (open) => {
 
 watch(() => state.person_type, (type) => {
   invalidateLookup()
+  if (type !== 'company') activities.value = []
   state.tax_regime = type === 'individual' ? 'not_applicable' : 'presumed_profit'
   form.value?.clear()
   submitError.value = null
@@ -247,14 +419,10 @@ async function onLookup() {
     const data = await lookupCnpj(taxId)
     if (!isCurrent() || taxIdEditInvalidatesLookup(taxId, data.tax_id)) return
     preview.value = data
+    activities.value = activityRowsFromPreview(data)
     const locked = data.mei ? 'mei' : data.simple_national ? 'simple_national' : null
     if (locked) state.tax_regime = locked
     else if (state.tax_regime === 'mei' || state.tax_regime === 'simple_national') state.tax_regime = 'presumed_profit'
-    applyingContacts = true
-    for (const field of ['email', 'phone'] as const) {
-      if (!contactEdited[field]) state[field] = data[field] ?? state[field]
-    }
-    applyingContacts = false
     form.value?.clear('name')
     toast.add({ title: 'CNPJ localizado', description: data.name, color: 'success' })
   } catch (error) {
@@ -278,6 +446,12 @@ function onValidationError(event: FormErrorEvent) {
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   if (submitting.value || lookingUp.value || !isOpen.value) return
+  const drafts = dispatchContactPayloads()
+  if (typeof drafts === 'string') {
+    submitError.value = drafts
+    toast.add({ title: 'Não foi possível salvar o cliente', description: drafts, color: 'error' })
+    return
+  }
   const generation = formGeneration
   lookupGeneration++
   submitting.value = true
@@ -285,6 +459,20 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   try {
     const saved = await create(event.data as ClientWritePayload)
     toast.add({ title: 'Cliente cadastrado', color: 'success' })
+
+    if (drafts.length > 0 && generation === formGeneration) {
+      try {
+        for (const payload of drafts) {
+          if (generation !== formGeneration) break
+          await createDispatchContact(saved.id, payload)
+        }
+        if (generation === formGeneration) dispatchContactsOutcome.value = 'saved'
+      } catch (error) {
+        if (generation === formGeneration) dispatchContactsOutcome.value = 'failed'
+        const message = apiErrorMessage(error) ?? 'O cliente foi cadastrado, mas um contato de envio não pôde ser salvo.'
+        toast.add({ title: 'Contato de envio não cadastrado', description: message, color: 'error' })
+      }
+    }
 
     if (generation !== formGeneration || !isOpen.value) {
       emit('saved', saved)
@@ -384,69 +572,113 @@ async function confirmModules() {
   <UModal
     v-bind="$attrs"
     v-model:open="isOpen"
-    :title="step === 'modules' ? 'Obrigações de monitoramento' : 'Novo cliente'"
-    :description="step === 'modules'
-      ? (savedClient ? `Associe ${savedClient.name} às obrigações que a integração acompanha` : 'Associe o cliente às obrigações que a integração acompanha')
-      : 'Preencha o cadastro. A consulta de CNPJ ajuda a conferir os dados oficiais.'"
-    :ui="{ content: 'sm:max-w-3xl', header: 'shrink-0', body: 'min-h-0 overflow-y-auto', footer: 'shrink-0 flex-wrap justify-end' }"
+    :title="step === 'modules' ? 'Cliente cadastrado com sucesso.' : 'Novo cliente'"
+    :description="step === 'modules' ? registrationSummary : 'Cadastre o cliente na carteira do escritório.'"
+    :ui="{ content: 'sm:max-w-4xl', header: 'shrink-0', body: 'min-h-0 overflow-y-auto', footer: 'shrink-0 flex-wrap justify-end' }"
   >
     <template #body>
       <div v-if="step === 'modules'" class="space-y-4">
+        <div class="rounded-md bg-success/10 px-3 py-2 text-center text-sm font-semibold text-success">
+          {{ registrationComplete ? 'Concluído' : 'Cadastro salvo' }}
+        </div>
+
+        <div class="space-y-1">
+          <p class="text-sm text-muted">
+            {{ registrationProgressLabel }}
+          </p>
+          <p class="text-sm font-semibold text-highlighted">
+            {{ registrationProgress }}%
+          </p>
+          <UProgress
+            :model-value="registrationProgress"
+            color="success"
+            size="xs"
+            :get-value-label="() => registrationProgressLabel"
+          />
+        </div>
+
+        <div v-if="savedClient" class="flex items-center gap-3 rounded-lg bg-elevated px-4 py-3">
+          <UIcon name="i-lucide-building-2" class="size-5 shrink-0 text-muted" />
+          <div class="min-w-0">
+            <p class="truncate text-sm font-medium text-highlighted">
+              {{ savedClient.name }}
+            </p>
+            <p class="text-sm text-muted">
+              {{ formatTaxId(savedClient.tax_id) }}
+            </p>
+          </div>
+        </div>
+
+        <ul class="divide-y divide-default overflow-hidden rounded-lg bg-elevated/60 ring ring-default">
+          <li
+            v-for="item in registrationSteps"
+            :key="item.id"
+            class="flex items-center gap-3 px-3 py-2.5"
+          >
+            <UIcon
+              :name="item.done ? 'i-lucide-check' : item.tone === 'error' ? 'i-lucide-circle-alert' : 'i-lucide-circle'"
+              class="size-4 shrink-0"
+              :class="registrationStatusClass[item.tone]"
+            />
+            <UIcon :name="item.icon" class="size-4 shrink-0 text-muted" />
+            <span class="min-w-0 flex-1 truncate text-sm text-default">
+              {{ item.label }}
+            </span>
+            <span class="shrink-0 text-sm" :class="registrationStatusClass[item.tone]">
+              {{ item.statusLabel }}
+            </span>
+          </li>
+        </ul>
+
         <div v-if="modulesLoading" class="space-y-2">
-          <USkeleton v-for="index in 5" :key="index" class="h-9 w-full" />
+          <USkeleton v-for="index in 4" :key="index" class="h-9 w-full" />
         </div>
 
         <template v-else-if="modules">
-          <p class="text-xs text-muted">
-            As sugeridas para o regime do cliente já vêm marcadas. Confirmar não
-            chama o provedor — a primeira leitura acontece na próxima
-            sincronização. Sem opção de captura de XML: todo cliente entra nela.
-          </p>
-
           <ErrorRetryAlert
             v-if="modulesError"
             title="Não foi possível associar as obrigações"
-            description="A seleção foi mantida e o cliente continua cadastrado. Tente novamente ou conclua sem associar."
+            description="A seleção foi mantida e o cliente continua cadastrado. Tente novamente ou feche sem associar."
             :loading="modulesSubmitting"
             @retry="confirmModules"
           />
 
-          <div v-for="group in modulesGroups" :key="group.id" class="space-y-1.5">
-            <p class="text-xs font-semibold text-muted">
-              {{ group.label }}
+          <section class="space-y-3" aria-labelledby="client-create-modules-title">
+            <h3 id="client-create-modules-title" class="text-sm font-semibold text-highlighted">
+              Obrigações de monitoramento
+            </h3>
+            <p class="text-xs text-muted">
+              As sugeridas para o regime do cliente já vêm marcadas.
             </p>
-            <ul class="divide-y divide-default rounded-lg ring ring-default">
-              <li
-                v-for="item in group.items"
+            <div v-if="moduleItems.length > 0" class="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+              <UCheckbox
+                v-for="item in moduleItems"
                 :key="item.slug"
-                class="flex items-center gap-3 px-3 py-2"
-              >
-                <UCheckbox
-                  :model-value="modulesSelected.has(item.slug)"
-                  :aria-label="`Associar ${item.label}`"
-                  @update:model-value="toggleModule(item.slug, $event)"
-                />
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm text-default">
-                    {{ item.label }}
-                  </p>
-                  <p v-if="item.associated" class="text-xs text-muted">
-                    Já associada
-                  </p>
-                </div>
-              </li>
-            </ul>
-          </div>
+                :model-value="modulesSelected.has(item.slug)"
+                :label="item.label"
+                :description="item.associated ? 'Já associada' : undefined"
+                @update:model-value="toggleModule(item.slug, $event)"
+              />
+            </div>
+            <p v-else class="text-sm text-muted">
+              Nenhuma obrigação servida pela integração para este cliente.
+            </p>
+          </section>
 
-          <p v-if="modulesGroups.length === 0" class="text-sm text-muted">
-            Nenhuma obrigação servida pela integração para este cliente.
-          </p>
+          <div class="flex gap-2 rounded-lg bg-elevated px-3 py-2.5 text-sm text-muted ring ring-default">
+            <UIcon name="i-lucide-info" class="mt-0.5 size-4 shrink-0" />
+            <p>
+              Confirmar as obrigações não dispara a leitura agora. A primeira
+              sincronização acontece no próximo ciclo e não envia documentos
+              automaticamente. A captura de XML já inclui este cliente.
+            </p>
+          </div>
         </template>
 
         <template v-else-if="modulesError">
           <ErrorRetryAlert
             title="Não foi possível carregar as obrigações"
-            description="O cliente continua cadastrado. Tente carregar de novo ou conclua sem associar — dá para associar depois pelo Monitoramento."
+            description="O cliente continua cadastrado. Tente carregar de novo ou feche sem associar — dá para associar depois pelo Monitoramento."
             :loading="modulesLoading"
             @retry="savedClient && loadModules(savedClient.id)"
           />
@@ -473,247 +705,309 @@ async function confirmModules() {
           role="alert"
         />
 
-        <fieldset class="space-y-4">
-          <legend class="mb-3 text-sm font-semibold text-highlighted">
-            Identificação
-          </legend>
-          <UFormField label="Tipo de pessoa" name="person_type" required>
-            <USelect
+        <div class="grid grid-cols-1 items-start gap-6 sm:grid-cols-2">
+          <fieldset class="space-y-4">
+            <legend class="text-sm font-semibold text-highlighted">
+              Cadastro
+            </legend>
+            <URadioGroup
               v-model="state.person_type"
+              name="person_type"
+              legend="Tipo de pessoa"
               :items="personTypeOptions"
-              value-key="value"
-              class="w-full sm:max-w-sm"
-            />
-          </UFormField>
-
-          <UFormField
-            v-if="state.person_type === 'company'"
-            label="CNPJ"
-            name="tax_id"
-            help="Letras e números. A consulta pública está disponível somente para CNPJ numérico."
-            required
-          >
-            <div class="flex flex-col gap-2 sm:flex-row">
-              <UInput
-                v-model="state.tax_id"
-                placeholder="00.000.000/0000-00"
-                autocomplete="off"
-                class="w-full sm:flex-1"
-              />
-              <UButton
-                label="Consultar CNPJ"
-                icon="i-lucide-search"
-                color="neutral"
-                variant="outline"
-                type="button"
-                :loading="lookingUp"
-                :disabled="!canLookup || submitting"
-                class="justify-center sm:shrink-0"
-                @click="onLookup"
-              />
-            </div>
-          </UFormField>
-          <UFormField
-            v-else
-            label="CPF"
-            name="tax_id"
-            help="Somente números; pode informar com pontuação."
-            required
-          >
-            <UInput
-              v-model="state.tax_id"
-              placeholder="000.000.000-00"
-              inputmode="numeric"
+              orientation="horizontal"
+              variant="table"
+              indicator="hidden"
+              color="primary"
               class="w-full"
-            />
-          </UFormField>
+              :ui="{ legend: 'sr-only', fieldset: 'w-full', item: 'min-w-0 flex-1 items-center justify-center px-3 py-2 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-primary' }"
+            >
+              <template #label="{ item }">
+                <span :class="state.person_type === item.value ? 'text-inverted' : undefined">{{ item.label }}</span>
+              </template>
+            </URadioGroup>
 
-          <p v-if="state.person_type === 'company'" class="text-xs text-muted">
-            {{ entry === 'manual'
-              ? 'CNPJ alfanumérico: informe a razão social. Os dados oficiais ficam vazios até uma consulta disponível.'
-              : 'Pode preencher sem consultar aqui. Ao cadastrar CNPJ numérico, o sistema consulta a fonte pública; a razão social oficial prevalece. Se o CNPJ não for encontrado, será usada a razão social digitada.' }}
-          </p>
-          <UAlert
-            v-if="lookupError"
-            color="warning"
-            variant="subtle"
-            title="Consulta de CNPJ não concluída"
-            :description="lookupError"
-            role="alert"
-          />
-
-          <UFormField
-            :label="state.person_type === 'company' ? 'Razão social' : 'Nome completo'"
-            name="name"
-            :help="preview ? 'Razão social confirmada pela fonte pública; não é editável.' : undefined"
-            required
-          >
-            <UInput
-              v-if="preview"
-              :model-value="preview.name"
-              readonly
-              class="w-full"
-            />
-            <UInput
-              v-else
-              v-model="state.name"
-              :placeholder="state.person_type === 'company' ? 'Nome da empresa' : 'Nome do cliente'"
-              :autocomplete="state.person_type === 'company' ? 'organization' : 'name'"
-              class="w-full"
-            />
-          </UFormField>
-        </fieldset>
-
-        <fieldset class="space-y-4">
-          <legend class="mb-3 text-sm font-semibold text-highlighted">
-            Cadastro na carteira
-          </legend>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <UFormField label="Situação na carteira" name="status" required>
-              <USelect
-                v-model="state.status"
-                :items="statusOptions"
-                value-key="value"
-                class="w-full"
-              />
-            </UFormField>
             <UFormField
               v-if="state.person_type === 'company'"
-              label="Regime tributário"
-              name="tax_regime"
-              :help="regimeLocked ? 'Definido pela Receita (MEI/Simples).' : 'MEI e Simples Nacional são confirmados pela consulta.'"
+              label="CNPJ"
+              name="tax_id"
               required
             >
-              <USelect
-                v-model="state.tax_regime"
-                :items="regimeOptions"
-                value-key="value"
-                class="w-full"
-                :disabled="!!regimeLocked"
-              />
+              <div class="flex flex-col gap-2 lg:flex-row">
+                <UInput
+                  v-model="state.tax_id"
+                  placeholder="00.000.000/0000-00"
+                  autocomplete="off"
+                  class="w-full lg:flex-1"
+                />
+                <UButton
+                  label="Consultar CNPJ"
+                  icon="i-lucide-search"
+                  color="neutral"
+                  variant="outline"
+                  type="button"
+                  :loading="lookingUp"
+                  :disabled="!canLookup || submitting"
+                  class="justify-center lg:shrink-0"
+                  @click="onLookup"
+                />
+              </div>
             </UFormField>
-            <UFormField v-else label="Regime tributário" name="tax_regime">
-              <UInput value="Não aplicável" class="w-full" disabled />
-            </UFormField>
-          </div>
-        </fieldset>
-
-        <fieldset class="space-y-4">
-          <legend class="mb-3 text-sm font-semibold text-highlighted">
-            Contato
-          </legend>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <UFormField label="E-mail" name="email" hint="Opcional">
+            <UFormField
+              v-else
+              label="CPF"
+              name="tax_id"
+              required
+            >
               <UInput
-                v-model="state.email"
-                type="email"
-                autocomplete="email"
-                placeholder="contato@empresa.com"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField label="Telefone" name="phone" hint="Opcional">
-              <UInput
-                v-model="state.phone"
-                type="tel"
-                autocomplete="tel"
-                placeholder="(00) 00000-0000"
-                class="w-full"
-              />
-            </UFormField>
-          </div>
-        </fieldset>
-
-        <fieldset v-if="state.person_type === 'individual'" class="space-y-4">
-          <legend class="mb-3 text-sm font-semibold text-highlighted">
-            Endereço <span class="font-normal text-muted">(opcional)</span>
-          </legend>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <UFormField label="Tipo de logradouro" name="street_type">
-              <UInput v-model="state.street_type" placeholder="Rua, avenida…" class="w-full" />
-            </UFormField>
-            <UFormField label="Logradouro" name="street" class="sm:col-span-2">
-              <UInput v-model="state.street" autocomplete="address-line1" class="w-full" />
-            </UFormField>
-          </div>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <UFormField label="Número" name="address_number">
-              <UInput v-model="state.address_number" class="w-full" />
-            </UFormField>
-            <UFormField label="Complemento" name="address_complement">
-              <UInput v-model="state.address_complement" autocomplete="address-line2" class="w-full" />
-            </UFormField>
-            <UFormField label="Bairro" name="district">
-              <UInput v-model="state.district" class="w-full" />
-            </UFormField>
-            <UFormField label="CEP" name="postal_code">
-              <UInput
-                v-model="state.postal_code"
-                autocomplete="postal-code"
+                v-model="state.tax_id"
+                placeholder="000.000.000-00"
                 inputmode="numeric"
                 class="w-full"
               />
             </UFormField>
-          </div>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <UFormField label="Cidade" name="city" class="sm:col-span-2">
-              <UInput v-model="state.city" autocomplete="address-level2" class="w-full" />
-            </UFormField>
-            <UFormField label="UF" name="state">
+
+            <UAlert
+              v-if="lookupError"
+              color="warning"
+              variant="subtle"
+              title="Consulta de CNPJ não concluída"
+              :description="lookupError"
+              role="alert"
+            />
+
+            <UFormField
+              :label="state.person_type === 'company' ? 'Razão social' : 'Nome completo'"
+              name="name"
+              required
+            >
               <UInput
-                v-model="state.state"
-                autocomplete="address-level1"
-                maxlength="2"
+                v-if="preview"
+                :model-value="preview.name"
+                readonly
+                class="w-full"
+              />
+              <UInput
+                v-else
+                v-model="state.name"
+                :placeholder="state.person_type === 'company' ? 'Nome da empresa' : 'Nome do cliente'"
+                :autocomplete="state.person_type === 'company' ? 'organization' : 'name'"
                 class="w-full"
               />
             </UFormField>
-          </div>
-        </fieldset>
 
-        <section v-else class="space-y-3" aria-labelledby="client-create-official-title">
-          <h3 id="client-create-official-title" class="text-sm font-semibold text-highlighted">
-            Dados oficiais da empresa
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <UFormField label="Situação na carteira" name="status" required>
+                <USelect
+                  v-model="state.status"
+                  :items="statusOptions"
+                  value-key="value"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                v-if="state.person_type === 'company'"
+                label="Regime tributário"
+                name="tax_regime"
+                required
+              >
+                <USelect
+                  v-model="state.tax_regime"
+                  :items="regimeOptions"
+                  value-key="value"
+                  class="w-full"
+                  :disabled="!!regimeLocked"
+                />
+              </UFormField>
+              <UFormField v-else label="Regime tributário" name="tax_regime">
+                <UInput value="Não aplicável" class="w-full" disabled />
+              </UFormField>
+            </div>
+
+            <dl v-if="preview" class="grid gap-2 rounded-lg bg-elevated/50 p-3 text-sm">
+              <div>
+                <dt class="text-xs text-muted">
+                  Nome fantasia
+                </dt>
+                <dd class="break-words">
+                  {{ preview.trade_name ?? '—' }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs text-muted">
+                  Situação na Receita
+                </dt>
+                <dd class="break-words">
+                  {{ preview.registration_status ?? '—' }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs text-muted">
+                  Endereço
+                </dt>
+                <dd class="break-words">
+                  {{ [preview.street_type, preview.street, preview.address_number, preview.address_complement, preview.district, preview.city, preview.state, preview.postal_code].filter(Boolean).join(', ') || '—' }}
+                </dd>
+              </div>
+            </dl>
+
+            <fieldset v-if="state.person_type === 'individual'" class="space-y-3">
+              <legend class="text-sm font-semibold text-highlighted">
+                Endereço <span class="font-normal text-muted">(opcional)</span>
+              </legend>
+              <UFormField label="Tipo de logradouro" name="street_type">
+                <UInput v-model="state.street_type" placeholder="Rua, avenida…" class="w-full" />
+              </UFormField>
+              <UFormField label="Logradouro" name="street">
+                <UInput v-model="state.street" autocomplete="address-line1" class="w-full" />
+              </UFormField>
+              <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <UFormField label="Número" name="address_number">
+                  <UInput v-model="state.address_number" class="w-full" />
+                </UFormField>
+                <UFormField label="Complemento" name="address_complement">
+                  <UInput v-model="state.address_complement" autocomplete="address-line2" class="w-full" />
+                </UFormField>
+                <UFormField label="Bairro" name="district">
+                  <UInput v-model="state.district" class="w-full" />
+                </UFormField>
+                <UFormField label="CEP" name="postal_code">
+                  <UInput
+                    v-model="state.postal_code"
+                    autocomplete="postal-code"
+                    inputmode="numeric"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
+              <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_5rem]">
+                <UFormField label="Cidade" name="city">
+                  <UInput v-model="state.city" autocomplete="address-level2" class="w-full" />
+                </UFormField>
+                <UFormField label="UF" name="state">
+                  <UInput
+                    v-model="state.state"
+                    autocomplete="address-level1"
+                    maxlength="2"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
+            </fieldset>
+          </fieldset>
+
+          <fieldset class="space-y-4">
+            <legend class="text-sm font-semibold text-highlighted">
+              Contatos
+            </legend>
+            <UTabs
+              v-model="contactChannel"
+              :items="contactTabItems"
+              variant="link"
+              :content="false"
+            />
+            <div v-if="visibleContacts.length === 0" class="rounded-lg bg-elevated/50 p-4">
+              <UButton
+                :label="addContactLabel"
+                icon="i-lucide-plus"
+                color="neutral"
+                variant="outline"
+                type="button"
+                @click="addContact"
+              />
+            </div>
+            <template v-else>
+              <UButton
+                :label="addContactLabel"
+                icon="i-lucide-plus"
+                color="neutral"
+                variant="outline"
+                type="button"
+                @click="addContact"
+              />
+              <div
+                v-for="(row, index) in visibleContacts"
+                :key="row.key"
+                class="grid grid-cols-1 items-end gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+              >
+                <UFormField label="Nome">
+                  <UInput
+                    v-model="row.name"
+                    :aria-label="`Nome do contato ${contactLineName(row, index)}`"
+                    autocomplete="name"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField :label="contactChannel === 'email' ? 'E-mail' : 'Telefone'">
+                  <UInput
+                    v-model="row.value"
+                    :type="contactChannel === 'email' ? 'email' : 'tel'"
+                    :inputmode="contactChannel === 'email' ? 'email' : 'tel'"
+                    :autocomplete="contactChannel === 'email' ? 'email' : 'tel'"
+                    :aria-label="`${contactChannel === 'email' ? 'E-mail' : 'Telefone'} do contato ${contactLineName(row, index)}`"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UButton
+                  label="Remover"
+                  color="neutral"
+                  variant="ghost"
+                  type="button"
+                  :aria-label="`Remover contato ${contactLineName(row, index)}`"
+                  @click="removeContact(row.key)"
+                />
+              </div>
+            </template>
+          </fieldset>
+        </div>
+
+        <section v-if="state.person_type === 'company'" class="space-y-3" aria-labelledby="client-create-activities-title">
+          <h3 id="client-create-activities-title" class="text-sm font-semibold text-highlighted">
+            Atividades
           </h3>
-          <p class="text-xs text-muted">
-            Endereço, nome fantasia, situação na Receita e atividade vêm da consulta e não são editáveis aqui.
-          </p>
-          <dl v-if="preview" class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-            <div>
-              <dt class="text-xs text-muted">
-                Nome fantasia
-              </dt>
-              <dd class="break-words">
-                {{ preview.trade_name ?? '—' }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted">
-                Situação na Receita
-              </dt>
-              <dd class="break-words">
-                {{ preview.registration_status ?? '—' }}
-              </dd>
-            </div>
-            <div class="sm:col-span-2">
-              <dt class="text-xs text-muted">
-                Atividade principal
-              </dt>
-              <dd class="break-words">
-                {{ [preview.primary_activity_code, preview.primary_activity_description].filter(Boolean).join(' — ') || '—' }}
-              </dd>
-            </div>
-            <div class="sm:col-span-2">
-              <dt class="text-xs text-muted">
-                Endereço
-              </dt>
-              <dd class="break-words">
-                {{ [preview.street_type, preview.street, preview.address_number, preview.address_complement, preview.district, preview.city, preview.state, preview.postal_code].filter(Boolean).join(', ') || '—' }}
-              </dd>
-            </div>
-          </dl>
-          <p v-else class="text-sm text-muted">
-            Nenhuma consulta exibida. Se a fonte encontrar o CNPJ ao cadastrar, seus dados oficiais serão usados.
-          </p>
+          <UTable
+            :data="activities"
+            :columns="activityColumns"
+            :get-row-id="activityRowId"
+            class="w-full"
+          >
+            <template #code-cell="{ row }">
+              <UInput
+                v-model="row.original.code"
+                :aria-label="`Código da atividade ${activityLineName(row.original, activityIndex(row.original))}`"
+                autocomplete="off"
+                class="w-full"
+              />
+            </template>
+            <template #description-cell="{ row }">
+              <UInput
+                v-model="row.original.description"
+                :aria-label="`Descrição da atividade ${activityLineName(row.original, activityIndex(row.original))}`"
+                autocomplete="off"
+                class="w-full"
+              />
+            </template>
+            <template #actions-cell="{ row }">
+              <UButton
+                label="Remover"
+                color="neutral"
+                variant="ghost"
+                type="button"
+                :aria-label="`Remover atividade ${activityLineName(row.original, activityIndex(row.original))}`"
+                @click="removeActivity(row.original.key)"
+              />
+            </template>
+            <template #empty>
+              Nenhuma atividade.
+            </template>
+          </UTable>
+          <UButton
+            label="Adicionar atividade"
+            color="neutral"
+            variant="outline"
+            type="button"
+            @click="addActivity"
+          />
         </section>
       </UForm>
     </template>
@@ -721,7 +1015,7 @@ async function confirmModules() {
     <template #footer="{ close }">
       <template v-if="step === 'modules'">
         <UButton
-          label="Concluir sem associar"
+          label="Fechar"
           color="neutral"
           variant="outline"
           :disabled="modulesSubmitting"
@@ -729,8 +1023,7 @@ async function confirmModules() {
         />
         <UButton
           label="Confirmar obrigações"
-          color="neutral"
-          variant="solid"
+          color="primary"
           :loading="modulesSubmitting"
           :disabled="!modules || modulesLoading"
           @click="confirmModules"

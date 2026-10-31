@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import type { TableColumn } from '@nuxt/ui'
 import { officeErpSortParams } from '~/utils/officeErpListSort'
 import OfficeErpPagination from '~/components/office-erp/OfficeErpPagination.vue'
+import OfficeErpPanel from '~/components/office-erp/OfficeErpPanel.vue'
+import OfficeErpDataTable from '~/components/office-erp/OfficeErpDataTable.vue'
 import { listNavigationField } from '~/composables/useListNavigationState'
 import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
@@ -82,6 +85,12 @@ const salesReason = computed(() => {
 })
 const legacyNotice = computed(() => route.query.origem === 'admin-erp')
 const recoveryKey = computed(() => command.recoveryKey.value)
+const columns: TableColumn<OfficeErpOffer>[] = [
+  { accessorKey: 'name', header: 'Plano', enableSorting: true },
+  { id: 'price', header: 'Valor e ciclo', enableHiding: false },
+  { accessorKey: 'status', header: 'Situação', enableSorting: true, meta: { class: { th: 'md:w-36' } } },
+  { id: 'actions', header: '', meta: { class: { th: 'md:w-36' } } }
+]
 
 function requestParams() {
   const params: Record<string, string | number> = { page: page.value, per_page: perPage.value, ...officeErpSortParams('plans', sort.value, direction.value), status: status.value }
@@ -282,99 +291,28 @@ watch([debouncedQuery, status, perPage, sort, direction], () => {
 </script>
 
 <template>
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-4 sm:gap-6">
-    <header class="flex flex-col items-start justify-between gap-3 sm:flex-row">
-      <div class="min-w-0 flex-1 space-y-1">
-        <h2 class="text-base font-semibold text-highlighted">
-          Planos do escritório
-        </h2>
-        <p class="max-w-2xl text-sm text-muted">
-          Planos disponíveis para novas assinaturas.
-        </p>
-      </div>
-      <UButton
-        icon="i-lucide-plus"
-        class="w-fit shrink-0"
-        :disabled="!mounted || !capabilities?.can_sell_new || command.pending.value"
-        @click="openCreate"
-      >
-        Novo plano
-      </UButton>
-    </header>
-
-    <UAlert
-      v-if="legacyNotice"
-      color="info"
-      variant="subtle"
-      icon="i-lucide-info"
-      title="A gestão dos planos foi movida para o escritório selecionado"
-      description="Os planos técnicos e as assinaturas globais continuam disponíveis somente pelas rotas privilegiadas já autorizadas."
-    />
-    <UAlert
-      v-if="capabilities?.can_read && !capabilities.can_sell_new"
-      color="warning"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
-      title="Novas vendas estão indisponíveis"
-      :description="[salesReason, capacityLabel].filter(Boolean).join(' ')"
-    />
-    <UAlert
-      v-if="recoveryKey"
-      color="warning"
-      variant="subtle"
-      icon="i-lucide-clock-3"
-      title="Há uma operação comercial sem confirmação"
-      description="Verifique o identificador original. Uma nova operação não será enviada automaticamente."
-    >
-      <template #description>
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <span>Verifique o resultado da operação antes de iniciar outra alteração.</span>
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="sm"
-            :loading="commandBusy"
-            :disabled="commandBusy"
-            @click="recoverOperation()"
-          >
-            Verificar resultado
-          </UButton>
-        </div>
+  <div class="flex min-h-0 min-w-0 flex-col gap-4">
+    <OfficeErpPanel title="Planos" description="Planos disponíveis para novas assinaturas. Alterações criam uma revisão sem modificar os termos dos contratos existentes." list>
+      <template #action>
+        <UButton
+          to="/gestao-erp/configuracoes"
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-arrow-left"
+          size="sm"
+        >
+          Configurações
+        </UButton>
+        <UButton
+          color="neutral"
+          icon="i-lucide-plus"
+          :disabled="!mounted || !capabilities?.can_sell_new || command.pending.value"
+          @click="openCreate"
+        >
+          Novo plano
+        </UButton>
       </template>
-    </UAlert>
-    <UAlert
-      v-if="mutationFailure && !editorOpen"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
-      title="Operação não concluída"
-      :description="mutationFailure"
-    />
-    <UAlert
-      v-if="loadError"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
-      title="Não foi possível carregar os planos"
-    >
-      <template #description>
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <span>{{ loadError }}</span>
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="sm"
-            :loading="loading"
-            @click="loadOffers"
-          >
-            Tentar novamente
-          </UButton>
-        </div>
-      </template>
-    </UAlert>
-
-    <section aria-label="Lista de planos" class="flex min-w-0 flex-1 flex-col gap-4">
-      <div class="flex flex-wrap items-end gap-3">
+      <template #toolbar>
         <UInput
           v-model="query"
           icon="i-lucide-search"
@@ -382,102 +320,201 @@ watch([debouncedQuery, status, perPage, sort, direction], () => {
           aria-label="Buscar plano"
           class="w-full sm:max-w-sm"
         />
-        <div class="flex w-full items-center gap-1.5 sm:w-auto sm:flex-wrap">
+        <div class="flex min-w-0 flex-wrap items-center gap-2">
           <USelect
             v-model="status"
             :items="[{ label: 'Ativos', value: 'active' }, { label: 'Arquivados', value: 'archived' }]"
             aria-label="Situação dos planos"
             :ui="panelSelectUi"
-            class="min-w-0 flex-1 sm:w-36 sm:flex-none"
+            class="w-36"
           />
         </div>
-        <DataTableSortMenu
-          :sort="sort"
-          :direction="direction"
-          :fields="[{ value: 'name', label: 'Plano' }, { value: 'status', label: 'Situação' }, { value: 'id', label: 'Cadastro' }]"
-          @change="ordering => navigation = { ...navigation, ...ordering, page: 1 }"
-        />
-      </div>
-      <div
-        v-if="confirmedEmpty && !offers.length"
-        class="flex min-h-40 items-center justify-center border-t border-default px-4 text-center text-sm text-muted"
+      </template>
+
+      <UAlert
+        v-if="legacyNotice"
+        color="info"
+        variant="subtle"
+        icon="i-lucide-info"
+        title="A gestão dos planos foi movida para o escritório selecionado"
+        description="Os planos técnicos e as assinaturas globais continuam disponíveis somente pelas rotas privilegiadas já autorizadas."
+      />
+      <UAlert
+        v-if="capabilities?.can_read && !capabilities.can_sell_new"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-circle-alert"
+        title="Novas vendas estão indisponíveis"
+        :description="[salesReason, capacityLabel].filter(Boolean).join(' ')"
+      />
+      <UAlert
+        v-if="recoveryKey"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-clock-3"
+        title="Há uma operação comercial sem confirmação"
+        description="Verifique o identificador original. Uma nova operação não será enviada automaticamente."
       >
-        {{ status === 'active' ? 'Nenhum plano ativo foi cadastrado.' : 'Nenhum plano arquivado foi encontrado.' }}
-      </div>
-      <div v-else-if="!loadError || offers.length" class="min-w-0 space-y-3" :aria-busy="loading">
-        <UPageCard
-          v-for="offer in offers"
-          :key="offer.id"
-          variant="subtle"
-          :ui="{ container: 'p-4 sm:p-5', wrapper: 'min-w-0' }"
-        >
-          <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div class="min-w-0 flex-1 space-y-2">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="wrap-anywhere text-sm font-semibold text-highlighted">
-                  {{ offer.name }}
-                </h3>
-                <UBadge :color="offer.status === 'archived' ? 'neutral' : 'success'" variant="subtle">
-                  {{ offer.status === 'archived' ? 'Arquivado' : 'Ativo' }}
-                </UBadge>
-                <span v-if="offer.current_revision" class="text-xs text-muted">
-                  r{{ offer.current_revision.revision_number }} · {{ offer.current_revision.published ? 'Publicada' : 'Rascunho' }}
-                </span>
-              </div>
-              <p v-if="offer.description" class="wrap-anywhere text-sm text-muted">
-                {{ offer.description }}
-              </p>
-              <p v-if="offer.current_revision" class="text-sm tabular-nums text-highlighted">
-                {{ formatOfficeErpMoney(offer.current_revision.price) }}
-                <span class="text-muted">· {{ offer.current_revision.interval_months === 1 ? 'Mensal' : `A cada ${offer.current_revision.interval_months} meses` }}</span>
-              </p>
-              <p v-else class="text-sm text-muted">
-                Sem revisão
-              </p>
-              <UCollapsible v-if="offer.current_revision?.module_keys.length">
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  trailing-icon="i-lucide-chevron-down"
-                  :label="`${offer.current_revision.module_keys.length} módulos`"
-                  aria-label="Ver módulos do plano"
-                />
-                <template #content>
-                  <ul class="mt-2 grid gap-2 text-sm text-muted sm:grid-cols-2">
-                    <li v-for="key in offer.current_revision.module_keys" :key="key">
-                      {{ officeErpModuleOptions.find(module => module.value === key)?.label ?? 'Módulo adicional' }}
-                    </li>
-                  </ul>
-                </template>
-              </UCollapsible>
-              <p v-else class="text-sm text-muted">
-                Nenhum módulo
-              </p>
-            </div>
-            <div v-if="offer.status === 'active'" class="flex shrink-0 flex-wrap gap-2">
-              <UButton
-                color="neutral"
-                variant="outline"
-                icon="i-lucide-pencil"
-                label="Editar"
-                aria-label="Editar plano"
-                :disabled="!capabilities?.can_sell_new || command.pending.value"
-                @click="openEdit(offer)"
-              />
+        <template #description>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span>Verifique o resultado da operação antes de iniciar outra alteração.</span>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              :loading="commandBusy"
+              :disabled="commandBusy"
+              @click="recoverOperation()"
+            >
+              Verificar resultado
+            </UButton>
+          </div>
+        </template>
+      </UAlert>
+      <UAlert
+        v-if="mutationFailure && !editorOpen"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-circle-alert"
+        title="Operação não concluída"
+        :description="mutationFailure"
+      />
+      <UAlert
+        v-if="loadError"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-circle-alert"
+        title="Não foi possível carregar os planos"
+      >
+        <template #description>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span>{{ loadError }}</span>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              :loading="loading"
+              @click="loadOffers"
+            >
+              Tentar novamente
+            </UButton>
+          </div>
+        </template>
+      </UAlert>
+
+      <UAlert
+        v-if="confirmedEmpty && !offers.length"
+        color="neutral"
+        :title="status === 'active' ? 'Nenhum plano ativo foi cadastrado.' : 'Nenhum plano arquivado foi encontrado.'"
+        description="Ajuste a busca ou a situação para consultar outros planos."
+      />
+      <OfficeErpDataTable
+        v-else-if="!loadError || offers.length"
+        :data="offers"
+        :columns="columns"
+        :loading="loading"
+        :get-row-id="row => String(row.id)"
+        compact
+        :mobile-columns="['name', 'actions']"
+        label="Planos"
+        :ui="{
+          thead: 'table-header-group',
+          td: 'border-b border-muted px-3 py-2 align-middle text-sm leading-5 whitespace-normal wrap-anywhere'
+        }"
+      >
+        <template #name-header>
+          <DataTableSortButton
+            label="Plano"
+            :sorted="sort === 'name' ? direction === 'desc' ? 'desc' : 'asc' : false"
+            @toggle="navigation = { ...navigation, sort: sort === 'name' && direction === 'desc' ? '' : 'name', direction: sort === 'name' && direction === 'asc' ? 'desc' : 'asc', page: 1 }"
+          />
+        </template>
+        <template #status-header>
+          <DataTableSortButton
+            label="Situação"
+            :sorted="sort === 'status' ? direction === 'desc' ? 'desc' : 'asc' : false"
+            @toggle="navigation = { ...navigation, sort: sort === 'status' && direction === 'desc' ? '' : 'status', direction: sort === 'status' && direction === 'asc' ? 'desc' : 'asc', page: 1 }"
+          />
+        </template>
+        <template #name-cell="{ row }">
+          <div class="min-w-0 space-y-1">
+            <p class="font-medium wrap-anywhere text-highlighted">
+              {{ row.original.name }}
+            </p>
+            <p v-if="row.original.description" class="text-xs wrap-anywhere text-muted">
+              {{ row.original.description }}
+            </p>
+            <UCollapsible v-if="row.original.current_revision?.module_keys.length">
               <UButton
                 color="neutral"
                 variant="ghost"
+                size="sm"
+                trailing-icon="i-lucide-chevron-down"
+                :label="`${row.original.current_revision.module_keys.length} módulos`"
+                aria-label="Ver módulos do plano"
+                class="-ml-2.5"
+              />
+              <template #content>
+                <ul class="space-y-1 pb-1 text-xs text-muted">
+                  <li v-for="moduleKey in row.original.current_revision.module_keys" :key="moduleKey">
+                    {{ officeErpModuleOptions.find(module => module.value === moduleKey)?.label ?? 'Módulo adicional' }}
+                  </li>
+                </ul>
+              </template>
+            </UCollapsible>
+            <p v-else class="text-xs text-muted">
+              Nenhum módulo
+            </p>
+          </div>
+        </template>
+        <template #price-cell="{ row }">
+          <div v-if="row.original.current_revision" class="space-y-1">
+            <p class="tabular-nums text-highlighted">
+              {{ formatOfficeErpMoney(row.original.current_revision.price) }}
+            </p>
+            <p class="text-xs text-muted">
+              {{ row.original.current_revision.interval_months === 1 ? 'Mensal' : `A cada ${row.original.current_revision.interval_months} meses` }}
+            </p>
+          </div>
+          <span v-else class="text-muted">Sem revisão</span>
+        </template>
+        <template #status-cell="{ row }">
+          <div class="space-y-1">
+            <UBadge :color="row.original.status === 'archived' ? 'neutral' : 'success'" variant="subtle" size="sm">
+              {{ row.original.status === 'archived' ? 'Arquivado' : 'Ativo' }}
+            </UBadge>
+            <p v-if="row.original.current_revision" class="text-xs text-muted">
+              r{{ row.original.current_revision.revision_number }} · {{ row.original.current_revision.published ? 'Publicada' : 'Rascunho' }}
+            </p>
+          </div>
+        </template>
+        <template #actions-cell="{ row }">
+          <div v-if="row.original.status === 'active'" class="flex flex-wrap items-center gap-1.5 md:justify-end">
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              icon="i-lucide-pencil"
+              label="Editar"
+              aria-label="Editar plano"
+              :disabled="!capabilities?.can_sell_new || command.pending.value"
+              @click="openEdit(row.original)"
+            />
+            <UTooltip text="Arquivar plano">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
                 icon="i-lucide-archive"
                 aria-label="Arquivar plano"
                 :disabled="!capabilities?.can_maintain || command.pending.value"
-                @click="requestArchive(offer)"
+                @click="requestArchive(row.original)"
               />
-            </div>
+            </UTooltip>
           </div>
-        </UPageCard>
-      </div>
-
+          <span v-else class="text-xs text-muted">Somente consulta</span>
+        </template>
+      </OfficeErpDataTable>
       <OfficeErpPagination
         v-if="!loadError && total > 0"
         v-model:page="page"
@@ -486,7 +523,7 @@ watch([debouncedQuery, status, perPage, sort, direction], () => {
         :loading="loading"
         label="planos"
       />
-    </section>
+    </OfficeErpPanel>
 
     <OfficeErpPlanEditor
       v-model:open="editorOpen"

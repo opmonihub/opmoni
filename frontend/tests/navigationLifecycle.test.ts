@@ -9,7 +9,7 @@ import { createLatestRequestRunner } from '../app/utils/adminListFilters.ts'
 
 type Node = { tag?: string, text?: string, props: Record<string, unknown>, children: Node[], parent?: Node | null }
 
-function mount(component: Vue.Component, components: Record<string, Vue.Component> = {}) {
+function mount(component: Vue.Component, components: Record<string, Vue.Component> = {}, globals: Record<string, unknown> = {}) {
   const root: Node = { props: {}, children: [] }
   const renderer = Vue.createRenderer<Node, Node>({
     createElement: tag => ({ tag, props: {}, children: [] }),
@@ -35,6 +35,7 @@ function mount(component: Vue.Component, components: Record<string, Vue.Componen
     nextSibling: node => node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null
   })
   const app = renderer.createApp(component)
+  Object.assign(app.config.globalProperties, globals)
   for (const [name, implementation] of Object.entries(components)) app.component(name, implementation)
   app.mount(root)
   const walk = (node: Node): Node[] => [node, ...node.children.flatMap(walk)]
@@ -45,29 +46,63 @@ function passthrough(tag: string, slotNames = ['default']) {
   return Vue.defineComponent({ setup: (_props, { attrs, slots }) => () => Vue.h(tag, attrs, slotNames.flatMap(name => slots[name]?.())) })
 }
 
-test('one mounted commercial shell follows tab changes and history', async () => {
+test('one mounted commercial shell preserves its header and content across grouped navigation and history', async () => {
   const route = Vue.reactive({ path: '/gestao-erp/faturas' })
-  const component = compileVueComponent('pages/gestao-erp.vue', { useRoute: () => route, definePageMeta() {} })
+  const visits: string[] = []
+  const component = compileVueComponent('pages/gestao-erp.vue', {
+    useRoute: () => route,
+    definePageMeta() {}
+  })
   const mounted = mount(component, {
     UDashboardPanel: passthrough('panel', ['header', 'body']),
     UDashboardNavbar: passthrough('header'),
     UDashboardSidebarCollapse: passthrough('button'),
-    UDashboardToolbar: passthrough('toolbar', ['left']),
+    UDashboardToolbar: passthrough('toolbar', ['left', 'right']),
+    UTooltip: passthrough('tooltip'),
+    USelect: passthrough('select'),
     UNavigationMenu: Vue.defineComponent({
       props: ['items'],
       setup: props => () => Vue.h('nav', { current: (props.items as { active: boolean, to: string }[][]).flat().filter(item => item.active).map(item => item.to) })
     }),
+    UButton: passthrough('button'),
     NuxtPage: passthrough('content')
-  })
+  }, { navigateTo: (path: string) => { visits.push(path) } })
   try {
     const header = mounted.nodes().find(node => node.tag === 'header')
-    for (const path of ['/gestao-erp/assinaturas', '/gestao-erp/planos', '/gestao-erp/empresas', '/gestao-erp/recebimentos', '/gestao-erp/configuracoes', '/gestao-erp', '/gestao-erp/faturas/12', '/gestao-erp/assinaturas/31', '/gestao-erp/planos']) {
+    const content = mounted.nodes().find(node => node.tag === 'content')
+    assert.ok(header)
+    assert.ok(content)
+    const cases = [
+      { path: '/gestao-erp/assinaturas', section: '/gestao-erp/assinaturas' },
+      { path: '/gestao-erp/planos', section: '/gestao-erp/planos' },
+      { path: '/gestao-erp/empresas', section: '/gestao-erp/empresas' },
+      { path: '/gestao-erp/empresas/31', section: '/gestao-erp/empresas' },
+      { path: '/gestao-erp/recebimentos', section: '/gestao-erp/faturas', finance: '/gestao-erp/recebimentos' },
+      { path: '/gestao-erp/configuracoes', section: undefined },
+      { path: '/gestao-erp', section: '/gestao-erp' },
+      { path: '/gestao-erp/faturas/12', section: '/gestao-erp/faturas', finance: '/gestao-erp/faturas' },
+      { path: '/gestao-erp/recebimentos/12', section: '/gestao-erp/faturas', finance: '/gestao-erp/recebimentos' },
+      { path: '/gestao-erp/assinaturas/31', section: '/gestao-erp/assinaturas' },
+      { path: '/gestao-erp/planos', section: '/gestao-erp/planos' }
+    ]
+    for (const { path } of cases) {
       route.path = path
       await Vue.nextTick()
-      const owner = path.replace(/\/(?:12|31)$/, '')
-      assert.deepEqual(mounted.nodes().find(node => node.tag === 'nav')?.props.current, [owner], path)
-      assert.equal(mounted.nodes().find(node => node.tag === 'header'), header)
+      const primaryNavigation = mounted.nodes().find(node => node.tag === 'nav' && node.props['aria-label'] === 'Navegação comercial ERP')
+      const financialNavigation = mounted.nodes().find(node => node.tag === 'nav' && node.props['aria-label'] === 'Navegação financeira ERP')
+      const primarySelect = mounted.nodes().find(node => node.tag === 'select' && node.props['aria-label'] === 'Seção da gestão ERP')
+      const financialSelect = mounted.nodes().find(node => node.tag === 'select' && node.props['aria-label'] === 'Seção financeira ERP')
+      assert.equal(primaryNavigation, undefined, path)
+      assert.equal(primarySelect, undefined, path)
+      assert.equal(financialNavigation, undefined, path)
+      assert.equal(financialSelect, undefined, path)
+      assert.equal(mounted.nodes().find(node => node.props['aria-label'] === 'Configurações da gestão ERP'), undefined, path)
+      assert.equal(mounted.nodes().find(node => node.tag === 'header'), header, path)
+      assert.equal(mounted.nodes().find(node => node.tag === 'content'), content, path)
     }
+    assert.deepEqual(visits, [], 'the shell does not initiate competing local navigation')
+    assert.equal(mounted.nodes().filter(node => node.tag === 'panel').length, 1)
+    assert.equal(mounted.nodes().filter(node => node.tag === 'header').length, 1)
   } finally { mounted.unmount() }
 })
 
@@ -82,6 +117,7 @@ test('settings query and anchor changes retain the mounted editor', async () => 
     UDashboardPanel: passthrough('panel', ['header', 'body']),
     UDashboardNavbar: passthrough('header'),
     UDashboardSidebarCollapse: passthrough('button'),
+    UDashboardSidebarToggle: passthrough('button'),
     ErpWorkspaceDestinationToolbar: passthrough('toolbar'),
     NuxtPage: Vue.defineComponent({
       setup() {
@@ -230,7 +266,8 @@ test('adjacent settings updates preserve a dirty company field and its named val
   const wrapper = Vue.defineComponent({ setup: () => () => Vue.h(component, { title: 'Empresa', fields: [{ key: 'razao_social', label: 'Razão social' }, { key: 'cst_pis_padrao', label: 'PIS', type: 'code' }] }) })
   const mounted = mount(wrapper, {
     UForm: passthrough('form'), UPageCard: passthrough('card'), UButton: passthrough('button'),
-    UFormField: passthrough('field'), UInput: passthrough('input'), USeparator: passthrough('hr'), UAlert: passthrough('alert')
+    UFormField: passthrough('field'), UInput: passthrough('input'), UCheckbox: passthrough('checkbox'),
+    USelect: passthrough('select'), USeparator: passthrough('hr'), UAlert: passthrough('alert')
   })
   try {
     const nameInput = () => mounted.nodes().filter(node => node.tag === 'input')[0]!

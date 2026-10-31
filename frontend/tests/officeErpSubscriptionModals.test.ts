@@ -106,6 +106,12 @@ function component(path: string, props: Record<string, unknown>) {
       return () => Vue.h('span', {}, context.slots.default?.())
     }
   })
+  app.component('UForm', {
+    emits: ['submit'],
+    setup(_props, context) {
+      return () => Vue.h('form', { ...context.attrs, onSubmit: () => context.emit('submit', {}) }, context.slots.default?.())
+    }
+  })
   app.component('UFormField', {
     setup(_fieldProps, context) {
       return () => Vue.h('label', {}, context.slots.default?.())
@@ -176,7 +182,7 @@ test('subscription modal shows server terms and emits a full revision amendment 
   ;(price!.props.onInput as (event: Event) => void)({ target: { value: '135,75' } } as unknown as Event)
   const submit = page.nodes().find(node => node.tag === 'button' && text(node).includes('Agendar alteração'))
   assert.ok(submit)
-  ;(submit!.props.onClick as () => void)()
+  ;(page.nodes().find(node => node.tag === 'form' && node.props.id === submit!.props.form)!.props.onSubmit as () => void)()
   await Vue.nextTick()
   assert.deepEqual(page.events.at(-1), {
     name: 'command',
@@ -238,7 +244,7 @@ test('subscription cancellation emits only after a required reason and binds to 
   await Vue.nextTick()
   const confirm = page.nodes().find(node => node.tag === 'button' && text(node).includes('Confirmar cancelamento'))
   assert.ok(confirm)
-  ;(confirm!.props.onClick as () => void)()
+  ;(page.nodes().find(node => node.tag === 'form' && node.props.id === confirm!.props.form)!.props.onSubmit as () => void)()
   await Vue.nextTick()
   assert.equal(page.events.some(event => event.name === 'command'), false)
   assert.match(page.content(), /Informe o motivo para continuar/)
@@ -246,7 +252,7 @@ test('subscription cancellation emits only after a required reason and binds to 
   assert.ok(reason)
   ;(reason!.props.onInput as (event: Event) => void)({ target: { value: 'Encerramento solicitado pelo escritório' } } as unknown as Event)
   await Vue.nextTick()
-  ;(page.nodes().find(node => node.tag === 'button' && text(node).includes('Confirmar cancelamento'))!.props.onClick as () => void)()
+  ;(page.nodes().find(node => node.tag === 'form' && node.props.id === 'office-erp-subscription-action')!.props.onSubmit as () => void)()
   assert.deepEqual(page.events.at(-1), {
     name: 'command',
     payload: { contractId: 17, companyId: 4, action: 'contract.cancel', body: { mode: 'period_end', reason: 'Encerramento solicitado pelo escritório' } }
@@ -277,7 +283,7 @@ test('module modal keeps current and pending snapshots distinct and submits the 
   ;(mdfe!.props.onChange as (event: Event) => void)({ target: { checked: true } } as unknown as Event)
   const submit = page.nodes().find(node => node.tag === 'button' && text(node).includes('Agendar alterações'))
   assert.ok(submit)
-  ;(submit!.props.onClick as () => void)()
+  ;(page.nodes().find(node => node.tag === 'form' && node.props.id === submit!.props.form)!.props.onSubmit as () => void)()
   assert.deepEqual(page.events.at(-1), {
     name: 'submit',
     payload: {

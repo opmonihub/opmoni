@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatTaxId } from '~/utils/taxId'
-import type { OfficeErpCommandResult, OfficeErpCompany, OfficeErpCompanyProfile } from '#shared/types/officeErpCommercial'
+import { focusFormError } from '~/utils/formPresentation'
+import type { ContextToken, OfficeErpCommandResult, OfficeErpCompany, OfficeErpCompanyProfile } from '#shared/types/officeErpCommercial'
 import { formatOfficeErpMoney, officeErpModuleOptions } from '#shared/utils/officeErpCommercial'
 import { onBeforeUnmount, onMounted } from 'vue'
 import { apiErrorMessage } from '~/composables/useApiError'
@@ -18,13 +19,24 @@ const { user, currentAccount } = useAuth()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const companyId = computed(() => typeof route.params.companyId === 'string' && /^[1-9]\d{0,14}$/.test(route.params.companyId) ? route.params.companyId : '')
 const company = ref<OfficeErpCompany | null>(null)
-const baseline = ref<OfficeErpCompanyProfile | null>(null)
-const draft = reactive<OfficeErpCompanyProfile>({ name: '', trade_name: null, tax_regime: 'other', contact_person: null, email: null, phone: null, whatsapp: null, street_type: null, street: null, address_number: null, address_complement: null, district: null, postal_code: null, city: null, state: null, ie: null })
-const profileVersion = ref('')
+const profile = computed(() => company.value?.profile ?? null)
+const inspectionOpen = ref(false)
+const companyReadContext = ref<ContextToken | null>(null)
+interface CompanyRevision {
+  id?: number
+  revision_number?: number
+  price: string
+  currency: 'BRL'
+  interval_months: number
+  due_in_days: number
+  module_keys: string[]
+  service_period_start: string | null
+  service_period_end: string | null
+}
 interface CompanySubscriptionDetail {
   company: { id: number, name: string }
   subscription: { id: number, status: string, erp_plan_id: number | null, erp_plan: { id: number, name: string } | null } | null
-  current_contract: { id: number, agreement_status: string, current_revision: { id?: number, revision_number?: number, price: string, interval_months: number, due_in_days: number, module_keys: string[] } | null, pending_revision: { id?: number, revision_number: number, service_period_start: string | null, price: string, interval_months: number, due_in_days: number, module_keys: string[] } | null, service_anchor_on: string | null, next_billing_on: string | null, cancel_effective_on: string | null, manual_hold: boolean, invoice_ids?: number[], balance?: { outstanding: string, invoice_count: number } } | null
+  current_contract: { id: number, agreement_status: string, current_revision: CompanyRevision | null, pending_revision: CompanyRevision | null, billing_timezone: string, service_anchor_on: string | null, next_billing_on: string | null, cancel_effective_on: string | null, manual_hold: boolean, invoice_ids?: number[], balance?: { outstanding: string, invoice_count: number } } | null
   trial: { ends_at: string, situation: string } | null
   allocation: unknown
   balance: { outstanding: string, invoice_count: number } | null
@@ -66,6 +78,11 @@ const managementOpen = ref(false)
 const modulesOpen = ref(false)
 const managementSubmitting = ref(false)
 const managementError = ref('')
+const managementFieldErrors = ref<Record<string, string[]>>({})
+const ownerFieldErrors = ref<Record<string, string[]>>({})
+watch(ownerFieldErrors, () => {
+  void focusFormError(undefined, 'office-erp-owner-setup')
+})
 const subscriptionNotice = ref('')
 const ownerName = ref('')
 const ownerEmail = ref('')
@@ -75,8 +92,6 @@ const ownerInvite = ref<{ invitation_id: number, status: string, expires_at: str
 const loading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
-const formError = ref('')
-const profileFieldErrors = ref<Record<string, string[]>>({})
 const notice = ref('')
 const confirmedEmpty = ref(false)
 let generation = 0
@@ -84,9 +99,19 @@ let lifecycleGeneration = 0
 let mounted = false
 const identityStamp = useOfficeErpReadIdentity(() => [user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null, companyId.value], () => context.capabilities.value?.capability_key)
 const reads = useOfficeErpReads(identityStamp)
-const sections = ['subscription', 'members', 'invoices', 'history'] as const
-type Section = typeof sections[number] | 'profile'
-const activeSection = computed<Section>(() => route.query.secao === 'profile' ? 'profile' : sections.find(section => section === route.query.secao) ?? 'subscription')
+const sections = ['company', 'subscription', 'members', 'invoices', 'history'] as const
+type Section = typeof sections[number]
+const activeSection = computed<Section>(() => route.query.secao === 'profile' ? 'company' : sections.find(section => section === route.query.secao) ?? 'subscription')
+function sectionLocation(section: Section) {
+  const query = { ...route.query }
+  if (section === 'subscription') delete query.secao
+  else query.secao = section
+  return { path: `/gestao-erp/assinaturas/empresas/${companyId.value}`, query }
+}
+const sectionItems = computed(() => [
+  { id: 'company', label: 'Empresa' }, { id: 'subscription', label: 'Assinatura' },
+  { id: 'members', label: 'Usuários e acessos' }, { id: 'invoices', label: 'Faturas' }, { id: 'history', label: 'Histórico' }
+].map(item => ({ ...item, value: item.id, active: activeSection.value === item.id, to: sectionLocation(item.id as Section) })))
 const moduleKeysAvailable = computed(() => context.capabilities.value?.allowance?.module_keys ?? [])
 const managementCapabilities = computed(() => ({
   can_manage_lifecycle: subscription.value?.action_capabilities.can_manage_lifecycle === true,
@@ -95,21 +120,55 @@ const managementCapabilities = computed(() => ({
   can_suspend: subscription.value?.action_capabilities.can_suspend === true,
   can_resume: subscription.value?.action_capabilities.can_resume === true
 }))
-const hasChanges = computed(() => !!baseline.value && Object.keys(draft).some(key => draft[key as keyof OfficeErpCompanyProfile] !== baseline.value![key as keyof OfficeErpCompanyProfile]))
-const profileFields: Array<{ key: keyof OfficeErpCompanyProfile, label: string, type?: string, wide?: boolean }> = [
-  { key: 'name', label: 'Razão social', wide: true }, { key: 'trade_name', label: 'Nome fantasia', wide: true },
-  { key: 'tax_regime', label: 'Regime tributário' }, { key: 'ie', label: 'Inscrição estadual' },
-  { key: 'contact_person', label: 'Pessoa de contato' }, { key: 'email', label: 'E-mail', type: 'email' },
-  { key: 'phone', label: 'Telefone', type: 'tel' }, { key: 'whatsapp', label: 'WhatsApp', type: 'tel' },
-  { key: 'street_type', label: 'Tipo de logradouro' }, { key: 'street', label: 'Logradouro', wide: true },
-  { key: 'address_number', label: 'Número' }, { key: 'address_complement', label: 'Complemento' },
-  { key: 'district', label: 'Bairro' }, { key: 'postal_code', label: 'CEP' },
-  { key: 'city', label: 'Município' }, { key: 'state', label: 'UF' }
-]
-
-function assignProfile(value: OfficeErpCompanyProfile) {
-  baseline.value = structuredClone(value)
-  Object.assign(draft, structuredClone(value))
+const taxRegimeLabels: Record<string, string> = { mei: 'MEI', simple_national: 'Simples Nacional', presumed_profit: 'Lucro presumido', actual_profit: 'Lucro real', other: 'Outro' }
+const companyFactSections = computed(() => [
+  { title: 'Dados cadastrais', facts: [
+    { label: 'Razão social', value: profile.value?.name }, { label: 'Nome fantasia', value: profile.value?.trade_name },
+    { label: 'CNPJ', value: company.value ? formatTaxId(company.value.cnpj) : null },
+    { label: 'Cadastro no ERP', value: company.value ? date(company.value.registered_at) : null },
+    { label: 'Regime tributário', value: profile.value?.tax_regime ? taxRegimeLabels[profile.value.tax_regime] : null },
+    { label: 'Inscrição estadual', value: profile.value?.ie }
+  ] },
+  { title: 'Contato comercial', facts: [
+    { label: 'Pessoa de contato', value: profile.value?.contact_person }, { label: 'E-mail', value: profile.value?.email },
+    { label: 'Telefone', value: profile.value?.phone }, { label: 'WhatsApp', value: profile.value?.whatsapp }
+  ] },
+  { title: 'Endereço cadastral', facts: [
+    { label: 'Logradouro', value: [profile.value?.street_type, profile.value?.street].filter(Boolean).join(' ') },
+    { label: 'Número', value: profile.value?.address_number }, { label: 'Complemento', value: profile.value?.address_complement },
+    { label: 'Bairro', value: profile.value?.district }, { label: 'CEP', value: profile.value?.postal_code },
+    { label: 'Município', value: profile.value?.city }, { label: 'UF', value: profile.value?.state }
+  ] }
+])
+const subscriptionStatusLabel = computed(() => ({ active: 'Ativa', pending: 'Pendente', suspended: 'Suspensa', past_due: 'Em atraso', canceled: 'Cancelada', trialing: 'Em teste', trial_expired: 'Teste encerrado' } as Record<string, string>)[subscription.value?.subscription?.status ?? ''] ?? 'Situação indisponível')
+const subscriptionFacts = computed(() => {
+  const contract = subscription.value?.current_contract
+  if (!contract) return []
+  const revision = contract.current_revision
+  return [
+    { label: 'Plano', value: subscription.value?.subscription?.erp_plan?.name ?? 'Plano não informado' },
+    { label: 'Situação do contrato', value: officeErpContractStatusLabel(contract.agreement_status) },
+    ...(subscription.value?.subscription ? [{ label: 'Situação da assinatura', value: subscriptionStatusLabel.value }] : []),
+    ...(revision
+      ? [
+          { label: 'Valor por período', value: formatOfficeErpMoney(revision.price) },
+          { label: 'Periodicidade', value: intervalLabel(revision.interval_months) },
+          { label: 'Prazo de pagamento', value: `${revision.due_in_days} dias` },
+          ...(revision.currency ? [{ label: 'Moeda da cobrança', value: revision.currency }] : []),
+          ...(revision.service_period_start ? [{ label: 'Início do período', value: date(revision.service_period_start) }] : []),
+          ...(revision.service_period_end ? [{ label: 'Fim do período', value: date(revision.service_period_end) }] : [])
+        ]
+      : []),
+    ...(subscription.value?.balance ? [{ label: 'Saldo em aberto', value: formatOfficeErpMoney(subscription.value.balance.outstanding) }] : []),
+    ...(contract.billing_timezone ? [{ label: 'Fuso da cobrança', value: contract.billing_timezone }] : []),
+    ...(contract.service_anchor_on ? [{ label: 'Início do serviço', value: date(contract.service_anchor_on) }] : []),
+    ...(contract.next_billing_on ? [{ label: 'Próxima cobrança', value: date(contract.next_billing_on) }] : []),
+    ...(contract.cancel_effective_on ? [{ label: 'Cancelamento efetivo', value: date(contract.cancel_effective_on) }] : [])
+  ]
+})
+function profileUpdated(updated?: OfficeErpCompany & { profile: OfficeErpCompanyProfile, profile_version: string }) {
+  if (!mounted || !company.value || updated?.id !== company.value.id || String(updated.id) !== companyId.value || !companyReadContext.value || !context.isCurrent(companyReadContext.value)) return
+  company.value = updated
 }
 function clearCompanyDetailState() {
   generation++
@@ -121,6 +180,8 @@ function clearCompanyDetailState() {
   modulesOpen.value = false
   managementSubmitting.value = false
   managementError.value = ''
+  managementFieldErrors.value = {}
+  ownerFieldErrors.value = {}
   subscriptionNotice.value = ''
   ownerInvite.value = null
   ownerName.value = ''
@@ -128,9 +189,8 @@ function clearCompanyDetailState() {
   ownerError.value = ''
   ownerLoading.value = false
   saving.value = false
-  baseline.value = null
-  profileVersion.value = ''
-  Object.assign(draft, { name: '', trade_name: null, tax_regime: 'other', contact_person: null, email: null, phone: null, whatsapp: null, street_type: null, street: null, address_number: null, address_complement: null, district: null, postal_code: null, city: null, state: null, ie: null })
+  inspectionOpen.value = false
+  companyReadContext.value = null
   companyContracts.value = []
   contractHistoryTotal.value = 0
   contractHistoryLoading.value = false
@@ -143,8 +203,6 @@ function clearCompanyDetailState() {
   subscriptionLoading.value = false
   subscriptionError.value = ''
   loadError.value = ''
-  formError.value = ''
-  profileFieldErrors.value = {}
   notice.value = ''
   confirmedEmpty.value = false
 }
@@ -168,10 +226,7 @@ function openModuleManagement() {
   modulesOpen.value = true
 }
 function setSection(section: Section) {
-  const query = { ...route.query }
-  if (section === 'subscription') delete query.secao
-  else query.secao = section
-  void router.replace({ query })
+  void router.replace(sectionLocation(section))
 }
 async function assignmentConfirmed(result: { company_id: number, contract_id: number }) {
   const targetCompanyId = company.value?.id
@@ -179,26 +234,6 @@ async function assignmentConfirmed(result: { company_id: number, contract_id: nu
   setSection('subscription')
   await loadCompany()
 }
-function changeSet(): Partial<OfficeErpCompanyProfile> {
-  const changes: Partial<OfficeErpCompanyProfile> = {}
-  for (const field of Object.keys(draft) as Array<keyof OfficeErpCompanyProfile>) {
-    const value = draft[field]
-    const normalized = typeof value === 'string' && value.trim() === '' ? null : value
-    if (normalized !== baseline.value?.[field]) Object.assign(changes, { [field]: normalized })
-  }
-  return changes
-}
-function updateProfileField(key: keyof OfficeErpCompanyProfile, value: string | number | null) {
-  profileFieldErrors.value = Object.fromEntries(Object.entries(profileFieldErrors.value).filter(([field]) => field !== key))
-  if (key === 'tax_regime') return
-  Object.assign(draft, { [key]: value === '' ? null : value })
-}
-function failureCode(error: unknown) {
-  if (!error || typeof error !== 'object') return ''
-  const candidate = error as { data?: { code?: unknown, message?: unknown }, response?: { _data?: { code?: unknown, message?: unknown } } }
-  return String(candidate.data?.code ?? candidate.response?._data?.code ?? '')
-}
-
 async function loadCompany() {
   if (route.path.includes('/membros')) return
   if (!companyId.value) {
@@ -221,10 +256,9 @@ async function loadCompany() {
     const token = context.capture()
     const response = await api<{ data: OfficeErpCompany & { profile: OfficeErpCompanyProfile, profile_version: string } }>(`/erp-commercial/companies/${companyId.value}`, { signal: read.signal })
     if (!read.current() || request !== generation || identity !== identityStamp.value || !context.isCurrent(token)) return
-    if (!response?.data?.profile || !/^[a-f\d]{64}$/i.test(response.data.profile_version)) throw new Error('Os dados de perfil da empresa estão incompletos.')
+    if (response?.data?.id !== Number(companyId.value) || !response.data.profile || !/^[a-f\d]{64}$/i.test(response.data.profile_version)) throw new Error('Os dados de perfil da empresa estão incompletos.')
     company.value = response.data
-    profileVersion.value = response.data.profile_version
-    assignProfile(response.data.profile)
+    companyReadContext.value = token
     confirmedEmpty.value = false
     void loadSubscription()
   } catch (error) {
@@ -344,6 +378,8 @@ async function runManagementCommand(intent: SubscriptionManagementIntent) {
   else path += '/cancel'
 
   managementError.value = ''
+  managementFieldErrors.value = {}
+  ownerFieldErrors.value = {}
   subscriptionNotice.value = ''
   managementSubmitting.value = true
   try {
@@ -358,6 +394,7 @@ async function runManagementCommand(intent: SubscriptionManagementIntent) {
     } else if (result.status === 'unknown') {
       managementError.value = `O resultado ainda não foi confirmado. Recupere a operação ${result.key} antes de tentar outra alteração.`
     } else if (result.status === 'failed') {
+      managementFieldErrors.value = result.failure.errors ?? {}
       managementError.value = result.failure.message
     }
   } finally {
@@ -391,6 +428,7 @@ async function recoverManagement(key: string) {
     } else if (result.status === 'unknown') {
       managementError.value = 'A operação ainda não foi confirmada. Consulte novamente antes de reenviar.'
     } else if (result.status === 'failed') {
+      managementFieldErrors.value = result.failure.errors ?? {}
       managementError.value = result.failure.message
     } else {
       managementError.value = 'O contexto comercial mudou. Consulte os dados atuais antes de continuar.'
@@ -403,7 +441,14 @@ async function recoverManagement(key: string) {
 
 async function inviteOwner() {
   const contractId = subscription.value?.current_contract?.id ?? company.value?.current_contract_id
-  if (!contractId || !company.value || subscription.value?.company.id !== company.value.id || ownerName.value.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.value.trim()) || command.pending.value) return
+  if (!contractId || !company.value || subscription.value?.company.id !== company.value.id || ownerLoading.value || command.pending.value) return
+  ownerFieldErrors.value = {}
+  if (ownerName.value.trim().length < 2) ownerFieldErrors.value['owner.full_name'] = ['Informe o nome do responsável.']
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.value.trim())) ownerFieldErrors.value['owner.email'] = ['Informe um e-mail válido.']
+  if (Object.keys(ownerFieldErrors.value).length) {
+    void focusFormError(undefined, 'office-erp-owner-setup')
+    return
+  }
   ownerLoading.value = true
   ownerError.value = ''
   const identity = identityStamp.value
@@ -415,8 +460,10 @@ async function inviteOwner() {
     if (!mounted || lifecycle !== lifecycleGeneration || route.path.includes('/membros') || identity !== identityStamp.value || companyId.value !== String(targetCompanyId) || subscription.value?.company.id !== targetCompanyId || subscription.value.current_contract?.id !== targetContractId) return
     if (result.status === 'confirmed') ownerInvite.value = { ...result.data, url: safeOwnerSetupUrl(result.data.url) ?? undefined }
     else if (result.status === 'unknown') ownerError.value = `O preparo do acesso não foi confirmado. Recupere a operação ${result.key}.`
-    else if (result.status === 'failed') ownerError.value = result.failure.message
-    else ownerError.value = 'O contexto do escritório mudou. A operação não foi repetida.'
+    else if (result.status === 'failed') {
+      ownerFieldErrors.value = result.failure.errors ?? {}
+      ownerError.value = result.failure.message
+    } else ownerError.value = 'O contexto do escritório mudou. A operação não foi repetida.'
   } finally { if (mounted && lifecycle === lifecycleGeneration && identity === identityStamp.value && companyId.value === String(targetCompanyId)) ownerLoading.value = false }
 }
 function safeOwnerSetupUrl(value: unknown): string | null {
@@ -437,78 +484,6 @@ async function copyOwnerSetupLink() {
   notice.value = 'Link de configuração copiado. Ele fica disponível somente nesta tela.'
 }
 
-async function saveProfile() {
-  if (!company.value || !profileVersion.value || saving.value || command.pending.value) return
-  const targetCompanyId = company.value.id
-  const identity = identityStamp.value
-  const lifecycle = lifecycleGeneration
-  formError.value = ''
-  profileFieldErrors.value = {}
-  notice.value = ''
-  const changes = changeSet()
-  if (!Object.keys(changes).length) return
-  if (Object.hasOwn(changes, 'name') && (typeof changes.name !== 'string' || changes.name.trim().length < 10 || changes.name.trim().length > 255)) {
-    formError.value = 'A razão social deve ter entre 10 e 255 caracteres.'
-    return
-  }
-  saving.value = true
-  try {
-    const body = { expected_profile_version: profileVersion.value, ...changes }
-    const result = await command.execute<OfficeErpCompany & { profile: OfficeErpCompanyProfile, profile_version: string }>('company.profile.update', `/erp-commercial/companies/${targetCompanyId}`, body, 'PATCH') as OfficeErpCommandResult<OfficeErpCompany & { profile: OfficeErpCompanyProfile, profile_version: string }>
-    if (!mounted || lifecycle !== lifecycleGeneration || route.path.includes('/membros') || identity !== identityStamp.value || companyId.value !== String(targetCompanyId)) return
-    if (result.status === 'stale') {
-      formError.value = 'O contexto da empresa mudou. Revise a conta selecionada antes de salvar.'
-      return
-    }
-    if (result.status === 'unknown') {
-      notice.value = `O resultado não foi confirmado. Recupere a operação ${result.key} antes de enviar outra vez.`
-      return
-    }
-    if (result.status === 'failed') {
-      profileFieldErrors.value = result.failure.errors ?? {}
-      if (result.failure.http_status === 409 || result.failure.code === 'profile_changed') formError.value = 'Os dados foram alterados em outra sessão. Seu rascunho foi preservado; atualize a empresa antes de reaplicar as mudanças.'
-      else formError.value = result.failure.message || 'Não foi possível salvar os dados da empresa.'
-      return
-    }
-    if (result.data?.id !== targetCompanyId || !result.data.profile || !/^[a-f\d]{64}$/i.test(result.data.profile_version)) {
-      notice.value = 'A operação foi confirmada. Atualize a empresa selecionada para conferir o estado atual.'
-      await loadCompany()
-      return
-    }
-    company.value = result.data
-    profileVersion.value = result.data.profile_version
-    assignProfile(result.data.profile)
-    notice.value = 'Dados da empresa atualizados.'
-  } catch (error) {
-    if (!mounted || lifecycle !== lifecycleGeneration || route.path.includes('/membros') || identity !== identityStamp.value || companyId.value !== String(targetCompanyId)) return
-    formError.value = failureCode(error) === 'profile_changed' ? 'Os dados foram alterados em outra sessão. Seu rascunho foi preservado; atualize a empresa antes de reaplicar as mudanças.' : apiErrorMessage(error) ?? 'Não foi possível salvar os dados da empresa.'
-  } finally { if (mounted && lifecycle === lifecycleGeneration && identity === identityStamp.value && companyId.value === String(targetCompanyId)) saving.value = false }
-}
-async function recoverProfile() {
-  const key = command.recoveryKey.value
-  const targetCompanyId = company.value?.id
-  const identity = identityStamp.value
-  const lifecycle = lifecycleGeneration
-  if (!key || saving.value || !targetCompanyId) return
-  saving.value = true
-  try {
-    const result = await command.recover<unknown>(key)
-    if (!mounted || lifecycle !== lifecycleGeneration || route.path.includes('/membros') || identity !== identityStamp.value || companyId.value !== String(targetCompanyId)) return
-    if (result.status === 'confirmed') {
-      const recovered = result.data as (OfficeErpCompany & { profile?: OfficeErpCompanyProfile, profile_version?: string }) | null
-      if (recovered?.id === targetCompanyId && recovered.profile && typeof recovered.profile_version === 'string' && /^[a-f\d]{64}$/i.test(recovered.profile_version)) {
-        company.value = recovered
-        profileVersion.value = recovered.profile_version
-        assignProfile(recovered.profile)
-        notice.value = 'Alteração confirmada e recuperada.'
-      } else {
-        notice.value = 'A operação foi confirmada. Atualize a empresa selecionada para conferir os dados atuais.'
-        await loadCompany()
-      }
-    } else if (result.status === 'unknown') notice.value = `A operação ${key} ainda não está disponível para confirmação.`
-    else formError.value = result.status === 'failed' ? result.failure.message : 'A operação não pertence ao contexto atual.'
-  } finally { if (mounted && lifecycle === lifecycleGeneration && identity === identityStamp.value && companyId.value === String(targetCompanyId)) saving.value = false }
-}
 async function recoverCommercial() {
   const key = command.recoveryKey.value
   if (!key || saving.value || ownerLoading.value) return
@@ -564,10 +539,19 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="!route.path.includes('/membros')" class="flex min-w-0 flex-col gap-5">
-    <UBreadcrumb :items="[{ label: 'Assinaturas', to: '/gestao-erp/assinaturas' }, { label: company?.name ?? 'Empresa' }]" :ui="{ link: 'text-xs', item: 'min-w-0' }" />
+    <UButton
+      to="/gestao-erp/assinaturas"
+      color="neutral"
+      variant="ghost"
+      icon="i-lucide-arrow-left"
+      size="sm"
+      class="-ms-2.5 w-fit"
+    >
+      Voltar para assinaturas
+    </UButton>
     <UPageCard
       :title="company?.name ?? 'Empresa'"
-      :description="company ? `${baseline?.name ?? company.name} · ${formatTaxId(company.cnpj)}` : 'Consulta do cadastro e da situação comercial.'"
+      :description="company ? [formatTaxId(company.cnpj), profile?.trade_name && profile.trade_name !== company.name ? profile.trade_name : null].filter(Boolean).join(' · ') : 'Consulta do cadastro e da situação comercial.'"
       icon="i-lucide-building-2"
       variant="naked"
       orientation="horizontal"
@@ -581,6 +565,11 @@ onBeforeUnmount(() => {
         description: 'text-xs'
       }"
     >
+      <template #title>
+        <h1 class="text-base font-semibold wrap-anywhere text-highlighted">
+          {{ company?.name ?? 'Empresa' }}
+        </h1>
+      </template>
       <div class="flex flex-wrap justify-end gap-2">
         <UBadge v-if="subscription?.current_contract" :color="subscription.current_contract.agreement_status === 'effective' ? 'success' : subscription.current_contract.agreement_status === 'canceled' ? 'neutral' : 'warning'" variant="subtle">
           {{ officeErpContractStatusLabel(subscription.current_contract.agreement_status) }}
@@ -635,95 +624,159 @@ onBeforeUnmount(() => {
             Adicionar assinatura
           </UButton>
         </div>
-        <UDashboardToolbar class="overflow-visible px-0 sm:px-0">
+        <UDashboardToolbar class="overflow-visible px-0 sm:px-0" :ui="{ root: 'min-w-0 border-b border-default pb-2', left: 'min-w-0 flex-1' }">
           <USelect
             :model-value="activeSection"
-            :items="[{ label: 'Assinatura', value: 'subscription' }, { label: 'Usuários e acessos', value: 'members' }, { label: 'Faturas', value: 'invoices' }, { label: 'Histórico', value: 'history' }]"
+            :items="sectionItems"
             aria-label="Seção da empresa"
-            class="w-full sm:hidden"
+            class="w-full xl:hidden"
             @update:model-value="value => setSection(value as Section)"
           />
           <UNavigationMenu
-            :items="[{ id: 'subscription', label: 'Assinatura' }, { id: 'members', label: 'Usuários e acessos' }, { id: 'invoices', label: 'Faturas' }, { id: 'history', label: 'Histórico' }].map(item => ({ label: item.label, active: activeSection === item.id, onSelect: () => setSection(item.id as Section) }))"
+            :items="sectionItems"
             highlight
             aria-label="Seções da empresa"
-            class="hidden min-w-0 flex-1 sm:flex"
+            class="hidden min-w-0 flex-1 xl:flex"
           />
         </UDashboardToolbar>
 
-        <section v-if="activeSection === 'profile'" aria-labelledby="company-profile-title" class="space-y-4">
-          <div>
-            <h2 id="company-profile-title" class="text-base font-semibold text-highlighted">
-              Perfil cadastral
-            </h2><p class="mt-1 text-sm text-muted">
-              Edite dados de contato e cadastro do escritório. CNPJ, identidade de usuários e configurações fiscais não podem ser alterados aqui.
-            </p>
-          </div>
-          <UAlert
-            v-if="formError"
-            color="error"
-            title="Revise os dados antes de salvar"
-            :description="formError"
-          />
-          <UAlert
-            v-if="notice || command.recoveryKey.value"
-            color="warning"
-            title="Estado da operação"
-            :description="notice || 'Há uma operação comercial sem confirmação. Consulte o resultado antes de iniciar outra alteração.'"
-          >
-            <template #actions>
-              <UButton
-                v-if="command.recoveryKey.value"
-                color="neutral"
-                variant="outline"
-                :loading="saving"
-                @click="recoverProfile"
-              >
-                Recuperar operação
-              </UButton>
-            </template>
-          </UAlert>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField
-              v-for="field in profileFields"
-              :key="field.key"
-              :label="field.label"
-              :name="field.key"
-              :error="profileFieldErrors[field.key]?.[0]"
-              :class="field.wide ? 'sm:col-span-2' : ''"
-            >
-              <USelect
-                v-if="field.key === 'tax_regime'"
-                v-model="draft.tax_regime"
-                :items="[{ label: 'MEI', value: 'mei' }, { label: 'Simples Nacional', value: 'simple_national' }, { label: 'Lucro presumido', value: 'presumed_profit' }, { label: 'Lucro real', value: 'actual_profit' }, { label: 'Outro', value: 'other' }]"
-                class="w-full"
-                @update:model-value="value => updateProfileField(field.key, value)"
-              />
-              <UInput
-                v-else
-                :model-value="draft[field.key] ?? ''"
-                :type="field.type ?? 'text'"
-                :maxlength="field.key === 'name' || field.key === 'trade_name' ? 255 : undefined"
-                :disabled="!company.capabilities.can_edit_profile"
-                :autocomplete="field.key === 'email' ? 'email' : field.key === 'phone' ? 'tel' : 'off'"
-                class="w-full"
-                @update:model-value="value => updateProfileField(field.key, value)"
-              />
-            </UFormField>
-          </div>
-          <div class="flex flex-wrap gap-2 border-t border-default pt-4">
+        <section v-if="activeSection === 'company'" aria-labelledby="company-overview-title" class="space-y-5">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="company-overview-title" class="text-base font-semibold text-highlighted">
+              Empresa e cadastro
+            </h2>
             <UButton
               color="neutral"
               variant="outline"
-              :disabled="!hasChanges || saving"
-              @click="baseline && assignProfile(baseline)"
+              :icon="company.capabilities.can_edit_profile ? 'i-lucide-pencil' : 'i-lucide-file-search'"
+              @click="inspectionOpen = true"
             >
-              Descartar alterações
-            </UButton>
-            <UButton :loading="saving" :disabled="!company.capabilities.can_edit_profile || !hasChanges || saving || command.pending.value" @click="saveProfile">
-              Salvar perfil
+              {{ company.capabilities.can_edit_profile ? 'Editar cadastro' : 'Ver cadastro' }}
             </UButton>
           </div>
+          <div class="space-y-4">
+            <UCard
+              v-for="group in companyFactSections"
+              :key="group.title"
+              :aria-label="group.title"
+              variant="subtle"
+              :ui="{ body: 'space-y-3 p-4 sm:p-5' }"
+            >
+              <h3 class="text-sm font-semibold text-highlighted">
+                {{ group.title }}
+              </h3>
+              <p v-if="group.title === 'Contato comercial'" class="text-xs text-muted">
+                Contato do cadastro do cliente no escritório; não identifica o proprietário da empresa.
+              </p>
+              <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+                <div v-for="fact in group.facts" :key="fact.label" class="min-w-0">
+                  <dt class="text-xs text-muted">
+                    {{ fact.label }}
+                  </dt>
+                  <dd class="mt-1 wrap-anywhere text-highlighted">
+                    {{ fact.value || 'Não informado' }}
+                  </dd>
+                </div>
+              </dl>
+            </UCard>
+          </div>
+          <UCard aria-label="Assinatura e cobrança" variant="subtle">
+            <template #header>
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-highlighted">
+                  Assinatura e cobrança
+                </h3>
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  :to="sectionLocation('subscription')"
+                >
+                  Ver assinatura
+                </UButton>
+              </div>
+            </template>
+            <UAlert
+              v-if="subscriptionError"
+              color="error"
+              title="Não foi possível carregar a assinatura"
+              :description="subscriptionError"
+            >
+              <template #actions>
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  :loading="subscriptionLoading"
+                  @click="loadSubscription"
+                >
+                  Tentar novamente
+                </UButton>
+              </template>
+            </UAlert>
+            <USkeleton v-else-if="subscriptionLoading && !subscription" class="h-24 w-full" />
+            <div v-else-if="subscription?.current_contract" class="space-y-4">
+              <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+                <div v-for="fact in subscriptionFacts" :key="fact.label" class="min-w-0">
+                  <dt class="text-xs text-muted">
+                    {{ fact.label }}
+                  </dt>
+                  <dd class="mt-1 wrap-anywhere text-highlighted">
+                    {{ fact.value }}
+                  </dd>
+                </div>
+              </dl>
+              <div v-if="subscription.current_contract.current_revision" class="space-y-2 border-t border-default pt-4">
+                <h4 class="text-xs font-medium text-muted">
+                  Módulos do contrato
+                </h4>
+                <div class="flex flex-wrap gap-2">
+                  <UBadge
+                    v-for="label in moduleLabels(subscription.current_contract.current_revision.module_keys)"
+                    :key="label"
+                    color="neutral"
+                    variant="subtle"
+                  >
+                    {{ label }}
+                  </UBadge>
+                  <span v-if="!subscription.current_contract.current_revision.module_keys.length" class="text-sm text-muted">Nenhum módulo habilitado.</span>
+                </div>
+              </div>
+              <UAlert
+                v-if="subscription.current_contract.pending_revision"
+                color="warning"
+                title="Alteração agendada"
+                :description="`Revisão ${subscription.current_contract.pending_revision.revision_number ?? '—'} · aplicação em ${date(subscription.current_contract.pending_revision.service_period_start ?? '')}. Os termos vigentes permanecem até a aplicação.`"
+              />
+              <p v-if="subscription.trial" class="text-sm text-muted">
+                {{ officeErpTrialStatusLabel(subscription.trial.situation) }} · término {{ date(subscription.trial.ends_at) }}
+              </p>
+            </div>
+            <UAlert
+              v-else-if="subscription"
+              color="neutral"
+              :title="company.capabilities.relationship === 'historical' ? 'Histórico comercial' : 'Sem assinatura'"
+              :description="company.capabilities.relationship === 'historical' ? 'Não há assinatura atual deste escritório para exibir. Consulte os contratos preservados no histórico.' : 'O cadastro da empresa não ocupa licença. A assinatura depende da confirmação de plano e termos.'"
+            />
+          </UCard>
+          <UCard aria-label="Usuários e acessos" variant="subtle" :ui="{ body: 'flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5' }">
+            <div>
+              <h3 class="text-sm font-semibold text-highlighted">
+                Usuários e acessos
+              </h3>
+              <p class="mt-1 text-xs text-muted">
+                {{ company.capabilities.can_manage_members ? 'Consulte as pessoas autorizadas e administre seus acessos nesta empresa.' : 'A gestão de usuários não está disponível para o vínculo atual com este escritório.' }}
+              </p>
+            </div>
+            <UButton
+              v-if="company.capabilities.can_manage_members"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-users-round"
+              :to="sectionLocation('members')"
+            >
+              Gerenciar usuários
+            </UButton>
+          </UCard>
         </section>
         <section v-else-if="activeSection === 'subscription'" class="space-y-4">
           <UAlert
@@ -966,21 +1019,40 @@ onBeforeUnmount(() => {
                     </UButton>
                   </template>
                 </UAlert>
-                <div class="grid gap-3">
-                  <UFormField label="Nome do responsável" required>
-                    <UInput v-model="ownerName" autocomplete="name" class="w-full" />
-                  </UFormField><UFormField label="E-mail do responsável" required>
-                    <UInput
-                      v-model="ownerEmail"
-                      type="email"
-                      autocomplete="email"
-                      class="w-full"
-                    />
-                  </UFormField>
-                </div>
-                <UButton :loading="ownerLoading" :disabled="ownerName.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.trim()) || command.pending.value" @click="inviteOwner">
-                  Preparar acesso do responsável
-                </UButton>
+                <UForm
+                  id="office-erp-owner-setup"
+                  :state="{ owner: { full_name: ownerName, email: ownerEmail } }"
+                  :disabled="ownerLoading || command.pending.value"
+                  class="space-y-3"
+                  @submit="inviteOwner"
+                  @error="event => focusFormError(event, 'office-erp-owner-setup')"
+                >
+                  <div class="grid gap-3">
+                    <UFormField
+                      name="owner.full_name"
+                      :error="ownerFieldErrors['owner.full_name']?.[0]"
+                      label="Nome do responsável"
+                      required
+                    >
+                      <UInput v-model="ownerName" autocomplete="name" class="w-full" />
+                    </UFormField><UFormField
+                      name="owner.email"
+                      :error="ownerFieldErrors['owner.email']?.[0]"
+                      label="E-mail do responsável"
+                      required
+                    >
+                      <UInput
+                        v-model="ownerEmail"
+                        type="email"
+                        autocomplete="email"
+                        class="w-full"
+                      />
+                    </UFormField>
+                  </div>
+                  <UButton type="submit" :loading="ownerLoading" :disabled="ownerLoading || command.pending.value">
+                    Preparar acesso do responsável
+                  </UButton>
+                </UForm>
               </aside>
               <aside v-else-if="subscription.current_contract" class="space-y-4 border-t border-default pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6">
                 <h3 class="text-sm font-semibold text-highlighted">
@@ -1016,9 +1088,9 @@ onBeforeUnmount(() => {
             variant="link"
             icon="i-lucide-history"
             class="px-0"
-            to="/gestao-erp/assinaturas/contratos"
+            :to="sectionLocation('history')"
           >
-            Ver contratos e histórico
+            Ver histórico
           </UButton>
         </section>
         <section v-else-if="activeSection === 'members'" class="space-y-4">
@@ -1159,18 +1231,14 @@ onBeforeUnmount(() => {
         </section>
       </template>
     </div>
-    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-default pt-5 text-xs text-muted">
-      <UButton
-        color="neutral"
-        variant="link"
-        icon="i-lucide-arrow-left"
-        size="xs"
-        to="/gestao-erp/assinaturas"
-      >
-        Voltar para assinaturas
-      </UButton>
-      <span>Empresa vinculada ao escritório selecionado</span>
-    </div>
+    <OfficeErpCompanyInspectionModal
+      v-if="company && companyReadContext"
+      v-model:open="inspectionOpen"
+      :company-id="company.id"
+      :initial-company="company"
+      :initial-context="companyReadContext"
+      @updated="profileUpdated"
+    />
     <OfficeErpCompanyAssignmentModal
       v-model:open="assignmentOpen"
       :company-id="company?.id ?? null"
@@ -1191,6 +1259,7 @@ onBeforeUnmount(() => {
       :capabilities="managementCapabilities"
       :pending="managementSubmitting"
       :error="managementError"
+      :field-errors="managementFieldErrors"
       :recovery-key="command.recoveryKey.value"
       @manage-modules="openModuleManagement"
       @command="runManagementCommand"
@@ -1208,6 +1277,7 @@ onBeforeUnmount(() => {
       :can-amend="managementCapabilities.can_amend_terms"
       :pending="managementSubmitting"
       :error="managementError"
+      :field-errors="managementFieldErrors"
       :recovery-key="command.recoveryKey.value"
       @submit="submitModuleTerms"
       @recover="recoverManagement"

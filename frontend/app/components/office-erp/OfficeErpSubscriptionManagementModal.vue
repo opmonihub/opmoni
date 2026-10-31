@@ -2,6 +2,7 @@
 import { computed, reactive, ref, toRef, watch } from 'vue'
 import { formatOfficeErpMoney, officeErpModuleOptions, parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
+import { focusFormError } from '~/utils/formPresentation'
 
 interface Revision {
   id?: number
@@ -61,12 +62,14 @@ const props = withDefaults(defineProps<{
   pending?: boolean
   error?: string | null
   recoveryKey?: string | null
+  fieldErrors?: Record<string, string[]>
 }>(), {
   pending: false,
   companyId: null,
   planName: 'Plano ERP',
   error: null,
-  recoveryKey: null
+  recoveryKey: null,
+  fieldErrors: () => ({})
 })
 
 const emit = defineEmits<{
@@ -100,6 +103,16 @@ const cancellationMode = ref<'immediate' | 'period_end'>('period_end')
 const action = ref<'suspend' | 'cancel' | ''>('')
 const actionReason = ref('')
 const localError = ref('')
+const localFieldErrors = ref<Record<string, string[]>>({})
+const formId = computed(() => action.value ? 'office-erp-subscription-action' : 'office-erp-subscription-terms')
+function invalid(name: string, message: string) {
+  localError.value = message
+  localFieldErrors.value = { [name]: [message] }
+  void focusFormError(undefined, formId.value)
+}
+watch(() => props.fieldErrors, (errors) => {
+  if (props.open && Object.keys(errors).length) void focusFormError(undefined, formId.value)
+})
 const discardOpen = ref(false)
 const initialDraft = ref('')
 const moduleNames = (keys: string[]) => keys.map(key => officeErpModuleOptions.find(option => option.value === key)?.label ?? key).join(', ') || 'Nenhum módulo habilitado'
@@ -148,6 +161,7 @@ watch(() => props.open, (open) => {
   draft.dueInDays = revision ? String(revision.due_in_days) : ''
   initialDraft.value = JSON.stringify(draft)
   localError.value = ''
+  localFieldErrors.value = {}
   action.value = ''
   actionReason.value = ''
   cancellationMode.value = 'period_end'
@@ -177,20 +191,21 @@ function confirmClose() {
 function scheduleTerms() {
   if (!canAmend.value || blocked.value || !props.contract || !baseRevision.value) return
   localError.value = ''
+  localFieldErrors.value = {}
   let price: string
   try {
     price = parseOfficeErpMoney(draft.price.trim())
   } catch {
-    localError.value = 'Informe o valor em reais com até duas casas decimais.'
+    invalid('price', 'Informe o valor em reais com até duas casas decimais.')
     return
   }
   const interval = Number(draft.intervalMonths)
   if (![1, 3, 6, 12].includes(interval)) {
-    localError.value = 'Selecione uma periodicidade válida.'
+    invalid('interval_months', 'Selecione uma periodicidade válida.')
     return
   }
   if (!/^\d{1,5}$/.test(draft.dueInDays) || Number(draft.dueInDays) > 65535) {
-    localError.value = 'Informe de 0 a 65.535 dias até o vencimento.'
+    invalid('due_in_days', 'Informe de 0 a 65.535 dias até o vencimento.')
     return
   }
   emit('command', {
@@ -211,14 +226,15 @@ function confirmAction() {
   if (!props.contract || blocked.value) return
   const reason = actionReason.value.trim()
   if (!reason) {
-    localError.value = 'Informe o motivo para continuar.'
+    invalid('reason', 'Informe o motivo para continuar.')
     return
   }
   if (reason.length > 2000) {
-    localError.value = 'O motivo deve ter até 2.000 caracteres.'
+    invalid('reason', 'O motivo deve ter até 2.000 caracteres.')
     return
   }
   localError.value = ''
+  localFieldErrors.value = {}
   if (action.value === 'suspend' && props.capabilities.can_suspend) {
     emit('command', { contractId: props.contract.id, companyId: props.companyId, action: 'contract.suspend', body: { reason } })
   } else if (action.value === 'cancel' && props.capabilities.can_cancel) {
@@ -406,7 +422,15 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
           </template>
         </UAlert>
 
-        <section v-if="canAmend && baseRevision" class="space-y-3 border-t border-default pt-4">
+        <UForm
+          v-if="canAmend && baseRevision"
+          id="office-erp-subscription-terms"
+          :state="draft"
+          :disabled="blocked"
+          class="space-y-3 border-t border-default pt-4"
+          @submit="scheduleTerms"
+          @error="event => focusFormError(event, 'office-erp-subscription-terms')"
+        >
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-semibold text-highlighted">
@@ -427,7 +451,12 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
             </UButton>
           </div>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <UFormField label="Valor por período (R$)" required>
+            <UFormField
+              name="price"
+              :error="localFieldErrors.price?.[0] ?? fieldErrors.price?.[0]"
+              label="Valor por período (R$)"
+              required
+            >
               <UInput
                 v-model="draft.price"
                 aria-label="Valor por período"
@@ -437,7 +466,12 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
                 :disabled="blocked"
               />
             </UFormField>
-            <UFormField label="Periodicidade" required>
+            <UFormField
+              name="interval_months"
+              :error="localFieldErrors.interval_months?.[0] ?? fieldErrors.interval_months?.[0]"
+              label="Periodicidade"
+              required
+            >
               <USelect
                 v-model="draft.intervalMonths"
                 aria-label="Periodicidade"
@@ -447,7 +481,12 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
                 :disabled="blocked"
               />
             </UFormField>
-            <UFormField label="Dias até o vencimento" required>
+            <UFormField
+              name="due_in_days"
+              :error="localFieldErrors.due_in_days?.[0] ?? fieldErrors.due_in_days?.[0]"
+              label="Dias até o vencimento"
+              required
+            >
               <UInput
                 v-model="draft.dueInDays"
                 aria-label="Dias até o vencimento"
@@ -460,7 +499,7 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
           <p class="text-xs text-muted">
             A edição conserva a seleção atual de módulos. Use “Gerenciar módulos” para alterar apenas esses acessos.
           </p>
-        </section>
+        </UForm>
 
         <section v-if="balance" class="grid grid-cols-1 gap-3 border-t border-default pt-4 sm:grid-cols-2">
           <div>
@@ -527,11 +566,25 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
               Cancelar assinatura
             </UButton>
           </div>
-          <div v-if="action" class="space-y-3 rounded-md border border-default p-3">
+          <UForm
+            v-if="action"
+            id="office-erp-subscription-action"
+            :state="{ reason: actionReason, mode: cancellationMode }"
+            :disabled="blocked"
+            class="space-y-3 rounded-md border border-default p-3"
+            @submit="confirmAction"
+            @error="event => focusFormError(event, 'office-erp-subscription-action')"
+          >
             <h4 class="text-sm font-medium text-highlighted">
               {{ action === 'cancel' ? 'Confirmar cancelamento' : 'Confirmar suspensão' }}
             </h4>
-            <UFormField v-if="action === 'cancel'" label="Quando cancelar" required>
+            <UFormField
+              v-if="action === 'cancel'"
+              name="mode"
+              :error="fieldErrors.mode?.[0]"
+              label="Quando cancelar"
+              required
+            >
               <USelect
                 v-model="cancellationMode"
                 :items="[{ label: 'No fim do período atual', value: 'period_end' }, { label: 'Imediatamente', value: 'immediate' }]"
@@ -540,7 +593,12 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
                 :disabled="blocked"
               />
             </UFormField>
-            <UFormField label="Motivo" required>
+            <UFormField
+              name="reason"
+              :error="localFieldErrors.reason?.[0] ?? fieldErrors.reason?.[0]"
+              label="Motivo"
+              required
+            >
               <UTextarea
                 v-model="actionReason"
                 :rows="3"
@@ -550,20 +608,7 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
                 :disabled="blocked"
               />
             </UFormField>
-            <div class="flex flex-wrap justify-end gap-2">
-              <UButton
-                color="neutral"
-                variant="outline"
-                :disabled="working"
-                @click="action = ''; localError = ''"
-              >
-                Voltar
-              </UButton>
-              <UButton :color="action === 'cancel' ? 'error' : 'warning'" :disabled="blocked" @click="confirmAction">
-                {{ action === 'cancel' ? 'Confirmar cancelamento' : 'Confirmar suspensão' }}
-              </UButton>
-            </div>
-          </div>
+          </UForm>
         </section>
 
         <UAlert
@@ -590,10 +635,29 @@ function openReasonAction(kind: 'suspend' | 'cancel') {
         :loading="pending"
         :disabled="blocked || !dirty"
         class="min-h-11 sm:min-h-0"
-        @click="scheduleTerms"
+        type="submit"
+        form="office-erp-subscription-terms"
       >
         Agendar alteração
       </UButton>
+      <template v-if="action">
+        <UButton
+          color="neutral"
+          variant="outline"
+          :disabled="working"
+          @click="action = ''; localError = ''; localFieldErrors = {}"
+        >
+          Voltar
+        </UButton>
+        <UButton
+          type="submit"
+          form="office-erp-subscription-action"
+          :color="action === 'cancel' ? 'error' : 'warning'"
+          :disabled="blocked"
+        >
+          {{ action === 'cancel' ? 'Confirmar cancelamento' : 'Confirmar suspensão' }}
+        </UButton>
+      </template>
     </template>
   </UModal>
 

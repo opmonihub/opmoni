@@ -2,6 +2,7 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { OfficeErpCommandResult, OfficeErpCompanyRegistrationOutcome, OfficeErpPortfolioClient, OfficeErpPortfolioClientListResponse } from '#shared/types/officeErpCommercial'
 import { canRegisterTypedCnpj } from '~/utils/taxId'
+import { focusFormError } from '~/utils/formPresentation'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
@@ -35,6 +36,9 @@ const confirmedEmpty = ref(false)
 const loadError = ref('')
 const formError = ref('')
 const fieldErrors = ref<Record<string, string[]>>({})
+watch(fieldErrors, () => {
+  void focusFormError(undefined, mode.value === 'portfolio' ? 'office-erp-register-portfolio' : 'office-erp-register-company')
+})
 const resultMessage = ref('')
 let readGeneration = 0
 let mutationGeneration = 0
@@ -188,7 +192,8 @@ async function register() {
       return
     }
   } else if (!canRegisterTypedCnpj(taxId.value)) {
-    formError.value = 'Informe um CNPJ válido com 14 caracteres.'
+    fieldErrors.value = { tax_id: ['Informe um CNPJ válido com 14 caracteres.'] }
+    formError.value = fieldErrors.value.tax_id![0]!
     return
   }
   submitting.value = true
@@ -209,7 +214,7 @@ async function register() {
       return
     }
     if (result.status === 'failed') {
-      fieldErrors.value = result.failure.errors ?? {}
+      fieldErrors.value = Object.fromEntries(Object.entries(result.failure.errors ?? {}).map(([field, messages]) => [field.replace(/^new_client\./, ''), messages]))
       formError.value = formatFailure(result.failure.code, result.failure.message)
       return
     }
@@ -319,7 +324,15 @@ function goBack() {
           description="A assinatura do escritório precisa estar ativa para registrar empresas. Atualize as condições da conta antes de tentar novamente."
         />
 
-        <section v-if="mode === 'portfolio'" aria-labelledby="portfolio-title" class="space-y-4">
+        <UForm
+          v-if="mode === 'portfolio'"
+          id="office-erp-register-portfolio"
+          :state="{ client_ids: selectedIds }"
+          aria-labelledby="portfolio-title"
+          class="space-y-4"
+          @submit="register"
+          @error="event => focusFormError(event, 'office-erp-register-portfolio')"
+        >
           <div>
             <h2 id="portfolio-title" class="text-base font-semibold text-highlighted">
               Selecione clientes existentes
@@ -354,43 +367,49 @@ function goBack() {
             title="Nenhum cliente encontrado"
             description="Cadastre um novo cliente ou ajuste a busca."
           />
-          <OfficeErpDataTable
+          <UFormField
             v-else
-            :columns="columns"
-            :data="clients"
-            :loading="loading"
-            :get-row-id="row => String(row.id)"
-            :mobile-columns="['name', 'status']"
-            compact
-            label="Clientes da carteira"
+            name="client_ids"
+            :error="fieldErrors.client_ids?.[0]"
+            :error-pattern="/^client_ids\..*/"
           >
-            <template #select-header>
-              <div class="flex items-center gap-2">
-                <UCheckbox :model-value="allPageSelected ? true : somePageSelected ? 'indeterminate' : false" aria-label="Selecionar clientes da página atual" @update:model-value="toggleCurrentPage" /><span>Página</span>
-              </div>
-            </template>
-            <template #select-cell="{ row }">
-              <UCheckbox
-                :model-value="selectedIds.includes(row.original.id)"
-                :disabled="!!row.original.erp_registration"
-                :aria-label="row.original.erp_registration ? `${row.original.name} já está registrado` : `Selecionar ${row.original.name}`"
-                @update:model-value="value => toggleClient(row.original.id, value)"
-              />
-            </template>
-            <template #tax_id-cell="{ row }">
-              <span>{{ row.original.tax_id ?? '—' }}</span><UBadge
-                v-if="row.original.erp_registration"
-                color="neutral"
-                variant="subtle"
-                class="ml-2"
-              >
-                Já registrado
-              </UBadge>
-            </template>
-            <template #status-cell="{ row }">
-              {{ row.original.subscription ? 'Com assinatura ou histórico' : 'Disponível para cadastro' }}
-            </template>
-          </OfficeErpDataTable>
+            <OfficeErpDataTable
+              :columns="columns"
+              :data="clients"
+              :loading="loading"
+              :get-row-id="row => String(row.id)"
+              :mobile-columns="['name', 'status']"
+              compact
+              label="Clientes da carteira"
+            >
+              <template #select-header>
+                <div class="flex items-center gap-2">
+                  <UCheckbox :model-value="allPageSelected ? true : somePageSelected ? 'indeterminate' : false" aria-label="Selecionar clientes da página atual" @update:model-value="toggleCurrentPage" /><span>Página</span>
+                </div>
+              </template>
+              <template #select-cell="{ row }">
+                <UCheckbox
+                  :model-value="selectedIds.includes(row.original.id)"
+                  :disabled="!!row.original.erp_registration"
+                  :aria-label="row.original.erp_registration ? `${row.original.name} já está registrado` : `Selecionar ${row.original.name}`"
+                  @update:model-value="value => toggleClient(row.original.id, value)"
+                />
+              </template>
+              <template #tax_id-cell="{ row }">
+                <span>{{ row.original.tax_id ?? '—' }}</span><UBadge
+                  v-if="row.original.erp_registration"
+                  color="neutral"
+                  variant="subtle"
+                  class="ml-2"
+                >
+                  Já registrado
+                </UBadge>
+              </template>
+              <template #status-cell="{ row }">
+                {{ row.original.subscription ? 'Com assinatura ou histórico' : 'Disponível para cadastro' }}
+              </template>
+            </OfficeErpDataTable>
+          </UFormField>
           <div class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex flex-wrap items-center gap-3 text-sm text-muted">
               <span>{{ selectedIds.length }} de {{ selectionLimit }} selecionados</span><USelect
@@ -412,18 +431,21 @@ function goBack() {
               :disabled="!selectedIds.length || overLimit || submitting || command.pending.value"
               :loading="submitting"
               icon="i-lucide-check"
-              @click="register"
+              type="submit"
             >
               Registrar selecionados
             </UButton>
           </div>
-        </section>
+        </UForm>
 
         <UForm
           v-else
-          :state="{ name, taxId, email, phone, taxRegime }"
+          id="office-erp-register-company"
+          :state="{ name, tax_id: taxId, email, phone, tax_regime: taxRegime }"
+          :disabled="submitting || command.pending.value"
           class="grid gap-4 sm:grid-cols-2"
-          @submit.prevent="register"
+          @submit="register"
+          @error="event => focusFormError(event, 'office-erp-register-company')"
         >
           <UFormField
             label="CNPJ"

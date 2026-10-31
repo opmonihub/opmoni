@@ -7,6 +7,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   clear: []
   tags: []
+  export: []
 }>()
 
 const noun = computed(() => props.count === 1 ? 'cliente selecionado' : 'clientes selecionados')
@@ -27,6 +28,16 @@ const noun = computed(() => props.count === 1 ? 'cliente selecionado' : 'cliente
       size="sm"
       :disabled="disabled"
       @click="emit('tags')"
+    />
+    <UButton
+      label="Exportar"
+      icon="i-lucide-file-spreadsheet"
+      color="neutral"
+      variant="outline"
+      size="sm"
+      aria-label="Exportar seleção"
+      :disabled="disabled"
+      @click="emit('export')"
     />
   </DataTableSelectionBar>
 </template>

@@ -98,7 +98,7 @@ it('cold configuration confirms context once before each distinct card read', as
   assert.equal((page.state.trialLinkLoading as Vue.Ref).value, false)
 })
 
-for (const [path, endpoint] of [['planos.vue', 'plans'], ['empresas/index.vue', 'companies'], ['assinaturas/index.vue', 'subscription-companies'], ['assinaturas/contratos.vue', 'contracts'], ['faturas/index.vue', 'invoices'], ['recebimentos.vue', 'receipts']]) {
+for (const [path, endpoint] of [['planos.vue', 'plans'], ['empresas/index.vue', 'companies'], ['assinaturas/index.vue', 'subscription-companies'], ['faturas/index.vue', 'invoices'], ['recebimentos.vue', 'receipts']]) {
   it(`cold ${path} confirms once and reads its list once`, async (t) => {
     const h = harness()
     const page = h.mount(path!)
@@ -185,7 +185,6 @@ it('leaving during shared confirmation cancels only the departed resource consum
 for (const [path, endpoint, filter, value, parameter] of [
   ['planos.vue', 'plans', 'query', 'Plano anual', 'q'],
   ['empresas/index.vue', 'companies', 'query', 'Empresa matriz', 'search'],
-  ['assinaturas/contratos.vue', 'contracts', 'query', 'Contrato anual', 'q'],
   ['faturas/index.vue', 'invoices', 'status', 'issued', 'status'],
   ['recebimentos.vue', 'receipts', 'from', '2026-10-01', 'received_from']
 ]) {
@@ -386,7 +385,6 @@ it('company URL search is atomic while interactive search uses VueUse debounce',
 for (const [path, endpoint, field] of [
   ['planos.vue', 'plans', 'name'],
   ['empresas/index.vue', 'companies', 'name'],
-  ['assinaturas/contratos.vue', 'contracts', 'client'],
   ['faturas/index.vue', 'invoices', 'due_on'],
   ['recebimentos.vue', 'receipts', 'received_on']
 ] as const) {

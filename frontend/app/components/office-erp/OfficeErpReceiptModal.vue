@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { formatOfficeErpMoney, parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
+import { toRef } from 'vue'
+import { focusFormError } from '~/utils/formPresentation'
+import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
 
 interface InvoiceChoice {
   id: number
@@ -53,6 +56,7 @@ const emit = defineEmits<{
   'cancel': []
 }>()
 
+const restoreModalFocus = useModalFocusReturn(toRef(props, 'open'))
 const selectedInvoiceIds = ref<string[]>([])
 const allocationAmounts = reactive<Record<string, string>>({})
 const localToday = new Date()
@@ -60,12 +64,20 @@ const receivedOn = ref(`${localToday.getFullYear()}-${String(localToday.getMonth
 const reference = ref('')
 const localError = ref('')
 const fileError = ref('')
+const localErrors = ref<Record<string, string>>({})
+watch([() => props.errors, () => props.proofError, fileError, localErrors], () => {
+  void focusFormError(undefined, 'office-erp-receipt')
+})
+function invalid(name: string, message: string) {
+  localError.value = message
+  localErrors.value = { [name]: message }
+}
 const locked = computed(() => props.busy || props.pending || props.unknown)
 const selectedInvoices = computed(() => props.invoices.filter(invoice => selectedInvoiceIds.value.includes(String(invoice.id))))
 
 function allocationError(invoiceId: number): string | undefined {
   const payloadIndex = selectedInvoices.value.findIndex(invoice => invoice.id === invoiceId)
-  return payloadIndex < 0 ? undefined : props.errors[`allocations.${payloadIndex}.amount`]?.[0]
+  return localErrors.value[`allocations.${invoiceId}.amount`] ?? (payloadIndex < 0 ? undefined : props.errors[`allocations.${payloadIndex}.amount`]?.[0])
 }
 
 function cents(value: string): bigint {
@@ -110,13 +122,14 @@ function selectProof(event: Event) {
 
 function submit() {
   localError.value = ''
+  localErrors.value = {}
   if (locked.value) return
   if (!/^\d{4}-\d{2}-\d{2}$/.test(receivedOn.value)) {
-    localError.value = 'Informe a data do recebimento.'
+    invalid('received_on', 'Informe a data do recebimento.')
     return
   }
   if (selectedInvoices.value.length === 0) {
-    localError.value = 'Selecione ao menos uma fatura para alocar o recebimento.'
+    invalid('allocations', 'Selecione ao menos uma fatura para alocar o recebimento.')
     return
   }
 
@@ -125,16 +138,22 @@ function submit() {
     for (const invoice of selectedInvoices.value) {
       const rawAmount = allocationAmounts[String(invoice.id)]?.trim() ?? ''
       if (!rawAmount) {
-        localError.value = `Informe o valor alocado para ${invoice.label}.`
+        invalid(`allocations.${invoice.id}.amount`, `Informe o valor alocado para ${invoice.label}.`)
         return
       }
-      const amountCents = cents(rawAmount)
+      let amountCents: bigint
+      try {
+        amountCents = cents(rawAmount)
+      } catch {
+        invalid(`allocations.${invoice.id}.amount`, 'Revise os valores alocados; use até duas casas decimais.')
+        return
+      }
       if (amountCents <= 0n) {
-        localError.value = 'Cada alocação deve ser maior que zero.'
+        invalid(`allocations.${invoice.id}.amount`, 'Cada alocação deve ser maior que zero.')
         return
       }
       if (amountCents > cents(invoice.outstanding)) {
-        localError.value = `A alocação para ${invoice.label} excede o saldo em aberto.`
+        invalid(`allocations.${invoice.id}.amount`, `A alocação para ${invoice.label} excede o saldo em aberto.`)
         return
       }
       allocations.push({ invoice_id: invoice.id, amount: moneyFromCents(amountCents) })
@@ -160,7 +179,9 @@ function submit() {
     :open="open"
     title="Registrar recebimento"
     description="Registre um recebimento manual e distribua o valor entre as faturas."
+    :ui="{ content: 'max-w-2xl', footer: 'shrink-0 flex-wrap justify-end' }"
     @update:open="onOpenUpdate"
+    @after:leave="restoreModalFocus"
   >
     <template #body>
       <UAlert
@@ -195,15 +216,17 @@ function submit() {
       </div>
       <UForm
         v-else
-        :state="{ receivedOn, reference, allocationAmounts }"
+        id="office-erp-receipt"
+        :state="{ received_on: receivedOn, reference, allocations: allocationAmounts }"
         class="space-y-4"
-        @submit.prevent="submit"
+        @submit="submit"
+        @error="event => focusFormError(event, 'office-erp-receipt')"
       >
         <UFormField
           label="Faturas"
           name="allocations"
           required
-          :error="props.errors.allocations?.[0]"
+          :error="localErrors.allocations || props.errors.allocations?.[0]"
         >
           <UCheckboxGroup v-model="selectedInvoiceIds" :items="invoices.map(invoice => ({ label: `${invoice.label} · em aberto ${formatOfficeErpMoney(invoice.outstanding)}`, value: String(invoice.id) }))" :disabled="locked" />
         </UFormField>
@@ -228,7 +251,7 @@ function submit() {
           label="Data do recebimento"
           name="received_on"
           required
-          :error="props.errors.received_on?.[0]"
+          :error="localErrors.received_on || props.errors.received_on?.[0]"
         >
           <UInput
             v-model="receivedOn"
@@ -259,26 +282,28 @@ function submit() {
             <span v-if="proofName"> Arquivo associado: {{ proofName }}.</span>
           </p>
         </UFormField>
-        <div class="flex justify-end gap-2">
-          <UButton
-            type="button"
-            color="neutral"
-            variant="outline"
-            label="Cancelar"
-            :disabled="busy"
-            @click="cancel"
-          />
-          <UButton
-            type="submit"
-            :loading="busy"
-            :disabled="locked"
-            label="Registrar recebimento"
-          />
-        </div>
         <p class="text-sm text-muted">
           O registro é manual. A situação das faturas muda somente após a confirmação do servidor.
         </p>
       </UForm>
+    </template>
+    <template #footer>
+      <UButton
+        type="button"
+        color="neutral"
+        variant="outline"
+        label="Cancelar"
+        :disabled="busy"
+        @click="cancel"
+      />
+      <UButton
+        v-if="!unknown"
+        type="submit"
+        form="office-erp-receipt"
+        :loading="busy"
+        :disabled="locked"
+        label="Registrar recebimento"
+      />
     </template>
   </UModal>
 </template>

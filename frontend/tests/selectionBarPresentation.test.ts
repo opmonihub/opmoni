@@ -66,6 +66,33 @@ test('shared selection chrome announces caller-owned scope and clears without ta
   } finally { mounted.unmount() }
 })
 
+test('client bulk actions live on the selection bar', async () => {
+  const component = compileVueComponent('components/customers/SelectionBar.vue')
+  let tags = 0
+  let exported = 0
+  const wrapper = Vue.defineComponent({
+    setup: () => () => Vue.h(component, {
+      count: 50,
+      onTags: () => { tags++ },
+      onExport: () => { exported++ }
+    })
+  })
+  const mounted = mount(wrapper, {
+    DataTableSelectionBar: Vue.defineComponent({ setup: (_props, { slots }) => () => Vue.h('div', slots.default?.()) }),
+    UButton: Vue.defineComponent({ setup: (_props, { attrs }) => () => Vue.h('button', attrs) })
+  })
+  try {
+    const tag = mounted.nodes().find(node => node.props.label === 'Tags')
+    const exportSelection = mounted.nodes().find(node => node.props['aria-label'] === 'Exportar seleção')
+    assert.ok(tag)
+    assert.ok(exportSelection)
+    ;(tag.props.onClick as () => void)()
+    ;(exportSelection.props.onClick as () => void)()
+    assert.equal(tags, 1)
+    assert.equal(exported, 1)
+  } finally { mounted.unmount() }
+})
+
 test('the phone task menu exposes the same assignment and dismissal commands with their existing guards', async () => {
   const component = compileVueComponent('components/work/WorkTarefasBulkBar.vue')
   const menus: Array<{ label?: string, disabled?: boolean, children?: Array<{ label: string, disabled?: boolean, onSelect?: () => void }>, onSelect?: () => void }>[] = []

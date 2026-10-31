@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
-import * as Vue from 'vue'
-import { compileVueComponent, evaluateVueBindings, vueSource } from './helpers/compileVueComponent.ts'
+import { compileVueComponent, vueSource } from './helpers/compileVueComponent.ts'
 import { officeErpCompanyListQuery } from '../app/utils/officeErpCompanyNavigation.ts'
 import { officeErpSidebarItem } from '../app/utils/sidebarNav.ts'
 
@@ -19,14 +18,12 @@ describe('Company registration and commercial navigation SFCs', () => {
   })
 
   it('uses the Companies portfolio as the canonical route and retains safe legacy intent', () => {
-    const source = vueSource('pages/gestao-erp.vue')
-    const tabs = evaluateVueBindings(source, ['pageTabs'], { computed: Vue.computed, route: { path: '/gestao-erp/empresas/nova' } })
-    const items = (tabs.pageTabs as Vue.ComputedRef<Array<Array<{ label: string, to: string, active: boolean }>>>).value.flat()
+    const items = officeErpSidebarItem('/gestao-erp/empresas/nova').children
     assert.deepEqual(items.filter(item => item.active).map(item => item.to), ['/gestao-erp/empresas'])
     assert.deepEqual(officeErpCompanyListQuery({ q: 'Cliente', pagina: '3', porPagina: '50', cliente: '22', token: 'ignore' }), {
       q: 'Cliente', pagina: '3', porPagina: '50', cliente: '22'
     })
-    assert.equal(officeErpSidebarItem('/gestao-erp/assinaturas/123').children[3]?.active, true)
+    assert.equal(officeErpSidebarItem('/gestao-erp/assinaturas/123').children.find(item => item.label === 'Assinaturas')?.active, true)
   })
 
   it('registers portfolio clients as bounded batches without creating assignments', () => {
@@ -55,12 +52,12 @@ describe('Company registration and commercial navigation SFCs', () => {
 
   it('keeps profile writes limited to changed Company-owned fields and versioned PATCH', () => {
     const detail = vueSource('pages/gestao-erp/assinaturas/empresas/[companyId].vue')
-    assert.match(detail, /expected_profile_version: profileVersion\.value/)
-    assert.match(detail, /const changes = changeSet\(\)/)
-    assert.match(detail, /\/erp-commercial\/companies\/\$\{targetCompanyId\}/)
-    assert.match(detail, /result\.failure\.http_status === 409/)
-    assert.match(detail, /CNPJ, identidade de usuários e configurações fiscais não podem ser alterados/)
-    assert.doesNotMatch(detail.match(/async function saveProfile\(\)[\s\S]*?\n}/)?.[0] ?? '', /cnpj|tax_id|user_id/i)
+    const editor = vueSource('components/office-erp/OfficeErpCompanyInspectionModal.vue')
+    assert.match(detail, /<OfficeErpCompanyInspectionModal/)
+    assert.match(editor, /expected_profile_version: expectedVersion/)
+    assert.match(editor, /company\.profile\.update/)
+    assert.match(editor, /response\.failure\.http_status === 409/)
+    assert.match(editor, /'PATCH'/)
   })
 
   it('assigns using canonical decimal text and keeps owner setup and trial contract actions available separately', () => {

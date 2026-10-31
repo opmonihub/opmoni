@@ -33,7 +33,6 @@ const pagePaths = [
   'components/office-erp/OfficeErpCompanyInspectionModal.vue',
   'components/office-erp/OfficeErpCompanyAssignmentModal.vue',
   'pages/gestao-erp/assinaturas/index.vue',
-  'pages/gestao-erp/assinaturas/contratos.vue',
   'pages/gestao-erp/assinaturas/[id].vue',
   'pages/gestao-erp/assinaturas/empresas/[companyId].vue',
   'components/office-erp/OfficeErpCompanyMembers.vue',
@@ -238,7 +237,7 @@ it('preserves legacy contract ids and Company invoice navigation', () => {
   const company = vueSource('pages/gestao-erp/assinaturas/empresas/[companyId].vue')
   assert.match(company, /<NuxtPage v-else \/>/)
   assert.match(contract, /\/erp-commercial\/contracts\/\$\{route\.params\.id\}/)
-  assert.match(contract, /\/gestao-erp\/assinaturas\/contratos/)
+  assert.doesNotMatch(contract, /\/gestao-erp\/assinaturas\/contratos/)
   assert.match(company, /\/gestao-erp\/assinaturas\/\$\{subscription\.current_contract\.id\}/)
   assert.match(company, /\/gestao-erp\/faturas\/\$\{invoiceId\}/)
 })
@@ -718,7 +717,7 @@ it('mounted portfolio picker excludes registered Clients from tri-state selectio
   const renderText = (node: { text?: string, children: Array<{ text?: string, children: unknown[] }> }): string => `${node.text ?? ''}${node.children.map(child => renderText(child as { text?: string, children: Array<{ text?: string, children: unknown[] }> })).join('')}`
   const registerButton = mounted.nodes(node => node.tag === 'button' && renderText(node).includes('Registrar selecionados') && String(node.props.disabled) !== 'true')[0]
   assert.ok(registerButton)
-  ;(registerButton.props.onClick as () => Promise<void>)()
+  ;(mounted.nodes(node => node.tag === 'form' && node.props.id === 'office-erp-register-selection')[0]!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -866,7 +865,16 @@ it('mounted Company inspection preserves a 409 draft and shows named validation 
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
   }
-  assert.equal(mounted.nodes(node => node.tag === 'input').length, 0, 'Ver cadastro starts with readable company facts, without editable controls')
+  const initialForm = mounted.nodes(node => node.tag === 'form' && node.props.id === 'company-profile')[0]
+  assert.ok(initialForm, 'inspection starts in the same mounted form used for editing')
+  const initialName = mounted.nodes(node => node.tag === 'input' && node.props.maxlength === 255)[0]!
+  assert.equal(initialName.props.readonly, true, 'profile text remains selectable in read mode')
+  assert.equal(initialName.props.disabled, false)
+  assert.equal(mounted.nodes(node => node.tag === 'select')[0]?.props.disabled, true)
+  ;(initialForm.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+  await Vue.nextTick()
+  assert.equal(writes.length, 0, 'Enter in read mode cannot write a profile')
+  assert.ok(mounted.nodes(node => node.props['data-field'] === 'registered_at')[0], 'registration date remains visible and immutable')
   assert.match(mounted.text(), /Dados cadastrais/)
   assert.match(mounted.text(), /Contatos/)
   assert.match(mounted.text(), /Endereço/)
@@ -876,6 +884,9 @@ it('mounted Company inspection preserves a 409 draft and shows named validation 
   await Vue.nextTick()
   let nameInput = mounted.nodes(node => node.tag === 'input' && node.props.maxlength === 255)[0]
   assert.ok(nameInput)
+  assert.equal(nameInput, initialName, 'editing enables the existing control without remounting')
+  assert.equal(nameInput.props.readonly, false)
+  assert.equal(mounted.nodes(node => node.tag === 'form' && node.props.id === 'company-profile')[0], initialForm)
   ;(nameInput.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'Empresa com rascunho LTDA' } })
   await Vue.nextTick()
   const renderText = (node: { text?: string, children: Array<{ text?: string, children: unknown[] }> }): string => `${node.text ?? ''}${node.children.map(child => renderText(child as { text?: string, children: Array<{ text?: string, children: unknown[] }> })).join('')}`
@@ -891,7 +902,8 @@ it('mounted Company inspection preserves a 409 draft and shows named validation 
   await Vue.nextTick()
   ;(button('Descartar alterações').props.onClick as () => void)()
   await Vue.nextTick()
-  assert.equal(mounted.nodes(node => node.tag === 'input').length, 0, 'explicit discard returns to the saved facts')
+  assert.equal(mounted.nodes(node => node.tag === 'input' && node.props.maxlength === 255)[0], initialName)
+  assert.equal(initialName.props.readonly, true, 'explicit discard restores the locked confirmed form')
   ;(button('Editar cadastro').props.onClick as () => void)()
   await Vue.nextTick()
   nameInput = mounted.nodes(node => node.tag === 'input' && node.props.maxlength === 255)[0]
@@ -988,7 +1000,8 @@ it('mounted Company assignment targets the selected Company and preserves large 
   }
   const component = compileVueComponent('pages/gestao-erp/assinaturas/empresas/[companyId].vue', bindings, modules)
   const assignmentModal = compileVueComponent('components/office-erp/OfficeErpCompanyAssignmentModal.vue', bindings, modules)
-  const mounted = mountVueComponent(component, { OfficeErpCompanyAssignmentModal: assignmentModal })
+  const inspectionModal = compileVueComponent('components/office-erp/OfficeErpCompanyInspectionModal.vue', bindings, modules)
+  const mounted = mountVueComponent(component, { OfficeErpCompanyAssignmentModal: assignmentModal, OfficeErpCompanyInspectionModal: inspectionModal })
   t.after(mounted.unmount)
   for (let index = 0; index < 8; index++) {
     await Vue.nextTick()
@@ -1006,7 +1019,7 @@ it('mounted Company assignment targets the selected Company and preserves large 
   assert.ok(priceInput)
   ;(priceInput.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: '9.007.199.254.740.993,01' } })
   await Vue.nextTick()
-  ;(button('Confirmar assinatura').props.onClick as () => Promise<void>)()
+  ;(mounted.nodes(node => node.tag === 'form' && node.props.id === 'office-erp-assignment')[0]!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
   for (let index = 0; index < 6; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -1017,10 +1030,16 @@ it('mounted Company assignment targets the selected Company and preserves large 
   assert.match((writes[0]?.body as { start_on: string }).start_on, /^\d{4}-\d{2}-\d{2}$/)
   assert.match(mounted.text(), /Consulte a operação assign-op/)
   assert.ok(calls.some(call => call.path === '/erp-commercial/companies/41/subscription'))
+  ;(button('Editar cadastro').props.onClick as () => void)()
+  await Vue.nextTick()
+  await new Promise(resolve => setImmediate(resolve))
+  const editButtons = mounted.nodes(node => node.tag === 'button' && renderText(node).includes('Editar cadastro'))
+  ;(editButtons.at(-1)!.props.onClick as () => void)()
+  await Vue.nextTick()
   const nameInput = mounted.nodes(node => node.tag === 'input' && node.props.maxlength === 255)[0]!
   ;(nameInput.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'Empresa alteração tardia LTDA' } })
   await Vue.nextTick()
-  ;(button('Salvar perfil').props.onClick as () => Promise<void>)()
+  ;(mounted.nodes(node => node.tag === 'form' && node.props.id === 'company-profile')[0]!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
   await new Promise(resolve => setImmediate(resolve))
   const priorReads = calls.length
   mounted.unmount()
@@ -1120,21 +1139,30 @@ it('mounted Companies row opens the shared assignment modal and navigates only t
   })
   const assignmentComponent = compileVueComponent('components/office-erp/OfficeErpCompanyAssignmentModal.vue', bindings, modules)
   const listComponent = compileVueComponent('pages/gestao-erp/empresas/index.vue', bindings, modules)
-  const mounted = mountVueComponent(listComponent, { OfficeErpDataTable: dataTable, OfficeErpCompanyAssignmentModal: assignmentHost })
+  const mounted = mountVueComponent(listComponent, {
+    OfficeErpDataTable: dataTable,
+    OfficeErpCompanyAssignmentModal: assignmentHost,
+    DataTableRowActionsMenu: {
+      props: ['items'],
+      setup(props) {
+        return () => Vue.h('div', (props.items as Array<{ label: string, onSelect: () => void }>).map(item => Vue.h('button', { onClick: item.onSelect }, item.label)))
+      }
+    }
+  })
   t.after(mounted.unmount)
   for (let index = 0; index < 8; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
   }
-  const buttons = (label: string) => mounted.nodes(node => node.tag === 'button' && String(node.children.map(child => child.text ?? '').join('')).includes(label))
+  const nodeText = (node: { text?: string, children: unknown[] }): string => `${node.text ?? ''}${node.children.map(child => nodeText(child as typeof node)).join('')}`
+  const buttons = (label: string) => mounted.nodes(node => node.tag === 'button' && nodeText(node).includes(label))
   const rowAssign = buttons('Adicionar assinatura')[0]
   assert.ok(rowAssign, 'the unassigned Company row exposes its can_assign action')
-  assert.equal(rowAssign.props.color, 'neutral', 'ordinary subscription assignments use the neutral design-system color')
-  assert.equal(rowAssign.props.variant, 'solid')
-  assert.match(String(rowAssign.props.onClick), /openAssignment/)
   assert.ok(mobileColumns.includes('actions'), 'row actions remain visible in the compact mobile table')
   assert.ok(apiCalls.includes('/erp-commercial/companies'))
   assert.ok(buttons('Ver cadastro')[0], 'the Company row exposes its inspection action beside assignment')
+  assert.ok(mounted.nodes(node => node.props.to === '/gestao-erp/assinaturas/empresas/6?secao=company')[0], 'the Company identity opens the explicit Company overview')
+  assert.match(mounted.text(), /Cadastrada em \d{2}\/\d{2}\/2026/, 'mobile identity retains the registration date when its desktop column is hidden')
   ;(rowAssign.props.onClick as () => void)()
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
@@ -1154,7 +1182,7 @@ it('mounted Companies row opens the shared assignment modal and navigates only t
   await Vue.nextTick()
   const confirm = buttons('Confirmar assinatura')[0]
   assert.ok(confirm)
-  ;(confirm.props.onClick as () => Promise<void>)()
+  ;(mounted.nodes(node => node.tag === 'form' && node.props.id === 'office-erp-assignment')[0]!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
   for (let index = 0; index < 8; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -1173,7 +1201,7 @@ it('mounted Companies row opens the shared assignment modal and navigates only t
   assert.ok(retryPrice)
   ;(retryPrice.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: '91,00' } })
   await Vue.nextTick()
-  ;(buttons('Confirmar assinatura')[0]!.props.onClick as () => Promise<void>)()
+  ;(mounted.nodes(node => node.tag === 'form' && node.props.id === 'office-erp-assignment')[0]!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
   for (let index = 0; index < 8; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -1307,7 +1335,8 @@ it('mounted Company registration clears drafts and selection on Account switch a
   ;(clientCheckbox.props.onClick as () => void)()
   await Vue.nextTick()
   const registerButton = mounted.nodes(node => node.tag === 'button' && nodeText(node).includes('Registrar selecionados'))[0]!
-  ;(registerButton.props.onClick as () => Promise<void>)()
+  assert.equal(registerButton.props.type, 'submit')
+  ;(mounted.nodes(node => node.tag === 'form' && node.props.id === 'office-erp-register-portfolio')[0]!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -1403,7 +1432,7 @@ it('mounted member editor hides Owner mutations, strips Viewer write permissions
   const defaultsSelect = mounted.nodes(node => node.tag === 'select' && renderText(node).includes('Padrões do papel'))[0]
   assert.ok(defaultsSelect)
   assert.equal(defaultsSelect.props.value, 'defaults')
-  ;(buttons('Salvar configuração')[0]!.props.onClick as () => Promise<void>)()
+  ;(mounted.nodes(node => node.tag === 'form' && node.props.id === 'office-erp-member-editor')[0]!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -1415,7 +1444,7 @@ it('mounted member editor hides Owner mutations, strips Viewer write permissions
     await new Promise(resolve => setImmediate(resolve))
   }
   assert.equal(defaultsSelect.props.value, 'defaults', 'legacy empty grants retain role defaults')
-  ;(buttons('Salvar configuração')[0]!.props.onClick as () => Promise<void>)()
+  ;(mounted.nodes(node => node.tag === 'form' && node.props.id === 'office-erp-member-editor')[0]!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))
@@ -1432,7 +1461,7 @@ it('mounted member editor hides Owner mutations, strips Viewer write permissions
   ;(inviteName.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'Pessoa convidada' } })
   ;(inviteEmail.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'new@example.test' } })
   await Vue.nextTick()
-  ;(buttons('Preparar convite')[0]!.props.onClick as () => Promise<void>)()
+  ;(mounted.nodes(node => node.tag === 'form' && node.props.id === 'office-erp-member-editor')[0]!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
   for (let index = 0; index < 5; index++) {
     await Vue.nextTick()
     await new Promise(resolve => setImmediate(resolve))

@@ -14,11 +14,27 @@ import * as z from 'zod'
 import type { Client, ClientWritePayload, CnpjPreview } from '../app/types/client.ts'
 import type { ClientMonitoringModules } from '../app/types/serpro.ts'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '../app/composables/useApiError.ts'
-import { companyTaxIdEntry, taxIdEditInvalidatesLookup } from '../app/utils/taxId.ts'
+import { companyTaxIdEntry, formatTaxId, taxIdEditInvalidatesLookup } from '../app/utils/taxId.ts'
+import { deadlinePresentation } from '../app/utils/portfolioLabels.ts'
 import { initialMonitoringModuleSelection, monitoringModuleGroups, monitoringModulesPayload } from '../app/utils/monitoringModules.ts'
 
 function modalSource(): string {
   return readFileSync(new URL('../app/components/customers/ClientCreateModal.vue', import.meta.url), 'utf8')
+}
+
+function fieldsetByLegend(template: string, legend: string): string {
+  const found = new RegExp(`>\\s*${legend}\\s*<`).exec(template)
+  assert.ok(found, legend)
+  const open = template.lastIndexOf('<fieldset', found.index)
+  assert.notEqual(open, -1, legend)
+  const tags = /<\/?fieldset\b[^>]*>/g
+  tags.lastIndex = open
+  let depth = 0
+  for (let match = tags.exec(template); match; match = tags.exec(template)) {
+    depth += match[0].startsWith('</') ? -1 : 1
+    if (depth === 0) return template.slice(open, tags.lastIndex)
+  }
+  assert.fail(`fieldset sem fechamento: ${legend}`)
 }
 
 const savedClient = { id: 7, person_type: 'company' } as Client
@@ -70,8 +86,6 @@ interface ModalState {
   name: string
   status: 'active' | 'inactive'
   tax_regime: string
-  email: string
-  phone: string
   street_type: string
   street: string
   address_number: string
@@ -87,6 +101,7 @@ function modalHarness(options: {
   lookupCnpj?: (taxId: string) => Promise<CnpjPreview>
   monitoringModules?: () => Promise<ClientMonitoringModules>
   confirmMonitoringModules?: () => Promise<unknown>
+  createDispatchContact?: (clientId: number, payload: { label?: string | null, channel: 'email' | 'whatsapp', value: string }) => Promise<unknown>
   canManageClients?: boolean
 } = {}) {
   // Executa o script real com serviços locais, sem importar o arquivo .vue
@@ -104,7 +119,7 @@ function modalHarness(options: {
     clear: () => serverErrors.splice(0)
   })
   const scope = effectScope()
-  const modal = scope.run(() => runInNewContext(`${code}\n({ isOpen, state, schema, preview, canLookup, regimeLocked, regimeOptions, onLookup, lookingUp, onValidationError, onSubmit, finishSaved, confirmModules, modules, modulesLoading, modulesError, modulesSubmitting, submitting })`, {
+  const modal = scope.run(() => runInNewContext(`${code}\n({ isOpen, state, schema, preview, activities, addActivity, removeActivity, contacts, contactChannel, addContact, removeContact, canLookup, regimeLocked, regimeOptions, onLookup, lookingUp, onValidationError, onSubmit, finishSaved, confirmModules, modules, modulesLoading, modulesError, modulesSubmitting, submitting, registrationSteps, registrationProgress })`, {
     z, computed, reactive, ref, shallowRef, watch,
     useTemplateRef: () => form,
     document: { getElementById: (id: string) => ({
@@ -112,7 +127,7 @@ function modalHarness(options: {
       scrollIntoView: () => focusEvents.push(`scroll:${id}`)
     }) },
     apiErrorMessage, apiFieldErrors, apiStatus,
-    companyTaxIdEntry, taxIdEditInvalidatesLookup,
+    companyTaxIdEntry, formatTaxId, taxIdEditInvalidatesLookup, deadlinePresentation,
     initialMonitoringModuleSelection, monitoringModuleGroups, monitoringModulesPayload,
     defineOptions: () => {},
     defineProps: () => props,
@@ -127,12 +142,22 @@ function modalHarness(options: {
       lookupCnpj: options.lookupCnpj ?? (() => Promise.reject(new Error('Consulta não esperada')))
     }),
     useAuth: () => ({ canManageClients: ref(options.canManageClients ?? true) }),
+    useDispatchContacts: () => ({
+      create: options.createDispatchContact ?? (() => Promise.resolve({ id: 1 }))
+    }),
     useToast: () => ({ add: (value: { title: string, description?: string }) => toasts.push(value) })
   })) as {
     isOpen: Ref<boolean>
     state: ModalState
     schema: z.ZodType<ClientWritePayload>
     preview: Ref<CnpjPreview | null>
+    activities: Ref<Array<{ key: number, code: string, description: string }>>
+    addActivity: () => void
+    removeActivity: (key: number) => void
+    contacts: Ref<Array<{ key: number, channel: 'email' | 'whatsapp', name: string, value: string }>>
+    contactChannel: Ref<'email' | 'whatsapp'>
+    addContact: () => void
+    removeContact: (key: number) => void
     canLookup: Ref<boolean>
     regimeLocked: Ref<string | null>
     regimeOptions: Ref<Array<{ label: string, value: string }>>
@@ -147,19 +172,65 @@ function modalHarness(options: {
     modulesError: Ref<boolean>
     modulesSubmitting: Ref<boolean>
     submitting: Ref<boolean>
+    registrationSteps: Ref<Array<{ id: string, done: boolean, statusLabel: string }>>
+    registrationProgress: Ref<number>
   }
   return { modal, props, toasts, serverErrors, focusEvents, saved: () => events.filter(event => event.name === 'saved'), dispose: () => scope.stop() }
 }
 
 describe('cadastro completo desde a abertura', () => {
-  it('mantém identificação, cadastro e contato no mesmo formulário sem etapa de consulta', () => {
+  it('mantém identificação e cadastro no mesmo formulário sem etapa de consulta', () => {
     const source = modalSource()
     const template = source.slice(source.indexOf('<template>'))
     const form = template.match(/<UForm\b[\s\S]*?<\/UForm>/)?.[0]
     assert.ok(form)
-    for (const name of ['person_type', 'tax_id', 'name', 'status', 'tax_regime', 'email', 'phone']) {
+    for (const name of ['person_type', 'tax_id', 'name', 'status', 'tax_regime']) {
       assert.match(form, new RegExp(`name="${name}"`))
     }
+    assert.doesNotMatch(form, /name="email"|name="phone"/)
+    assert.doesNotMatch(form, /hint="Opcional"/)
+    assert.doesNotMatch(form, /<legend[^>]*>\s*Contato\s*<\/legend>/)
+    assert.match(form, />\s*Contatos\s*</)
+    assert.match(form, /<UTabs[\s\S]*variant="link"/)
+    assert.match(source, /label: 'E-mail'/)
+    assert.match(source, /label: 'WhatsApp'/)
+    assert.match(form, /:label="addContactLabel"/)
+    assert.match(source, /'Novo contato de e-mail'/)
+    assert.match(source, /'Novo contato de WhatsApp'/)
+    assert.doesNotMatch(form, /label="Adicionar contato"/)
+    assert.match(form, /Remover contato \$\{contactLineName\(row, index\)\}/)
+    for (const copy of [
+      'Pode preencher sem consultar aqui',
+      'Dados oficiais da empresa',
+      'Endereço, nome fantasia, situação na Receita',
+      'Nenhuma consulta exibida',
+      'Letras e números. A consulta pública está disponível somente para CNPJ numérico.',
+      'MEI e Simples Nacional são confirmados pela consulta.',
+      'Preencha o cadastro. A consulta de CNPJ ajuda a conferir os dados oficiais.',
+      'CNPJ alfanumérico: informe a razão social',
+      'Somente números; pode informar com pontuação.',
+      'Razão social confirmada pela fonte pública',
+      'Definido pela Receita (MEI/Simples).'
+    ]) {
+      assert.equal(source.includes(copy), false, copy)
+    }
+    assert.match(form, /label="Consultar CNPJ"/)
+    assert.match(source, /sm:max-w-4xl/)
+    assert.doesNotMatch(source, /max-w-3xl/)
+    assert.match(form, /grid grid-cols-1 items-start gap-6 sm:grid-cols-2/)
+    assert.match(form, /<dl v-if="preview"[\s\S]*Nome fantasia[\s\S]*Situação na Receita[\s\S]*Endereço/)
+    assert.match(form, /grid grid-cols-1 gap-4 sm:grid-cols-2/)
+    assert.doesNotMatch(form, /Atividade principal/)
+    assert.match(form, /<UTable/)
+    assert.doesNotMatch(form, /<table\b/)
+    assert.match(source, /header: 'Código'/)
+    assert.match(source, /header: 'Descrição'/)
+    assert.match(source, /header: 'Ações'/)
+    assert.match(form, /#code-cell/)
+    assert.match(form, /#description-cell/)
+    assert.match(form, /#actions-cell/)
+    assert.match(form, /label="Adicionar atividade"/)
+    assert.match(form, /Remover atividade \$\{activityLineName\(row\.original, activityIndex\(row\.original\)\)\}/)
     assert.doesNotMatch(template, /step === [12]|Cadastrar sem consulta|label="Voltar"/)
     const button = template.match(/<UButton\b[^>]*label="Cadastrar cliente"[^>]*>/)?.[0]
     assert.ok(button)
@@ -183,10 +254,10 @@ describe('cadastro completo desde a abertura', () => {
     t.after(harness.dispose)
     const parsed = harness.modal.schema.parse({
       ...harness.modal.state, tax_id: '12.ABC.345/0001-88', name: 'Empresa Alfa',
-      street: 'Endereço anterior', postal_code: '01001-000', trade_name: 'Nome não confiável',
-      registration_status: 'Ativa', primary_activity_code: '123', mei: true
+      street: 'Endereço anterior', postal_code: '01001-000', email: 'contato@empresa.com', phone: '11999998888',
+      trade_name: 'Nome não confiável', registration_status: 'Ativa', primary_activity_code: '123', mei: true
     })
-    for (const field of ['street', 'postal_code', 'trade_name', 'registration_status', 'primary_activity_code', 'mei']) {
+    for (const field of ['street', 'postal_code', 'email', 'phone', 'trade_name', 'registration_status', 'primary_activity_code', 'mei']) {
       assert.equal(field in parsed, false)
     }
     assert.equal(parsed.tax_id, '12.ABC.345/0001-88')
@@ -208,66 +279,211 @@ describe('cadastro completo desde a abertura', () => {
   })
 })
 
+describe('layout do cadastro em duas colunas', () => {
+  function registrationForm() {
+    const source = modalSource()
+    const template = source.slice(source.indexOf('<template>'))
+    const form = template.match(/<UForm\b[\s\S]*?<\/UForm>/)?.[0]
+    assert.ok(form)
+    return { source, form }
+  }
+
+  it('troca o tipo de pessoa por um controle segmentado ligado ao estado', () => {
+    const { source, form } = registrationForm()
+    const cadastro = fieldsetByLegend(form, 'Cadastro')
+
+    assert.match(source, /label: 'Pessoa jurídica', value: 'company'/)
+    assert.match(source, /label: 'Pessoa física', value: 'individual'/)
+    assert.match(cadastro, /<URadioGroup\b[\s\S]*v-model="state\.person_type"[\s\S]*name="person_type"[\s\S]*legend="Tipo de pessoa"[\s\S]*orientation="horizontal"[\s\S]*variant="table"[\s\S]*indicator="hidden"/)
+    assert.match(cadastro, /has-data-\[state=checked\]:bg-primary/)
+    assert.match(cadastro, /state\.person_type === item\.value \? 'text-inverted'/)
+    assert.doesNotMatch(form, /<USelect\b[\s\S]*?v-model="state\.person_type"/)
+    assert.doesNotMatch(source, /Pessoa jurídica \(CNPJ\)|Pessoa física \(CPF\)/)
+  })
+
+  it('mostra a contagem real do canal e o botão do estado vazio', () => {
+    const { source, form } = registrationForm()
+    const contatos = fieldsetByLegend(form, 'Contatos')
+
+    assert.match(source, /function contactCount\(channel: 'email' \| 'whatsapp'\)[\s\S]*contacts\.value\.filter\(row => row\.channel === channel\)\.length/)
+    assert.match(source, /label: 'E-mail'[\s\S]*badge: contactCount\('email'\)/)
+    assert.match(source, /label: 'WhatsApp'[\s\S]*badge: contactCount\('whatsapp'\)/)
+    assert.doesNotMatch(source, /0\/5/)
+    assert.match(contatos, /v-if="visibleContacts\.length === 0"[\s\S]*rounded-lg bg-elevated\/50[\s\S]*:label="addContactLabel"/)
+    assert.match(contatos, /<template v-else>[\s\S]*:label="addContactLabel"[\s\S]*in visibleContacts/)
+    assert.match(source, /contactChannel\.value === 'email'[\s\S]*'Novo contato de e-mail'[\s\S]*'Novo contato de WhatsApp'/)
+  })
+
+  it('mantém o endereço da pessoa física no cadastro e as atividades fora dos contatos', () => {
+    const { form } = registrationForm()
+    const cadastro = fieldsetByLegend(form, 'Cadastro')
+    const contatos = fieldsetByLegend(form, 'Contatos')
+    const activitiesAt = form.indexOf('client-create-activities-title')
+
+    assert.match(cadastro, /Tipo de logradouro/)
+    assert.doesNotMatch(contatos, /Tipo de logradouro/)
+    assert.doesNotMatch(cadastro, /<UTable/)
+    assert.doesNotMatch(cadastro, /Adicionar atividade/)
+    assert.doesNotMatch(contatos, /<UTable/)
+    assert.doesNotMatch(contatos, /Adicionar atividade/)
+    assert.doesNotMatch(contatos, /client-create-activities-title/)
+    assert.ok(activitiesAt > form.indexOf(contatos) + contatos.length)
+    for (const forbidden of ['Identificação interna', 'Inscrição estadual', 'Inscrição municipal', 'Honorário', 'Certificado A1']) {
+      assert.equal(form.includes(forbidden), false, forbidden)
+    }
+  })
+
+  it('descreve o cadastro sem alterar a etapa de obrigações', () => {
+    const source = modalSource()
+
+    assert.match(source, /\? 'Cliente cadastrado com sucesso\.' : 'Novo cliente'/)
+    assert.match(source, /step === 'modules' \? registrationSummary : 'Cadastre o cliente na carteira do escritório\.'/)
+    assert.match(source, /label="Cancelar"/)
+    assert.match(source, /label="Cadastrar cliente"/)
+  })
+})
+
 describe('consulta auxiliar sem perda de trabalho', () => {
-  it('preserva contatos digitados antes da consulta e a escolha de regime não oficial', async (t) => {
+  it('preserva a escolha de regime não oficial durante a consulta', async (t) => {
     const harness = modalHarness({ lookupCnpj: () => Promise.resolve(companyPreview) })
     t.after(harness.dispose)
     Object.assign(harness.modal.state, {
-      tax_id: companyPreview.tax_id, email: 'manual@example.com', phone: '11999998888', tax_regime: 'actual_profit'
+      tax_id: companyPreview.tax_id, tax_regime: 'actual_profit'
     })
     await nextTick()
     await harness.modal.onLookup()
-    assert.equal(harness.modal.state.email, 'manual@example.com')
-    assert.equal(harness.modal.state.phone, '11999998888')
     assert.equal(harness.modal.state.tax_regime, 'actual_profit')
   })
 
-  it('preserva contatos editados e apagados enquanto a consulta está pendente', async (t) => {
-    const request = deferred<CnpjPreview>()
-    const harness = modalHarness({ lookupCnpj: () => request.promise })
+  it('consulta preenche a primeira atividade e o cadastro não envia linhas extras', async (t) => {
+    const harness = modalHarness({ lookupCnpj: () => Promise.resolve(companyPreview) })
     t.after(harness.dispose)
     harness.modal.state.tax_id = companyPreview.tax_id
     await nextTick()
-    const lookup = harness.modal.onLookup()
-    harness.modal.state.email = 'rascunho@example.com'
-    harness.modal.state.phone = '11999998888'
-    harness.modal.state.email = ''
-    harness.modal.state.phone = ''
-    request.resolve(companyPreview)
-    await lookup
-    assert.equal(harness.modal.state.email, '')
-    assert.equal(harness.modal.state.phone, '')
+    await harness.modal.onLookup()
+    assert.equal(harness.modal.activities.value.length, 1)
+    assert.equal(harness.modal.activities.value[0]?.code, companyPreview.primary_activity_code)
+    assert.equal(harness.modal.activities.value[0]?.description, companyPreview.primary_activity_description)
+    harness.modal.addActivity()
+    const extra = harness.modal.activities.value[1]
+    assert.ok(extra)
+    assert.equal(extra.code, '')
+    assert.equal(extra.description, '')
+    extra.code = '1234567'
+    extra.description = 'Atividade digitada'
+    harness.modal.addActivity()
+    const parsed = harness.modal.schema.parse({ ...harness.modal.state, name: 'Empresa' })
+    assert.equal('primary_activity_code' in parsed, false)
+    assert.equal('primary_activity_description' in parsed, false)
+    assert.equal('activities' in parsed, false)
+    harness.modal.removeActivity(extra.key)
+    assert.equal(harness.modal.activities.value.some(row => row.key === extra.key), false)
+    assert.equal(harness.modal.activities.value.filter(row => row.code === '' && row.description === '').length, 1)
   })
 
-  it('preenche contatos vazios e mostra o nome oficial sem substituir a razão social manual', async (t) => {
+  it('grava contatos preenchidos depois do cliente e ignora linha vazia', async (t) => {
+    const created: ClientWritePayload[] = []
+    const posted: Array<{ label?: string | null, channel: string, value: string }> = []
+    const harness = modalHarness({
+      create: (payload) => {
+        created.push(payload)
+        return Promise.resolve(savedClient)
+      },
+      createDispatchContact: async (_clientId, payload) => {
+        posted.push(payload)
+        return {}
+      }
+    })
+    t.after(harness.dispose)
+    harness.modal.addContact()
+    Object.assign(harness.modal.contacts.value[0]!, { name: 'Maria Souza', value: 'Maria@Empresa.com' })
+    harness.modal.addContact()
+    harness.modal.contactChannel.value = 'whatsapp'
+    harness.modal.addContact()
+    Object.assign(harness.modal.contacts.value[2]!, { name: 'João', value: '(11) 98765-4321' })
+    await harness.modal.onSubmit({ data: { person_type: 'company', name: 'Empresa' } })
+    assert.equal(created.length, 1)
+    assert.equal('contacts' in created[0]!, false)
+    assert.equal('email' in created[0]!, false)
+    assert.deepEqual(posted.map(item => ({ label: item.label, channel: item.channel, value: item.value })), [
+      { label: 'Maria Souza', channel: 'email', value: 'maria@empresa.com' },
+      { label: 'João', channel: 'whatsapp', value: '11987654321' }
+    ])
+    assert.equal(harness.props.open, true)
+  })
+
+  it('não cadastra o cliente quando um contato está pela metade', async (t) => {
+    let calls = 0
+    const harness = modalHarness({
+      create: () => {
+        calls += 1
+        return Promise.resolve(savedClient)
+      }
+    })
+    t.after(harness.dispose)
+    harness.modal.addContact()
+    harness.modal.contacts.value[0]!.name = 'Maria'
+    await harness.modal.onSubmit({ data: { person_type: 'company' } })
+    assert.equal(calls, 0)
+    assert.match(harness.toasts.at(-1)?.description ?? '', /nome e o e-mail/)
+    harness.modal.contacts.value[0]!.value = 'sem-arroba'
+    await harness.modal.onSubmit({ data: { person_type: 'company' } })
+    assert.equal(calls, 0)
+    assert.match(harness.toasts.at(-1)?.description ?? '', /e-mail informado não é válido/)
+  })
+
+  it('avisa quando o contato falha depois do cliente cadastrado', async (t) => {
+    let calls = 0
+    let posts = 0
+    const harness = modalHarness({
+      create: () => {
+        calls += 1
+        return Promise.resolve(savedClient)
+      },
+      createDispatchContact: () => {
+        posts += 1
+        return Promise.reject({ data: { message: 'Contato recusado.' } })
+      }
+    })
+    t.after(harness.dispose)
+    harness.modal.addContact()
+    Object.assign(harness.modal.contacts.value[0]!, { name: 'Maria', value: 'maria@empresa.com' })
+    harness.modal.addContact()
+    Object.assign(harness.modal.contacts.value[1]!, { name: 'Ana', value: 'ana@empresa.com' })
+    await harness.modal.onSubmit({ data: { person_type: 'company' } })
+    assert.equal(calls, 1)
+    assert.equal(posts, 1)
+    assert.equal(harness.props.open, true)
+    assert.ok(harness.toasts.some(item => item.title === 'Cliente cadastrado'))
+    assert.ok(harness.toasts.some(item => item.description === 'Contato recusado.'))
+    assert.equal(harness.modal.modules.value?.regime, 'simple_national')
+  })
+
+  it('mostra o nome oficial sem substituir a razão social manual', async (t) => {
     const harness = modalHarness({ lookupCnpj: () => Promise.resolve({ ...companyPreview, mei: true }) })
     t.after(harness.dispose)
     harness.modal.state.tax_id = companyPreview.tax_id
     harness.modal.state.name = 'Nome digitado'
     await nextTick()
     await harness.modal.onLookup()
-    assert.equal(harness.modal.state.email, companyPreview.email)
-    assert.equal(harness.modal.state.phone, companyPreview.phone)
     assert.equal(harness.modal.state.name, 'Nome digitado')
     assert.equal(harness.modal.preview.value?.name, companyPreview.name)
     assert.equal(harness.modal.regimeLocked.value, 'mei')
     assert.equal(harness.modal.state.tax_regime, 'mei')
   })
 
-  it('invalida nome e contatos oficiais ao mudar CNPJ sem apagar contatos alterados', async (t) => {
+  it('invalida a consulta ao mudar o CNPJ e preserva a razão social manual', async (t) => {
     const harness = modalHarness({ lookupCnpj: () => Promise.resolve({ ...companyPreview, simple_national: true }) })
     t.after(harness.dispose)
     harness.modal.state.tax_id = companyPreview.tax_id
     harness.modal.state.name = 'Nome manual preservado'
     await nextTick()
     await harness.modal.onLookup()
-    harness.modal.state.email = 'editado@example.com'
     harness.modal.state.tax_id = '12.ABC.345/0001-88'
     await nextTick()
     assert.equal(harness.modal.preview.value, null)
+    assert.equal(harness.modal.activities.value.length, 0)
     assert.equal(harness.modal.state.name, 'Nome manual preservado')
-    assert.equal(harness.modal.state.email, 'editado@example.com')
-    assert.equal(harness.modal.state.phone, '')
     assert.equal(harness.modal.state.tax_regime, 'presumed_profit')
     assert.equal(harness.modal.regimeLocked.value, null)
   })
@@ -319,8 +535,6 @@ describe('consulta auxiliar sem perda de trabalho', () => {
       request.resolve({ ...companyPreview, mei: true })
       await lookup
       assert.equal(harness.modal.preview.value, null)
-      assert.equal(harness.modal.state.email, '')
-      assert.equal(harness.modal.state.phone, '')
       assert.equal(harness.modal.lookingUp.value, false)
       assert.equal(harness.toasts.length, 0)
     })
@@ -350,11 +564,10 @@ describe('consulta auxiliar sem perda de trabalho', () => {
   it('mantém o cadastro manual e informa a indisponibilidade específica', async (t) => {
     const harness = modalHarness({ lookupCnpj: () => Promise.reject({ statusCode: 503, data: { message: 'Serviço indisponível.' } }) })
     t.after(harness.dispose)
-    Object.assign(harness.modal.state, { tax_id: companyPreview.tax_id, name: 'Empresa manual', email: 'manual@example.com' })
+    Object.assign(harness.modal.state, { tax_id: companyPreview.tax_id, name: 'Empresa manual' })
     await nextTick()
     await harness.modal.onLookup()
     assert.equal(harness.modal.state.name, 'Empresa manual')
-    assert.equal(harness.modal.state.email, 'manual@example.com')
     assert.match(harness.toasts[0]?.description ?? '', /Serviço indisponível/)
     assert.equal(harness.modal.lookingUp.value, false)
   })
@@ -364,11 +577,10 @@ describe('recusas do servidor mantêm o formulário', () => {
   it('mostra duplicidade no documento sem perder os valores digitados', async (t) => {
     const harness = modalHarness({ create: () => Promise.reject({ data: { errors: { tax_id: ['Documento já cadastrado.'] } } }) })
     t.after(harness.dispose)
-    Object.assign(harness.modal.state, { tax_id: companyPreview.tax_id, name: 'Empresa manual', email: 'manual@example.com' })
+    Object.assign(harness.modal.state, { tax_id: companyPreview.tax_id, name: 'Empresa manual' })
     await harness.modal.onSubmit({ data: {} })
     assert.equal(harness.props.open, true)
     assert.equal(harness.modal.state.name, 'Empresa manual')
-    assert.equal(harness.modal.state.email, 'manual@example.com')
     assert.equal(harness.serverErrors.length, 1)
     assert.equal(harness.serverErrors[0]?.name, 'tax_id')
     assert.equal(harness.serverErrors[0]?.message, 'Documento já cadastrado.')
@@ -387,8 +599,8 @@ describe('guardas do cadastro e acessibilidade', () => {
       assert.ok(result.error.issues.some(issue => issue.path[0] === 'name'))
     }
     const parsed = harness.modal.schema.parse({ ...harness.modal.state, tax_id: '27865757000102', name: 'Empresa' })
-    assert.equal(parsed.email, '')
-    assert.equal(parsed.phone, '')
+    assert.equal('email' in parsed, false)
+    assert.equal('phone' in parsed, false)
   })
 
   it('leva o foco ao primeiro erro dentro do corpo rolável', (t) => {
@@ -406,7 +618,6 @@ describe('guardas do cadastro e acessibilidade', () => {
     harness.modal.state.tax_id = companyPreview.tax_id
     await harness.modal.onLookup()
     assert.equal(harness.modal.preview.value, null)
-    assert.equal(harness.modal.state.email, '')
     assert.equal(harness.modal.lookingUp.value, false)
     assert.equal(harness.toasts.length, 0)
   })
@@ -598,6 +809,49 @@ describe('fechamento depois de cadastrar o cliente', () => {
 
     assert.equal(harness.props.open, false)
     assert.deepEqual(harness.saved(), [{ name: 'saved', value: savedClient }])
+  })
+})
+
+describe('resumo depois de salvar', () => {
+  it('mostra o cadastro concluído e o certificado ainda sem cadastro', async (t) => {
+    const harness = modalHarness()
+    t.after(harness.dispose)
+    await harness.modal.onSubmit({ data: {} })
+
+    const steps = harness.modal.registrationSteps.value.map(step => [step.id, step.statusLabel, step.done])
+    assert.equal(JSON.stringify(steps), JSON.stringify([
+      ['cadastro', 'Concluído', true],
+      ['xml', 'Incluída', true],
+      ['certificate', 'Sem cadastro', false],
+      ['poa', 'Sem cadastro', false]
+    ]))
+    assert.equal(harness.modal.registrationProgress.value, 50)
+  })
+
+  it('marca os contatos de envio quando o salvamento deles termina', async (t) => {
+    const harness = modalHarness()
+    t.after(harness.dispose)
+    harness.modal.addContact()
+    Object.assign(harness.modal.contacts.value[0]!, { name: 'Maria', value: 'maria@empresa.com' })
+    await harness.modal.onSubmit({ data: {} })
+
+    const contacts = harness.modal.registrationSteps.value.find(step => step.id === 'contacts')
+    assert.equal(contacts?.statusLabel, 'Concluído')
+    assert.equal(contacts?.done, true)
+  })
+
+  it('mostra o resumo visual do cadastro na etapa seguinte ao salvar', () => {
+    const source = modalSource()
+    const template = source.slice(source.indexOf('<template>'))
+    assert.match(template, /Cliente cadastrado com sucesso\./)
+    assert.match(source, /label: 'Cadastro do cliente'/)
+    assert.match(source, /label: 'Captura de XML'/)
+    assert.match(source, /'Certificado digital'/)
+    assert.match(source, /'Procuração e-CAC'/)
+    assert.match(template, /Obrigações de monitoramento/)
+    assert.match(template, /label="Fechar"/)
+    assert.match(template, /label="Confirmar obrigações"/)
+    assert.match(source, /title="Não foi possível associar as obrigações"[\s\S]*?@retry="confirmModules"/)
   })
 })
 

@@ -37,7 +37,7 @@ async function requestCreate() {
       <UDashboardNavbar
         :title="navbarTitle"
         :ui="{
-          root: 'h-auto min-h-(--ui-header-height) flex-wrap gap-y-2 py-2',
+          root: 'h-auto min-h-(--ui-header-height) flex-wrap gap-y-2 py-2 sm:h-(--ui-header-height) sm:flex-nowrap sm:py-0',
           right: 'min-w-0 max-w-full shrink flex-wrap gap-2'
         }"
       >
@@ -79,7 +79,7 @@ async function requestCreate() {
           <UButton
             v-if="canManageClients && !onDetail"
             icon="i-lucide-plus"
-            color="neutral"
+            color="primary"
             aria-label="Novo cliente"
             class="sm:hidden"
             @click="requestCreate"
@@ -88,7 +88,7 @@ async function requestCreate() {
             v-if="canManageClients && !onDetail"
             label="Novo cliente"
             icon="i-lucide-plus"
-            color="neutral"
+            color="primary"
             class="hidden sm:inline-flex"
             @click="requestCreate"
           />

@@ -50,7 +50,6 @@ class SerproConnectivityTest extends BusinessTestCase
      */
     private const CLIENT_TABLES = [
         'client_certificates',
-        'client_saved_filters',
         'client_tag',
         'clients',
         'fiscal_cursors',

@@ -104,12 +104,10 @@ export function officeErpSidebarItem(path: string) {
     defaultOpen: active,
     children: [
       { label: 'Visão geral', to: '/gestao-erp', exact: true, active: path === '/gestao-erp' },
-      { label: 'Planos', to: '/gestao-erp/planos', exact: true, active: path === '/gestao-erp/planos' },
-      { label: 'Empresas', to: '/gestao-erp/empresas', exact: false, active: path === '/gestao-erp/empresas' || path.startsWith('/gestao-erp/empresas/') },
-      { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: path.startsWith('/gestao-erp/assinaturas') },
-      { label: 'Faturas', to: '/gestao-erp/faturas', exact: false, active: sidebarParentActive('/gestao-erp/faturas', path) },
-      { label: 'Recebimentos', to: '/gestao-erp/recebimentos', exact: true, active: path === '/gestao-erp/recebimentos' },
-      { label: 'Configurações', to: '/gestao-erp/configuracoes', exact: true, active: path === '/gestao-erp/configuracoes' }
+      { label: 'Empresas', to: '/gestao-erp/empresas', exact: false, active: sidebarParentActive('/gestao-erp/empresas', path) },
+      { label: 'Assinaturas', to: '/gestao-erp/assinaturas', exact: false, active: sidebarParentActive('/gestao-erp/assinaturas', path) },
+      { label: 'Financeiro', to: '/gestao-erp/faturas', exact: false, active: sidebarParentActive('/gestao-erp/faturas', path) || sidebarParentActive('/gestao-erp/recebimentos', path) },
+      { label: 'Configurações', to: '/gestao-erp/configuracoes', exact: true, active: path === '/gestao-erp/configuracoes' || sidebarParentActive('/gestao-erp/planos', path) }
     ]
   }
 }

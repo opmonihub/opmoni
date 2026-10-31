@@ -144,6 +144,19 @@ function componentName(node: Vue.VNode) {
   return typeof node.type === 'object' ? (node.type as { name?: string }).name : node.type
 }
 
+function menuLabels(items: unknown): string[] {
+  if (!Array.isArray(items)) return []
+  return items.flatMap((item) => {
+    if (Array.isArray(item)) return menuLabels(item)
+    if (item && typeof item === 'object' && 'label' in item && typeof item.label === 'string') return [item.label]
+    return []
+  })
+}
+
+function textOf(vnode: Vue.VNode): string[] {
+  return nodes(vnode).flatMap(node => typeof node.children === 'string' ? [node.children] : [])
+}
+
 describe('dados existentes na ficha do cliente', () => {
   it('distingue falha dos Contatos de envio na visão geral e recupera a lista ao tentar novamente', async (t) => {
     let failing = true
@@ -171,22 +184,45 @@ describe('dados existentes na ficha do cliente', () => {
   })
 
   for (const disabled of [false, true]) {
-    it(`preserva telefone e e-mail do cadastro com destinos ${disabled ? 'desativados (404)' : 'vazios'}`, async (t) => {
+    it(`omite e-mail e telefone do cadastro com destinos ${disabled ? 'desativados (404)' : 'vazios'}`, async (t) => {
       const page = await setupRecord(client(), disabled)
       t.after(page.close)
+
+      const overviewText = textOf(page.render())
+      assert.equal(overviewText.some(item => item.includes('financeiro@empresa.test')), false)
+      assert.equal(overviewText.some(item => item.replace(/\D/g, '').includes('11999999999')), false)
+      assert.ok(overviewText.some(item => item.includes('Nenhum Contato de envio cadastrado.')))
+      assert.equal(page.state.summaryText.value.includes('financeiro@empresa.test'), false)
+
       page.state.tab.value = 'contato'
       const view = nodes(page.render())
-      const facts = view.flatMap(node => componentName(node) === 'DataTableMetaList' ? node.props?.items ?? [] : [])
-
-      assert.ok(facts.some(item => item.value === 'financeiro@empresa.test'))
-      assert.ok(facts.some(item => String(item.value).replace(/\D/g, '') === '11999999999'))
-      assert.ok(page.state.summaryText.value.includes('financeiro@empresa.test'))
-      const edit = view.find(node => componentName(node) === 'UButton' && node.props?.label === 'Editar contato')
-      assert.ok(edit)
-      edit.props!.onClick()
-      assert.equal(page.state.contactOpen.value, true)
+      const text = textOf(page.render())
+      assert.equal(text.some(item => item.includes('Contato do cadastro')), false)
+      assert.equal(text.some(item => item.includes('financeiro@empresa.test')), false)
+      assert.equal(view.some(node => componentName(node) === 'UButton' && node.props?.label === 'Editar contato'), false)
+      assert.ok(text.some(item => item.includes('Contatos de envio')))
+      const labels = view.filter(node => componentName(node) === 'UDropdownMenu').flatMap(node => menuLabels(node.props?.items))
+      assert.equal(labels.includes('Editar contato'), false)
+      assert.ok(labels.includes('Editar cadastro'))
     })
   }
+
+  it('pessoa física continua abrindo a edição de endereço', async (t) => {
+    const individual = client()
+    individual.person_type = 'individual'
+    individual.address = {
+      street_type: 'Rua', street: 'das Flores', number: '10', complement: null,
+      district: 'Centro', postal_code: '01001000', city: 'São Paulo', state: 'SP'
+    }
+    const page = await setupRecord(individual)
+    t.after(page.close)
+    page.state.tab.value = 'endereco'
+    const view = nodes(page.render())
+    const edit = view.find(node => componentName(node) === 'UButton' && node.props?.label === 'Editar endereço')
+    assert.ok(edit)
+    edit.props!.onClick()
+    assert.equal(page.state.contactOpen.value, true)
+  })
 
   it('apresenta a família estabelecida sem vencimento como outorga confirmada', async (t) => {
     const page = await setupRecord(client({

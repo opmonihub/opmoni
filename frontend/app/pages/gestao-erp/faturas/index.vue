@@ -12,7 +12,7 @@ import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import type { TableColumn } from '@nuxt/ui'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
-import { panelBodyClass } from '~/components/data-table/panel'
+import { companyListBodyClass } from '~/components/office-erp/companyList'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -168,9 +168,18 @@ watch(identity, () => {
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-col gap-5">
-    <OfficeErpPanel title="Faturas" description="Cobranças, vencimentos e saldos.">
+    <OfficeErpPanel title="Faturas" description="Cobranças, vencimentos e saldos." list>
       <template #action>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <UButton
+            to="/gestao-erp/recebimentos"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-banknote"
+            size="sm"
+          >
+            Recebimentos
+          </UButton>
           <UButton
             color="neutral"
             variant="outline"
@@ -196,15 +205,8 @@ watch(identity, () => {
             class="w-full min-w-0 sm:max-w-sm"
           />
         </DataTableFilterPanel>
-
-        <DataTableSortMenu
-          :sort="sort"
-          :direction="direction"
-          :fields="[{ value: 'number', label: 'Fatura' }, { value: 'due_on', label: 'Vencimento' }, { value: 'document_status', label: 'Situação' }, { value: 'id', label: 'Cadastro' }]"
-          @change="ordering => navigation = { ...navigation, ...ordering, page: 1 }"
-        />
       </template>
-      <div :class="panelBodyClass">
+      <div :class="companyListBodyClass">
         <UAlert
           v-if="loadError"
           color="error"
@@ -236,11 +238,13 @@ watch(identity, () => {
           :title="loadError ? 'Nenhuma fatura na última consulta confirmada' : 'Nenhuma fatura encontrada'"
           :description="loadError ? 'A atualização falhou; este resultado vazio pertence à última consulta confirmada.' : 'Altere os filtros ou crie um novo rascunho.'"
         />
-        <div v-if="!confirmedEmpty && (!loadError || hasConfirmedResults)" class="overflow-x-auto">
+        <div v-if="!confirmedEmpty && (!loadError || hasConfirmedResults)" class="min-w-0">
           <OfficeErpDataTable
             :data="rows"
             :columns="columns"
             :loading="loading"
+            :get-row-id="row => String(row.id)"
+            label="Faturas"
           >
             <template #number-header>
               <DataTableSortButton
@@ -262,6 +266,11 @@ watch(identity, () => {
                 :sorted="sort === 'due_on' ? direction === 'desc' ? 'desc' : 'asc' : false"
                 @toggle="navigation = { ...navigation, sort: sort === 'due_on' && direction === 'desc' ? '' : 'due_on', direction: sort === 'due_on' && direction === 'asc' ? 'desc' : 'asc', page: 1 }"
               />
+            </template>
+            <template #number-cell="{ row }">
+              <NuxtLink :to="`/gestao-erp/faturas/${row.original.id}`" class="font-medium text-highlighted underline-offset-4 hover:underline">
+                {{ row.original.number || `Rascunho #${row.original.id}` }}
+              </NuxtLink>
             </template>
             <template #client-cell="{ row }">
               <span class="block max-w-72 min-w-56 whitespace-normal wrap-anywhere">{{ row.original.bill_to_snapshot.client?.name || row.original.bill_to_snapshot.company?.name || 'Cliente' }}</span>

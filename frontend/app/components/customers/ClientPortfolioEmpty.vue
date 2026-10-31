@@ -40,7 +40,6 @@ const statusTitles: Record<ClientPortfolioDocument, Record<DeadlineStatus, strin
 const presentation = computed(() => {
   if (filtered.value) {
     return {
-      icon: 'i-lucide-search-x',
       title: 'Nenhum cliente encontrado',
       description: 'Ajuste a busca ou limpe os filtros.'
     }
@@ -48,7 +47,6 @@ const presentation = computed(() => {
 
   if (portfolioEmpty.value) {
     return {
-      icon: 'i-lucide-users-round',
       title: 'Sua carteira ainda está vazia',
       description: props.canManageClients
         ? 'Cadastre seu primeiro cliente para acompanhar certificados A1 e procurações e-CAC em um só lugar.'
@@ -57,19 +55,28 @@ const presentation = computed(() => {
   }
 
   return {
-    icon: props.document === 'certificate' ? 'i-lucide-key-round' : 'i-lucide-file-key-2',
-    title: statusTitles[props.document][props.status as DeadlineStatus],
-    description: 'Não há clientes nesta situação. Veja todos os clientes para consultar o restante da carteira.'
+    title: statusTitles[props.document][props.status as DeadlineStatus]
   }
 })
 </script>
 
 <template>
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+  <div
+    role="status"
+    aria-live="polite"
+    class="min-w-0"
+  >
     <UEmpty
       v-bind="presentation"
       variant="naked"
-      class="my-auto w-full py-12 sm:py-16"
+      size="md"
+      class="w-full gap-2 py-6 sm:py-8 lg:py-8"
+      :ui="{
+        header: 'max-w-lg gap-1',
+        title: 'text-sm font-medium text-toned',
+        description: 'text-sm text-muted',
+        actions: 'gap-2'
+      }"
     >
       <template #actions>
         <template v-if="filtered">
@@ -93,9 +100,9 @@ const presentation = computed(() => {
         <UButton
           v-else-if="!portfolioEmpty"
           label="Ver todos os clientes"
-          icon="i-lucide-list"
           color="neutral"
-          variant="outline"
+          variant="ghost"
+          size="sm"
           :to="customerListPath(document)"
         />
         <UButton

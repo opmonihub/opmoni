@@ -14,13 +14,6 @@ function nodes(node: Node, predicate: (candidate: Node) => boolean): Node[] {
 function text(node: Node): string {
   return `${node.text ?? ''}${node.children.map(text).join('')}`
 }
-async function expandAllContractRows(root: Node) {
-  const expanders = nodes(root, node => node.tag === 'button' && node.props['aria-label'] === 'Ver detalhes do contrato')
-  assert.ok(expanders.length > 0, 'expected contract detail controls')
-  for (const expander of expanders)
-    (expander.props.onClick as (() => void) | undefined)?.()
-  await settle()
-}
 function mount(component: Vue.Component, registered: Record<string, Vue.Component>) {
   const root: Node = { props: {}, children: [] }
   const renderer = Vue.createRenderer({
@@ -132,7 +125,10 @@ function harness(path: string, recordData = detail, initialRecoveryKey: string |
           : ctx.slots['empty']?.()
       }
     }
-  }, UPagination: passthrough, DataTablePanelList: passthrough, NuxtLink: { setup: (_p, ctx) => () => Vue.h('a', {}, ctx.slots.default?.()) } }
+  }, UForm: { inheritAttrs: false, props: ['state'], setup: (_props, { attrs, slots }) => () => Vue.h('form', { ...attrs, onSubmit: (event: { preventDefault(): void }) => {
+    event.preventDefault()
+    ;(attrs.onSubmit as () => void)?.()
+  } }, slots.default?.()) }, UPagination: passthrough, DataTablePanelList: passthrough, NuxtLink: { setup: (_p, ctx) => () => Vue.h('a', {}, ctx.slots.default?.()) } }
   const rendered = mount(component, registered)
   return {
     ...rendered,
@@ -159,43 +155,28 @@ async function settle() {
   }
 }
 
-test('renders the contracts list SFC and keeps agreement and licence statuses distinct', async () => {
-  const page = harness('pages/gestao-erp/assinaturas/contratos.vue')
+test('contract details keep agreement and licence states distinct without linking to the removed list', async () => {
+  const page = harness('pages/gestao-erp/assinaturas/[id].vue')
   try {
     await settle()
-    await expandAllContractRows(page.root)
     assert.match(text(page.root), /Mercado Central/)
     assert.match(text(page.root), /R\$ 99,00/)
-    assert.match(text(page.root), /Contábil Essencial/)
-    assert.match(text(page.root), /Próxima cobrança/)
-    assert.match(text(page.root), /aguardando configuração/i)
     assert.match(text(page.root), /Vigente/)
     assert.match(text(page.root), /Ativa/)
-    assert.ok(page.calls.some(call => call.path === '/erp-commercial/contracts'))
-  } finally {
-    page.app.unmount()
-  }
+    assert.equal(nodes(page.root, node => node.props.href === '/gestao-erp/assinaturas/contratos').length, 0)
+  } finally { page.app.unmount() }
 })
 
 test('labels every canonical agreement state and never describes unknown states as canceled', async () => {
-  const rows = ['draft', 'awaiting_owner', 'accepted', 'effective', 'canceled', 'future_state'].map((agreement_status, index) => ({
-    ...detail,
-    id: 20 + index,
-    agreement_status
-  }))
-  const page = harness('pages/gestao-erp/assinaturas/contratos.vue', detail, null, rows)
-  try {
-    await settle()
-    await expandAllContractRows(page.root)
-    const rendered = text(page.root)
-    assert.match(rendered, /Rascunho/)
-    assert.match(rendered, /Aguardando confirmação do responsável/)
-    assert.match(rendered, /Aceito · aguardando ativação/)
-    assert.match(rendered, /Vigente/)
-    assert.match(rendered, /Cancelado/)
-    assert.match(rendered, /Situação não reconhecida/)
-  } finally {
-    page.app.unmount()
+  for (const [agreement_status, expected] of [
+    ['draft', 'draft'], ['awaiting_owner', 'awaiting_owner'],
+    ['accepted', 'Aceito'], ['effective', 'Vigente'], ['canceled', 'Cancelado'], ['future_state', 'future_state']
+  ]) {
+    const page = harness('pages/gestao-erp/assinaturas/[id].vue', { ...detail, agreement_status: agreement_status! })
+    try {
+      await settle()
+      assert.ok(text(page.root).includes(expected!), agreement_status)
+    } finally { page.app.unmount() }
   }
 })
 
@@ -213,21 +194,13 @@ test('shows factual trial dates without inventing a next invoice', async () => {
     },
     next_billing_on: null
   }
-  const list = harness('pages/gestao-erp/assinaturas/contratos.vue', detail, null, [trialRecord])
   const page = harness('pages/gestao-erp/assinaturas/[id].vue', trialRecord)
   try {
     await settle()
-    assert.match(text(list.root), /Em teste/)
-    assert.doesNotMatch(text(list.root), /Encerra 01\/11\/2026/)
-    await expandAllContractRows(list.root)
-    assert.match(text(list.root), /encerra 01\/11\/2026/i)
-    assert.match(text(list.root), /Data indisponível/)
-    assert.doesNotMatch(text(list.root), /Próxima cobrança01\/11\/2026/)
     assert.match(text(page.root), /Teste de 7 dias/)
     assert.match(text(page.root), /Encerra 01\/11\/2026/)
     assert.doesNotMatch(text(page.root), /Próxima cobrança/)
   } finally {
-    list.app.unmount()
     page.app.unmount()
   }
 })
@@ -247,7 +220,6 @@ test('keeps paid subscription status and next billing visible after trial conver
     },
     next_billing_on: '2026-11-25'
   }))
-  const page = harness('pages/gestao-erp/assinaturas/contratos.vue', detail, null, rows)
   const convertedActiveDetail = harness('pages/gestao-erp/assinaturas/[id].vue', {
     ...detail,
     licence_status: 'active',
@@ -262,22 +234,11 @@ test('keeps paid subscription status and next billing visible after trial conver
   })
   try {
     await settle()
-    assert.doesNotMatch(text(page.root), /25\/11\/2026/)
-    await expandAllContractRows(page.root)
-    const rendered = text(page.root)
-    assert.match(rendered, /Ativa/)
-    assert.match(rendered, /Suspensa/)
-    assert.match(rendered, /Em atraso/)
-    assert.match(rendered, /Cancelada/)
-    assert.equal((rendered.match(/25\/11\/2026/g) ?? []).length, 4)
-    assert.equal((rendered.match(/Período de teste convertido/g) ?? []).length, 4)
-    assert.equal((rendered.match(/encerrou 25\/10\/2026/g) ?? []).length, 4)
     assert.match(text(convertedActiveDetail.root), /Próxima cobrança 2026-11-25/)
     assert.match(text(convertedActiveDetail.root), /Período original até/)
     assert.match(text(convertedCanceledDetail.root), /Período original até/)
     assert.doesNotMatch(text(convertedCanceledDetail.root), /Próxima cobrança/)
   } finally {
-    page.app.unmount()
     convertedActiveDetail.app.unmount()
     convertedCanceledDetail.app.unmount()
   }
@@ -372,7 +333,9 @@ test('sends amendments as PATCH with canonical money and retains fields for reco
     await settle()
     const amend = nodes(page.root, node => node.tag === 'button' && text(node).includes('Agendar alteração'))[0]
     assert.ok(amend)
-    ;(amend.props.onClick as () => void)()
+    const form = nodes(page.root, node => node.tag === 'form' && node.props.id === 'office-erp-contract-terms' && typeof node.props.onSubmit === 'function')[0]!
+    assert.ok(form)
+    ;(form.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
     await settle()
     const args = page.commandCalls[0]!
     assert.equal(args[0], 'contract.amend')

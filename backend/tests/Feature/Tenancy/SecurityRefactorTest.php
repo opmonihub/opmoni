@@ -7,7 +7,6 @@ use App\Models\AccountMembership;
 use App\Models\AccountUser;
 use App\Models\Client;
 use App\Models\ClientCertificate;
-use App\Models\ClientSavedFilter;
 use App\Models\Department;
 use App\Models\Plan;
 use App\Models\Process;
@@ -71,7 +70,6 @@ class SecurityRefactorTest extends BusinessTestCase
             Process::class,
             Task::class,
             SerproMonitoring::class,
-            ClientSavedFilter::class,
             TemplateClientException::class,
             SupportAccessLog::class,
             Subscription::class,

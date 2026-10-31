@@ -18,7 +18,6 @@ use App\Http\Controllers\Api\V1\Tenant\ClientCnpjRefreshController;
 use App\Http\Controllers\Api\V1\Tenant\ClientController;
 use App\Http\Controllers\Api\V1\Tenant\ClientDispatchContactController;
 use App\Http\Controllers\Api\V1\Tenant\ClientMonitoringModuleController;
-use App\Http\Controllers\Api\V1\Tenant\ClientSavedFilterController;
 use App\Http\Controllers\Api\V1\Tenant\ClientSelectionController;
 use App\Http\Controllers\Api\V1\Tenant\ClientTagAssignmentController;
 use App\Http\Controllers\Api\V1\Tenant\DepartmentController;
@@ -59,9 +58,6 @@ Route::middleware([ResolveAccount::class])->group(function (): void {
     Route::post('clients/tags', [ClientTagAssignmentController::class, 'store']);
     Route::apiResource('tags', TagController::class)->except(['show']);
     Route::apiResource('departments', DepartmentController::class)->except(['show']);
-    Route::get('clients/saved-filters', [ClientSavedFilterController::class, 'index']);
-    Route::post('clients/saved-filters', [ClientSavedFilterController::class, 'store']);
-    Route::delete('clients/saved-filters/{savedFilter}', [ClientSavedFilterController::class, 'destroy']);
     Route::post('clients/selections', [ClientSelectionController::class, 'store']);
     Route::post('clients/selections/{selection}/presence', [ClientSelectionController::class, 'presence']);
     Route::post('clients/bulk-deletions', [ClientBulkDeletionController::class, 'store']);

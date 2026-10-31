@@ -233,8 +233,8 @@ describe('shared responsive quick-filter and list-control structure', () => {
     const menuTag = source.match(/<CustomersClientListMenu[\s\S]*?\/>/)?.[0]
     assert.ok(menuTag)
     assert.match(menuTag, /:compact="!desktopTable"/)
-    assert.match(menuTag, /:show-saved="documentStatus === 'all'"/)
     assert.match(menuTag, /:can-manage-tags="canManageClients"/)
+    assert.doesNotMatch(source, /saved-filter|Salvar filtros|show-saved|apply-saved-filter/)
     assert.doesNotMatch(menuTag, /md:hidden|hidden md/)
     for (const control of ['DataTableFilterPanel', 'UDropdownMenu', 'DataTableColumnMenu', 'emit(\'export\')']) {
       assert.ok(source.includes(control), `Existing control must remain: ${control}`)

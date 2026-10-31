@@ -6,7 +6,6 @@ import type {
   ClientListParams,
   ClientPortfolioAnalytics,
   ClientPortfolioSummary,
-  ClientSavedFilter,
   ClientSelectionSnapshot,
   ClientTag,
   ClientTagAssignment,
@@ -91,19 +90,6 @@ export function useClients() {
     return $api<{ data: ClientBulkDeletion }>(`/clients/bulk-deletions/${id}`)
   }
 
-  async function listSavedFilters() {
-    return $api<{ data: ClientSavedFilter[] }>('/clients/saved-filters')
-  }
-
-  async function createSavedFilter(body: { name: string, q?: string | null, filters: ClientSavedFilter['filters'] }) {
-    const response = await $api<{ data: ClientSavedFilter }>('/clients/saved-filters', { method: 'POST', body })
-    return response.data
-  }
-
-  async function deleteSavedFilter(id: number) {
-    await $api(`/clients/saved-filters/${id}`, { method: 'DELETE' })
-  }
-
   async function listTags(options: { signal?: AbortSignal } = {}) {
     return $api<{ data: ClientTag[] }>('/tags', { signal: options.signal })
   }
@@ -149,5 +135,5 @@ export function useClients() {
     return response.data
   }
 
-  return { list, show, portfolioSummary, portfolioAnalytics, lookupCnpj, create, update, refreshPreview, refreshCnpj, remove, createSelection, selectionPresence, bulkDelete, bulkDeletion, listSavedFilters, createSavedFilter, deleteSavedFilter, listTags, createTag, updateTag, deleteTag, assignTags, uploadCertificate, removeCertificate, monitoringModules, confirmMonitoringModules }
+  return { list, show, portfolioSummary, portfolioAnalytics, lookupCnpj, create, update, refreshPreview, refreshCnpj, remove, createSelection, selectionPresence, bulkDelete, bulkDeletion, listTags, createTag, updateTag, deleteTag, assignTags, uploadCertificate, removeCertificate, monitoringModules, confirmMonitoringModules }
 }

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
+import { useId } from 'vue'
+import { focusFormError } from '~/utils/formPresentation'
 
 const props = withDefaults(defineProps<{
   direction: 'debit' | 'credit'
@@ -30,19 +32,29 @@ const emit = defineEmits<{
 const amount = ref(props.initialAmount)
 const reason = ref(props.initialReason)
 const localError = ref('')
+const localErrors = ref<Record<string, string>>({})
+const formId = `office-erp-adjustment-${useId()}`
+watch([() => props.errors, localErrors], () => {
+  void focusFormError(undefined, formId)
+})
+function invalid(name: string, message: string) {
+  localError.value = message
+  localErrors.value = { [name]: message }
+}
 const locked = computed(() => props.busy || props.unknown)
 
 function submit() {
   localError.value = ''
+  localErrors.value = {}
   if (locked.value) return
   if (!reason.value.trim()) {
-    localError.value = 'Informe o motivo do ajuste.'
+    invalid('reason', 'Informe o motivo do ajuste.')
     return
   }
   try {
     const canonicalAmount = parseOfficeErpMoney(amount.value)
     if (canonicalAmount === '0.00') {
-      localError.value = 'Informe um valor maior que zero.'
+      invalid('amount', 'Informe um valor maior que zero.')
       return
     }
     const payload: { direction: 'debit' | 'credit', amount: string, reason: string, corrects_adjustment_id?: number } = {
@@ -54,7 +66,7 @@ function submit() {
       payload.corrects_adjustment_id = props.correctsAdjustmentId
     emit('submit', payload)
   } catch {
-    localError.value = 'Informe um valor válido com até duas casas decimais.'
+    invalid('amount', 'Informe um valor válido com até duas casas decimais.')
   }
 }
 </script>
@@ -88,9 +100,11 @@ function submit() {
     </div>
     <UForm
       v-else
+      :id="formId"
       :state="{ amount, reason }"
       class="grid gap-3 sm:grid-cols-2"
-      @submit.prevent="submit"
+      @submit="submit"
+      @error="event => focusFormError(event, formId)"
     >
       <UFormField label="Direção do ajuste" name="direction" required>
         <USelect :model-value="direction" :items="[{ label: 'Acréscimo', value: 'debit' }, { label: 'Crédito', value: 'credit' }]" disabled />
@@ -99,7 +113,7 @@ function submit() {
         label="Valor do ajuste"
         name="amount"
         required
-        :error="props.errors.amount?.[0]"
+        :error="localErrors.amount || props.errors.amount?.[0]"
       >
         <UInput
           v-model="amount"
@@ -114,7 +128,7 @@ function submit() {
         label="Motivo"
         name="reason"
         required
-        :error="props.errors.reason?.[0]"
+        :error="localErrors.reason || props.errors.reason?.[0]"
         class="sm:col-span-2"
       >
         <UTextarea

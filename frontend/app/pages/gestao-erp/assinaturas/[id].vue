@@ -4,6 +4,8 @@ import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity
 import { formatOfficeErpMoney, parseOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { panelBodyClass } from '~/components/data-table/panel'
+import { focusFormError } from '~/utils/formPresentation'
+import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -99,6 +101,18 @@ const conversionDueInDays = ref('0')
 const conversionStartOn = ref('')
 const conversionTimezone = ref('America/Sao_Paulo')
 const conversionError = ref('')
+const fieldErrors = ref<Record<string, string[]>>({})
+const activeFormId = ref('office-erp-contract-terms')
+const reasonOpen = computed(() => pendingAction.value !== '')
+const restoreReasonFocus = useModalFocusReturn(reasonOpen)
+watch(fieldErrors, () => {
+  void focusFormError(undefined, activeFormId.value)
+})
+function invalid(name: string, message: string) {
+  fieldErrors.value = { [name]: [message] }
+  if (activeFormId.value === 'office-erp-trial-conversion') conversionError.value = message
+  else mutationError.value = message
+}
 let loadGeneration = 0
 let conversionGeneration = 0
 
@@ -166,6 +180,7 @@ async function execute(action: string, path: string, body: Record<string, unknow
   const scope = identityStamp.value
   const token = context.capture()
   mutationError.value = ''
+  fieldErrors.value = {}
   const result = await command.execute<{ contract_id?: number, revision_id?: number }>(action, path, body, method)
   if (scope !== identityStamp.value || !context.isCurrent(token)) return
   if (result.status === 'confirmed') {
@@ -180,7 +195,9 @@ async function execute(action: string, path: string, body: Record<string, unknow
   } else if (result.status === 'unknown') {
     mutationError.value = 'A resposta não confirmou o resultado. Recupere a operação pelo identificador original antes de tentar outra alteração.'
   } else if (result.status === 'failed') {
-    mutationError.value = result.failure.message
+    fieldErrors.value = result.failure.errors ?? {}
+    if (action === 'trial.convert') conversionError.value = result.failure.message
+    else mutationError.value = result.failure.message
   }
 }
 
@@ -211,11 +228,12 @@ async function recoverOperation() {
 }
 
 function amend() {
+  activeFormId.value = 'office-erp-contract-terms'
   let canonicalPrice: string
   try {
     canonicalPrice = parseOfficeErpMoney(price.value.trim())
   } catch {
-    mutationError.value = 'Informe um preço em reais com até duas casas decimais.'
+    invalid('price', 'Informe um preço em reais com até duas casas decimais.')
     return
   }
   void execute('contract.amend', `/erp-commercial/contracts/${route.params.id}/terms`, {
@@ -273,26 +291,27 @@ async function prepareTrialConversion() {
 }
 
 function confirmTrialConversion() {
+  activeFormId.value = 'office-erp-trial-conversion'
   if (!canConvertTrial.value || !record.value || command.pending.value) return
   let canonicalPrice: string
   try {
     canonicalPrice = parseOfficeErpMoney(conversionPrice.value.trim())
   } catch {
-    conversionError.value = 'Informe um preço em reais com até duas casas decimais.'
+    invalid('price', 'Informe um preço em reais com até duas casas decimais.')
     return
   }
   const interval = Number(conversionIntervalMonths.value)
   const dueInDays = Number(conversionDueInDays.value)
   if (!conversionPlans.value.some(plan => plan.id === conversionPlanId.value)) {
-    conversionError.value = 'Selecione um plano ERP disponível para este escritório.'
+    invalid('erp_plan_id', 'Selecione um plano ERP disponível para este escritório.')
     return
   }
   if (![1, 3, 6, 12].includes(interval) || !Number.isInteger(dueInDays) || dueInDays < 0 || dueInDays > 65535) {
-    conversionError.value = 'Confira o ciclo e os dias até o vencimento.'
+    invalid(![1, 3, 6, 12].includes(interval) ? 'interval_months' : 'due_in_days', 'Confira o ciclo e os dias até o vencimento.')
     return
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(conversionStartOn.value) || !conversionTimezone.value.trim()) {
-    conversionError.value = 'Informe a data de início e o fuso horário de cobrança.'
+    invalid(!conversionTimezone.value.trim() ? 'billing_timezone' : 'start_on', 'Informe a data de início e o fuso horário de cobrança.')
     return
   }
   conversionError.value = ''
@@ -308,8 +327,9 @@ function confirmTrialConversion() {
 }
 
 function confirmReasonAction() {
+  activeFormId.value = 'office-erp-contract-action'
   if (!actionReason.value.trim()) {
-    mutationError.value = 'Informe o motivo para continuar.'
+    invalid('reason', 'Informe o motivo para continuar.')
     return
   }
   if (pendingAction.value === 'suspend')
@@ -329,6 +349,7 @@ watch(identityStamp, () => {
   conversionPlans.value = []
   conversionPlanId.value = null
   conversionError.value = ''
+  fieldErrors.value = {}
   void loadContract()
 }, { immediate: true, flush: 'sync' })
 </script>
@@ -338,14 +359,20 @@ watch(identityStamp, () => {
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="min-w-0">
         <p class="text-sm text-muted">
-          <NuxtLink to="/gestao-erp/assinaturas/contratos" class="underline">Contratos</NuxtLink> / contrato {{ route.params.id }}
+          Contrato {{ route.params.id }}
         </p>
         <h2 class="mt-1 text-base font-semibold wrap-anywhere text-highlighted">
           {{ record?.client.name ?? 'Contrato ERP' }}
         </h2>
       </div>
-      <UButton to="/gestao-erp/assinaturas/contratos" color="neutral" variant="outline">
-        Voltar aos contratos
+      <UButton
+        to="/gestao-erp/assinaturas"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-arrow-left"
+        size="sm"
+      >
+        Voltar para assinaturas
       </UButton>
     </div>
     <UAlert
@@ -524,12 +551,25 @@ watch(identityStamp, () => {
           title="Não foi possível preparar a conversão"
           :description="conversionError"
         />
-        <div v-if="conversionOpen" class="mt-5 space-y-4 rounded-xl border border-default p-4 sm:p-5">
+        <UForm
+          v-if="conversionOpen"
+          id="office-erp-trial-conversion"
+          :state="{ erp_plan_id: conversionPlanId, price: conversionPrice, interval_months: conversionIntervalMonths, due_in_days: conversionDueInDays, start_on: conversionStartOn, billing_timezone: conversionTimezone }"
+          :disabled="command.pending.value"
+          class="mt-4 space-y-4"
+          @submit="confirmTrialConversion"
+          @error="event => focusFormError(event, 'office-erp-trial-conversion')"
+        >
           <p class="text-sm font-medium text-highlighted">
             Confirme o plano e os termos pagos
           </p>
           <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="Plano ERP" required>
+            <UFormField
+              name="erp_plan_id"
+              :error="fieldErrors.erp_plan_id?.[0]"
+              label="Plano ERP"
+              required
+            >
               <USelect
                 v-model="conversionPlanSelectModel"
                 :items="conversionPlans.map(plan => ({ label: plan.name, value: plan.id }))"
@@ -537,7 +577,13 @@ watch(identityStamp, () => {
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="Preço em reais" required hint="Até duas casas decimais.">
+            <UFormField
+              name="price"
+              :error="fieldErrors.price?.[0]"
+              label="Preço em reais"
+              required
+              hint="Até duas casas decimais."
+            >
               <UInput
                 v-model="conversionPrice"
                 inputmode="decimal"
@@ -545,10 +591,20 @@ watch(identityStamp, () => {
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="Ciclo de cobrança" required>
+            <UFormField
+              name="interval_months"
+              :error="fieldErrors.interval_months?.[0]"
+              label="Ciclo de cobrança"
+              required
+            >
               <USelect v-model="conversionIntervalMonths" :items="[{ label: 'Mensal', value: '1' }, { label: 'A cada 3 meses', value: '3' }, { label: 'A cada 6 meses', value: '6' }, { label: 'Anual', value: '12' }]" class="w-full" />
             </UFormField>
-            <UFormField label="Dias até o vencimento" required>
+            <UFormField
+              name="due_in_days"
+              :error="fieldErrors.due_in_days?.[0]"
+              label="Dias até o vencimento"
+              required
+            >
               <UInput
                 v-model="conversionDueInDays"
                 type="number"
@@ -558,10 +614,20 @@ watch(identityStamp, () => {
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="Início da cobrança" required>
+            <UFormField
+              name="start_on"
+              :error="fieldErrors.start_on?.[0]"
+              label="Início da cobrança"
+              required
+            >
               <UInput v-model="conversionStartOn" type="date" class="w-full" />
             </UFormField>
-            <UFormField label="Fuso horário de cobrança" required>
+            <UFormField
+              name="billing_timezone"
+              :error="fieldErrors.billing_timezone?.[0]"
+              label="Fuso horário de cobrança"
+              required
+            >
               <UInput v-model="conversionTimezone" autocomplete="off" class="w-full" />
             </UFormField>
           </div>
@@ -573,7 +639,7 @@ watch(identityStamp, () => {
               color="neutral"
               :loading="command.pending.value"
               :disabled="command.pending.value || !canMaintain"
-              @click="confirmTrialConversion"
+              type="submit"
             >
               Confirmar conversão e emitir primeira fatura
             </UButton>
@@ -586,7 +652,7 @@ watch(identityStamp, () => {
               Cancelar
             </UButton>
           </div>
-        </div>
+        </UForm>
       </section>
 
       <section v-if="record.agreement_status === 'accepted' && !record.trial" class="border-t border-default pt-4">
@@ -608,11 +674,23 @@ watch(identityStamp, () => {
 
       <section v-if="record.agreement_status === 'effective'" class="grid gap-4 border-t border-default pt-4 lg:grid-cols-2">
         <div class="space-y-3">
-          <template v-if="!record.pending_revision && !record.cancel_effective_on">
+          <UForm
+            v-if="!record.pending_revision && !record.cancel_effective_on"
+            id="office-erp-contract-terms"
+            :state="{ price, interval_months: intervalMonths, due_in_days: dueInDays, module_keys: selectedModules }"
+            class="space-y-3"
+            @submit="amend"
+            @error="event => focusFormError(event, 'office-erp-contract-terms')"
+          >
             <h2 class="font-semibold text-highlighted">
               Agendar termos para o próximo ciclo
             </h2>
-            <UFormField label="Preço mensal ou do ciclo" hint="Informe reais com até duas casas decimais.">
+            <UFormField
+              name="price"
+              :error="fieldErrors.price?.[0]"
+              label="Preço mensal ou do ciclo"
+              hint="Informe reais com até duas casas decimais."
+            >
               <UInput
                 v-model="price"
                 type="text"
@@ -621,10 +699,10 @@ watch(identityStamp, () => {
                 aria-label="Preço do contrato"
               />
             </UFormField>
-            <UFormField label="Intervalo em meses">
+            <UFormField name="interval_months" :error="fieldErrors.interval_months?.[0]" label="Intervalo em meses">
               <USelect v-model="intervalMonths" :items="['1', '3', '6', '12']" aria-label="Intervalo do contrato" />
             </UFormField>
-            <UFormField label="Dias até o vencimento">
+            <UFormField name="due_in_days" :error="fieldErrors.due_in_days?.[0]" label="Dias até o vencimento">
               <UInput
                 v-model="dueInDays"
                 type="text"
@@ -632,7 +710,13 @@ watch(identityStamp, () => {
                 aria-label="Dias até o vencimento"
               />
             </UFormField>
-            <UFormField label="Módulos no próximo ciclo" hint="Expandir módulos exige capacidade e direito de nova venda.">
+            <UFormField
+              name="module_keys"
+              :error="fieldErrors.module_keys?.[0]"
+              :error-pattern="/^module_keys\..*/"
+              label="Módulos no próximo ciclo"
+              hint="Expandir módulos exige capacidade e direito de nova venda."
+            >
               <USelectMenu
                 v-model="selectedModules"
                 :items="moduleOptions"
@@ -641,10 +725,10 @@ watch(identityStamp, () => {
                 aria-label="Módulos do contrato"
               />
             </UFormField>
-            <UButton :disabled="!canMaintain || command.pending.value" :loading="command.pending.value" @click="amend">
+            <UButton type="submit" :disabled="!canMaintain || command.pending.value" :loading="command.pending.value">
               Agendar alteração
             </UButton>
-          </template>
+          </UForm>
         </div>
         <div class="space-y-3">
           <h2 class="font-semibold text-highlighted">
@@ -704,16 +788,39 @@ watch(identityStamp, () => {
         </ul>
       </section>
     </div>
-    <UModal :open="pendingAction !== ''" :title="pendingAction === 'suspend' ? 'Suspender licença' : 'Cancelar contrato'" description="A ação será registrada no histórico do contrato.">
+    <UModal
+      :open="pendingAction !== ''"
+      :title="pendingAction === 'suspend' ? 'Suspender licença' : 'Cancelar contrato'"
+      description="A ação será registrada no histórico do contrato."
+      :ui="{ footer: 'shrink-0 flex-wrap justify-end' }"
+      @update:open="value => { if (!value) pendingAction = '' }"
+      @after:leave="restoreReasonFocus"
+    >
       <template #body>
-        <div class="space-y-4">
-          <UFormField v-if="pendingAction === 'cancel'" label="Quando cancelar">
+        <UForm
+          id="office-erp-contract-action"
+          :state="{ reason: actionReason, mode: cancelMode }"
+          class="space-y-4"
+          @submit="confirmReasonAction"
+          @error="event => focusFormError(event, 'office-erp-contract-action')"
+        >
+          <UFormField
+            v-if="pendingAction === 'cancel'"
+            name="mode"
+            :error="fieldErrors.mode?.[0]"
+            label="Quando cancelar"
+          >
             <USelect v-model="cancelMode" :items="[{ label: 'No fim do período atual', value: 'period_end' }, { label: 'Imediatamente', value: 'immediate' }]" aria-label="Momento do cancelamento" />
           </UFormField>
-          <UFormField label="Motivo" required>
+          <UFormField
+            name="reason"
+            :error="fieldErrors.reason?.[0]"
+            label="Motivo"
+            required
+          >
             <UTextarea v-model="actionReason" :rows="3" aria-label="Motivo da alteração" />
           </UFormField>
-        </div>
+        </UForm>
       </template>
       <template #footer>
         <UButton
@@ -728,7 +835,8 @@ watch(identityStamp, () => {
           :color="pendingAction === 'cancel' ? 'error' : 'warning'"
           :loading="command.pending.value"
           :disabled="command.pending.value"
-          @click="confirmReasonAction"
+          type="submit"
+          form="office-erp-contract-action"
         >
           {{ pendingAction === 'suspend' ? 'Confirmar suspensão' : 'Confirmar cancelamento' }}
         </UButton>

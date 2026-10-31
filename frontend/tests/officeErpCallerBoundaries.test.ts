@@ -114,6 +114,10 @@ function mountRenderer(componentToMount: Vue.Component) {
   app.component('OfficeErpCompanyInspectionModal', { setup: () => () => null })
   app.component('OfficeErpCompanyPortfolioModal', { setup: () => () => null })
   app.component('UPageGrid', passthrough)
+  app.component('USkeleton', component(() => () => Vue.h('div', { 'aria-hidden': true })))
+  app.component('UCard', component((props, ctx) => () => Vue.h(props.as as string ?? 'div', ctx.attrs, [
+    ctx.slots.header?.(), ctx.slots.default?.(), ctx.slots.footer?.()
+  ]), ['as']))
   app.component('UPageCard', component((props, ctx) => () => Vue.h('article', {}, [
     Vue.h('h3', {}, String(props.title ?? '')),
     Vue.h('p', {}, String(props.description ?? '')),
@@ -332,6 +336,9 @@ for (const caller of callers) {
         await until(() => page.readCalls.some(call => call.path === caller.endpoint))
         await settle()
         assert.match(text(page.root), new RegExp(caller.oldMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), JSON.stringify(page.calls))
+        if (caller.name === 'overview') {
+          assert.deepEqual(nodes(page.root, node => node.tag === 'h3').map(node => text(node).trim()), ['Financeiro', 'Licenças'])
+        }
 
         caller.trigger(page as ReturnType<typeof mountCaller>)
         await until(() => page.readCalls.filter(call => call.path === caller.endpoint).length >= 2)

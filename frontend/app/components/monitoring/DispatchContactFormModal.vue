@@ -5,16 +5,17 @@ import type { ClientDispatchContact } from '~/types/whatsapp'
 import { apiErrorMessage } from '~/composables/useApiError'
 
 /**
- * O cadastro rápido de Contato de envio: rótulo opcional + um canal +
- * o valor do canal. Serve à ficha do cliente e ao atalho "sem WhatsApp" da
- * folha de monitoramento — a mesma API (`/clients/{id}/dispatch-contacts`)
- * nos dois lugares. Na edição o canal não troca: mudar de canal é um
- * contato novo, e o backend recusa `channel` num update.
+ * Cadastro de Contato de envio: nome, um canal e o valor do canal.
+ * Serve à ficha do cliente e ao atalho "sem WhatsApp" da folha de
+ * monitoramento — a mesma API (`label`, `channel`, `value`) nos dois
+ * lugares. Na edição o canal não troca: o backend recusa `channel`
+ * num update. O nome é obrigatório neste formulário; contatos antigos
+ * sem nome continuam abrindo para edição, mas só gravam com nome.
  */
 const props = defineProps<{
   open: boolean
   clientId: number
-  /** O nome da linha que pediu o cadastro — o modal se apresenta por ele. */
+  /** Mantido para os chamadores. O título do modal não repete o cliente. */
   clientName?: string
   /** O contato em edição; `null`/ausente é cadastro. */
   contact?: ClientDispatchContact | null
@@ -36,12 +37,12 @@ const { create, update } = useDispatchContacts()
 const editing = computed(() => props.contact ?? null)
 
 const channelItems = [
-  { label: 'WhatsApp', value: 'whatsapp' as const },
-  { label: 'E-mail', value: 'email' as const }
+  { label: 'WhatsApp', value: 'whatsapp' as const, icon: 'i-lucide-message-circle' },
+  { label: 'E-mail', value: 'email' as const, icon: 'i-lucide-mail' }
 ]
 
 const schema = z.object({
-  label: z.string().max(255, 'Rótulo muito longo').optional(),
+  label: z.string().trim().min(1, 'Informe o nome').max(255, 'Nome muito longo'),
   channel: z.enum(['whatsapp', 'email']),
   value: z.string().min(1, 'Informe o telefone ou o e-mail').max(255)
 }).superRefine((data, ctx) => {
@@ -72,16 +73,17 @@ watch(() => props.open, (open) => {
   if (open) syncFromProps()
 })
 
-const title = computed(() => editing.value ? 'Editar Contato de envio' : 'Cadastrar Contato de envio')
+const title = computed(() => editing.value ? 'Editar contato' : 'Novo contato')
 
-const valueLabel = computed(() => state.channel === 'whatsapp' ? 'Telefone (WhatsApp)' : 'E-mail')
+const valueLabel = computed(() => state.channel === 'whatsapp' ? 'Telefone' : 'E-mail')
 const valuePlaceholder = computed(() => state.channel === 'whatsapp' ? '(11) 98765-4321' : 'socio@empresa.com')
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   if (submitting.value) return
   submitting.value = true
   try {
-    const label = event.data.label?.trim() || null
+    const label = event.data.label.trim()
+    if (!label) return
     // O telefone trafega em dígitos; o e-mail em minúsculas — a API
     // normaliza de novo, e a forma aqui evita um 422 por máscara.
     const value = event.data.channel === 'whatsapp'
@@ -109,7 +111,6 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   <UModal
     v-model:open="isOpen"
     :title="title"
-    :description="clientName ?? 'Um Contato de envio por canal: WhatsApp ou e-mail.'"
   >
     <template #body>
       <UForm
@@ -119,8 +120,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         class="space-y-4"
         @submit="onSubmit"
       >
-        <UFormField label="Rótulo" name="label" hint="Opcional — ex.: Sócio 1">
-          <UInput v-model="state.label" placeholder="Sócio 1" class="w-full" />
+        <UFormField label="Nome" name="label" required>
+          <UInput v-model="state.label" placeholder="Maria Souza" class="w-full" />
         </UFormField>
 
         <UFormField label="Canal" name="channel">
@@ -128,14 +129,19 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             v-model="state.channel"
             :items="channelItems"
             orientation="horizontal"
+            variant="table"
+            indicator="hidden"
+            size="sm"
             :disabled="editing !== null"
+            class="w-full"
+            :ui="{ fieldset: 'w-full', item: 'min-w-0 flex-1 justify-center' }"
           />
-          <p v-if="editing" class="mt-1 text-xs text-muted">
-            O canal não troca na edição — mudar de canal é cadastrar um contato novo.
+          <p v-if="editing" class="mt-1.5 text-xs text-muted">
+            O canal não muda na edição.
           </p>
         </UFormField>
 
-        <UFormField :label="valueLabel" name="value">
+        <UFormField :label="valueLabel" name="value" required>
           <UInput
             v-model="state.value"
             :type="state.channel === 'email' ? 'email' : 'tel'"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { OfficeErpCompany, OfficeErpCompanyListResponse } from '#shared/types/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { useOfficeErpListNavigation, officeErpAvailablePage } from '~/composables/useOfficeErpListNavigation'
@@ -7,7 +7,7 @@ import { listNavigationField } from '~/composables/useListNavigationState'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { officeErpSortParams } from '~/utils/officeErpListSort'
-import { companyListBodyClass, companyListFooterClass, companyListTableUi } from '~/components/office-erp/companyList'
+import { companyListBodyClass, companyListFooterClass } from '~/components/office-erp/companyList'
 import { formatTaxId } from '~/utils/taxId'
 import type { FilterPanelColumn } from '~/utils/filterPanel'
 import type { DataTableFilterModel } from '~/components/data-table/filter-model'
@@ -63,9 +63,9 @@ let disposed = false
 const identityStamp = useOfficeErpReadIdentity(() => [user.value?.id ?? null, sessionGeneration.value, currentAccount.value?.id ?? null, currentAccount.value?.status ?? null, currentAccount.value?.role ?? null], () => context.capabilities.value?.capability_key)
 const reads = useOfficeErpReads(identityStamp)
 const columns: TableColumn<OfficeErpCompany>[] = [
-  { accessorKey: 'name', header: 'Empresa', enableSorting: true, meta: { class: { th: 'w-[55%] min-w-0 md:w-[45%]', td: 'w-[55%] min-w-0 md:w-[45%]' } } },
-  { accessorKey: 'registered_at', header: 'Cadastrada em', enableSorting: true, meta: { class: { th: 'md:w-[20%]', td: 'tabular-nums md:w-[20%]' } } },
-  { id: 'actions', header: '', meta: { class: { th: 'w-[45%] md:w-[35%]', td: 'w-[45%] md:w-[35%]' } } }
+  { accessorKey: 'name', header: 'Empresa', enableSorting: true, meta: { class: { th: 'min-w-0', td: 'min-w-0' } } },
+  { accessorKey: 'registered_at', header: 'Cadastrada em', enableSorting: true, meta: { class: { th: 'w-40', td: 'tabular-nums' } } },
+  { id: 'actions', header: '', meta: { class: { th: 'w-44', td: 'text-right' } } }
 ]
 const tableSorting = computed(() => sort.value ? [{ id: sort.value, desc: direction.value === 'desc' }] : [])
 
@@ -89,6 +89,24 @@ function updateState(value: string | number) {
 function updatePerPage(value: 25 | 50 | 100) {
   perPage.value = value
   page.value = 1
+}
+function companyActions(row: OfficeErpCompany): DropdownMenuItem[] {
+  const base = `/gestao-erp/assinaturas/empresas/${row.id}`
+  const items: DropdownMenuItem[] = [
+    { label: 'Gerenciar empresa', icon: 'i-lucide-building-2', to: `${base}?secao=company` },
+    { label: row.capabilities.can_edit_profile ? 'Editar cadastro' : 'Consultar cadastro', icon: row.capabilities.can_edit_profile ? 'i-lucide-pencil' : 'i-lucide-file-search', onSelect: () => inspectCompany(row.id) }
+  ]
+  if (row.capabilities.relationship !== 'unassigned') {
+    items.push({ label: 'Ver assinatura', icon: 'i-lucide-file-key', to: base })
+    if (row.capabilities.relationship === 'current') {
+      items.push({ label: 'Gerenciar assinatura', icon: 'i-lucide-settings-2', to: `${base}?secao=subscription` })
+    }
+    items.push({ label: 'Faturas da empresa', icon: 'i-lucide-receipt', to: `${base}?secao=invoices` })
+    items.push({ label: 'Histórico', icon: 'i-lucide-history', to: `${base}?secao=history` })
+  }
+  if (row.capabilities.can_manage_members) items.push({ label: 'Usuários e acessos', icon: 'i-lucide-users-round', to: `${base}?secao=members` })
+  if (row.capabilities.can_assign) items.push({ label: 'Adicionar assinatura', icon: 'i-lucide-plus', onSelect: () => openAssignment(row) })
+  return items
 }
 function inspectCompany(id: number) {
   inspectionCompanyId.value = id
@@ -180,7 +198,31 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-col gap-5">
-    <OfficeErpPanel title="Empresas" description="Clientes cadastrados no ERP do escritório." company-list>
+    <OfficeErpPanel
+      title="Empresas"
+      description="Clientes cadastrados no ERP do escritório."
+      company-list
+    >
+      <template #title>
+        <span class="flex items-center gap-1.5">
+          Empresas
+          <UPopover :content="{ align: 'start' }">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              icon="i-lucide-circle-help"
+              aria-label="Sobre empresas e assinaturas"
+              class="min-h-9 min-w-9 justify-center"
+            />
+            <template #content>
+              <p class="max-w-64 p-3 text-sm text-default">
+                Adicione uma assinatura pela linha da empresa. Ativação e acesso ficam nos detalhes da assinatura.
+              </p>
+            </template>
+          </UPopover>
+        </span>
+      </template>
       <template #action>
         <UDropdownMenu
           :items="[[
@@ -194,17 +236,16 @@ onBeforeUnmount(() => {
         </UDropdownMenu>
       </template>
       <template #toolbar>
-        <UFormField label="Buscar empresa" :ui="{ label: 'text-xs' }" class="w-full sm:max-w-sm">
+        <DataTableFilterPanel v-model="companyFilters" :columns="companyFilterColumns" class="w-full sm:w-auto">
           <UInput
             :model-value="query"
             icon="i-lucide-search"
-            placeholder="Nome ou CNPJ"
+            placeholder="Buscar por nome ou CNPJ"
             aria-label="Buscar empresa"
-            class="w-full"
+            class="w-full min-w-0 sm:w-64"
             @update:model-value="updateQuery"
           />
-        </UFormField>
-        <DataTableFilterPanel v-model="companyFilters" :columns="companyFilterColumns" />
+        </DataTableFilterPanel>
       </template>
       <div :class="companyListBodyClass">
         <UAlert
@@ -241,7 +282,6 @@ onBeforeUnmount(() => {
             :mobile-columns="['name', 'actions']"
             compact
             label="Empresas"
-            :ui="companyListTableUi"
             :sorting="tableSorting"
           >
             <template #name-header>
@@ -269,16 +309,16 @@ onBeforeUnmount(() => {
               </UButton>
             </template>
             <template #name-cell="{ row }">
-              <div class="flex min-w-0 items-center gap-3">
-                <span class="hidden size-9 shrink-0 items-center justify-center rounded-lg border border-default text-muted md:flex">
-                  <UIcon name="i-lucide-building-2" class="size-4.5" />
-                </span>
-                <div class="min-w-0 space-y-1">
-                  <NuxtLink class="block min-w-0 break-words font-semibold text-highlighted underline-offset-4 hover:underline" :to="`/gestao-erp/assinaturas/empresas/${row.original.id}`">
+              <div role="group" aria-label="Identificação da empresa" class="flex min-w-0 items-center gap-3">
+                <div class="min-w-0 space-y-0.5">
+                  <NuxtLink class="block min-w-0 break-words font-medium text-highlighted underline-offset-4 hover:underline" :to="`/gestao-erp/assinaturas/empresas/${row.original.id}?secao=company`">
                     {{ row.original.name }}
                   </NuxtLink>
                   <p class="text-xs text-muted">
                     {{ formatTaxId(row.original.cnpj) }}
+                  </p>
+                  <p class="text-xs text-muted md:hidden">
+                    Cadastrada em {{ formattedDate(row.original.registered_at) }}
                   </p>
                   <UBadge
                     v-if="row.original.capabilities.relationship !== 'current'"
@@ -295,38 +335,21 @@ onBeforeUnmount(() => {
               {{ formattedDate(row.original.registered_at) }}
             </template>
             <template #actions-cell="{ row }">
-              <div class="flex flex-col items-stretch justify-end gap-2 md:flex-row md:flex-wrap md:items-center">
+              <div class="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
                 <UButton
                   color="neutral"
-                  variant="outline"
-                  size="xs"
-                  class="min-h-11 justify-center md:min-h-7"
+                  variant="ghost"
+                  size="sm"
+                  class="min-h-11 justify-center md:min-h-8"
                   @click="inspectCompany(row.original.id)"
                 >
                   Ver cadastro
                 </UButton>
-                <UButton
-                  v-if="row.original.capabilities.relationship !== 'unassigned'"
-                  color="neutral"
-                  variant="outline"
-                  size="xs"
-                  icon="i-lucide-file-key"
-                  class="min-h-11 justify-center md:min-h-7"
-                  :to="`/gestao-erp/assinaturas/empresas/${row.original.id}`"
-                >
-                  Ver assinatura
-                </UButton>
-                <UButton
-                  v-if="row.original.capabilities.can_assign"
-                  color="neutral"
-                  variant="solid"
-                  size="xs"
-                  icon="i-lucide-plus"
-                  class="min-h-11 justify-center md:min-h-7"
-                  @click="openAssignment(row.original)"
-                >
-                  Adicionar assinatura
-                </UButton>
+                <DataTableRowActionsMenu
+                  v-if="companyActions(row.original).length"
+                  :items="companyActions(row.original)"
+                  :label="`Mais opções de ${row.original.name}`"
+                />
               </div>
             </template>
           </OfficeErpDataTable>
@@ -341,10 +364,6 @@ onBeforeUnmount(() => {
           />
         </template>
       </div>
-      <template #hint>
-        <UIcon name="i-lucide-info" class="mt-0.5 size-3.5 shrink-0" />
-        Adicione uma assinatura pela linha da empresa. Ativação e acesso ficam nos detalhes da assinatura.
-      </template>
     </OfficeErpPanel>
     <OfficeErpCompanyPortfolioModal v-model:open="pickerOpen" @registered="registered" />
     <OfficeErpCompanyInspectionModal v-model:open="inspectionOpen" :company-id="inspectionCompanyId" @updated="loadCompanies" />

@@ -114,7 +114,11 @@ export function mountVueComponent(component: vue.Component, customComponents: Re
     emits: ['update:modelValue'],
     props: ['type', 'modelValue', 'disabled'],
     setup(props, context) {
-      return () => vue.h('input', { ...context.attrs, type: props.type ?? 'text', value: props.modelValue ?? '', disabled: props.disabled, onInput: (event: Event) => context.emit('update:modelValue', (event.target as HTMLInputElement).value) })
+      return () => vue.h('div', { 'data-component': 'UInput' }, [
+        vue.h('input', { ...context.attrs, type: props.type ?? 'text', value: props.modelValue ?? '', disabled: props.disabled, onInput: (event: Event) => context.emit('update:modelValue', (event.target as HTMLInputElement).value) }),
+        context.slots.leading?.(),
+        context.slots.trailing?.()
+      ])
     }
   })
   app.component('UCheckbox', {
@@ -149,7 +153,7 @@ export function mountVueComponent(component: vue.Component, customComponents: Re
   app.component('UCheckboxGroup', {
     props: ['items', 'modelValue'],
     setup(props, context) {
-      return () => vue.h('fieldset', { 'data-items': JSON.stringify(props.items ?? []) }, [JSON.stringify((props.items as Array<{ label: string }> ?? []).map(item => item.label)), context.slots.default?.()])
+      return () => vue.h('fieldset', { ...context.attrs, 'data-items': JSON.stringify(props.items ?? []) }, [JSON.stringify((props.items as Array<{ label: string }> ?? []).map(item => item.label)), context.slots.default?.()])
     }
   })
   app.component('UAlert', {

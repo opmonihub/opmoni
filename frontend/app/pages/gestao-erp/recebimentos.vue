@@ -11,6 +11,7 @@ import type { FilterPanelColumn } from '~/utils/filterPanel'
 import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import type { TableColumn } from '@nuxt/ui'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
+import { companyListBodyClass } from '~/components/office-erp/companyList'
 
 definePageMeta({ middleware: 'auth' })
 interface InvoiceChoice { id: number, number: string | null, document_status: string, balance: { outstanding: string }, bill_to_snapshot: { client?: { name?: string }, company?: { name?: string } | null } }
@@ -255,23 +256,25 @@ watch(identity, () => {
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-col gap-5">
-    <OfficeErpPanel title="Recebimentos" description="Pagamentos registrados e suas alocações.">
+    <OfficeErpPanel title="Recebimentos" description="Pagamentos manuais registrados e suas alocações. Reverter corrige o registro; não realiza um reembolso bancário." list>
       <template #action>
+        <UButton
+          to="/gestao-erp/faturas"
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-receipt"
+          size="sm"
+        >
+          Faturas
+        </UButton>
         <UButton icon="i-lucide-plus" @click="open=true">
           Registrar recebimento
         </UButton>
       </template>
       <template #toolbar>
         <DataTableFilterPanel v-model="receiptFilters" :columns="receiptFilterColumns" />
-
-        <DataTableSortMenu
-          :sort="sort"
-          :direction="direction"
-          :fields="[{ value: 'received_on', label: 'Data' }, { value: 'reference', label: 'Referência' }, { value: 'id', label: 'Cadastro' }]"
-          @change="ordering => navigation = { ...navigation, ...ordering, page: 1 }"
-        />
       </template>
-      <div class="flex min-w-0 flex-col gap-4 p-4 sm:p-6">
+      <div :class="companyListBodyClass">
         <UAlert
           v-if="loadError"
           color="error"
@@ -290,8 +293,21 @@ watch(identity, () => {
           color="error"
           title="A operação não foi concluída"
           :description="error"
-        /><UAlert v-else-if="empty" title="Nenhum recebimento encontrado" /><div v-else class="overflow-x-auto">
-          <OfficeErpDataTable :data="rows" :columns="columns" :loading="loading">
+        />
+        <UAlert
+          v-else-if="empty"
+          color="neutral"
+          title="Nenhum recebimento encontrado"
+          description="Ajuste o período ou registre um recebimento manual."
+        />
+        <div v-else class="min-w-0">
+          <OfficeErpDataTable
+            :data="rows"
+            :columns="columns"
+            :loading="loading"
+            :get-row-id="row => String(row.id)"
+            label="Recebimentos"
+          >
             <template #received_on-header>
               <DataTableSortButton
                 label="Data"
@@ -315,7 +331,24 @@ watch(identity, () => {
             <template #amount-cell="{ row }">
               {{ formatOfficeErpMoney(row.original.amount) }}
             </template><template #allocations-cell="{ row }">
-              <span v-for="(a, n) in row.original.allocations" :key="n" class="mr-2">Fatura {{ a.invoice_id }} · {{ formatOfficeErpMoney(a.amount) }}</span>
+              <UCollapsible v-if="row.original.allocations.length">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  trailing-icon="i-lucide-chevron-down"
+                  :label="`${row.original.allocations.length} ${row.original.allocations.length === 1 ? 'fatura' : 'faturas'}`"
+                  :aria-label="`Ver alocações do recebimento ${row.original.id}`"
+                />
+                <template #content>
+                  <ul class="mt-2 space-y-1 text-sm">
+                    <li v-for="allocation in row.original.allocations" :key="allocation.invoice_id">
+                      <NuxtLink :to="`/gestao-erp/faturas/${allocation.invoice_id}`" class="text-highlighted underline-offset-4 hover:underline">Fatura {{ allocation.invoice_id }}</NuxtLink> · {{ formatOfficeErpMoney(allocation.amount) }}
+                    </li>
+                  </ul>
+                </template>
+              </UCollapsible>
+              <span v-else>Sem alocações</span>
             </template><template #status-cell="{ row }">
               <UBadge :color="row.original.reversal?'warning':'success'" variant="subtle">
                 {{ row.original.reversal?'Revertido':'Registrado' }}
@@ -324,7 +357,7 @@ watch(identity, () => {
               <UButton
                 v-if="!row.original.reversal"
                 size="sm"
-                color="error"
+                color="neutral"
                 variant="outline"
                 @click="reversing=row.original"
               >
@@ -334,7 +367,7 @@ watch(identity, () => {
           </OfficeErpDataTable>
         </div>
         <OfficeErpPagination
-          v-if="total > 0"
+          v-if="!loadError && !empty && total > 0"
           v-model:page="page"
           v-model:per-page="perPage"
           :total="total"

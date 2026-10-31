@@ -6,6 +6,7 @@ import { apiFailure, passwordLength } from '#shared/utils/access'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
+import { focusFormError } from '~/utils/formPresentation'
 
 definePageMeta({ middleware: 'auth' })
 interface MemberDetail {
@@ -42,6 +43,10 @@ const notice = ref('')
 const delivery = ref<AccessDelivery | null>(null)
 const deliveryLoading = ref(false)
 const deliveryError = ref('')
+const fieldErrors = ref<Record<string, string[]>>({})
+watch(fieldErrors, () => {
+  void focusFormError(undefined, 'office-erp-member-password')
+})
 const password = ref('')
 const passwordConfirmation = ref('')
 const busy = ref(false)
@@ -86,6 +91,7 @@ async function directReset(event: FormSubmitEvent<PasswordForm>) {
   const mutation = ++mutationGeneration
   busy.value = true
   error.value = ''
+  fieldErrors.value = {}
   notice.value = ''
   const body = { expected_auth_revision: target.access_auth_revision, password: event.data.password, password_confirmation: event.data.password_confirmation }
   password.value = ''
@@ -102,8 +108,10 @@ async function directReset(event: FormSubmitEvent<PasswordForm>) {
         await loadMember()
       }
     } else if (result.status === 'unknown') notice.value = `O resultado não foi confirmado. Consulte a operação ${result.key}; não reenvie a senha automaticamente.`
-    else if (result.status === 'failed') error.value = result.failure.message
-    else error.value = 'O contexto da empresa mudou. A operação não foi repetida.'
+    else if (result.status === 'failed') {
+      fieldErrors.value = result.failure.errors ?? {}
+      error.value = result.failure.message
+    } else error.value = 'O contexto da empresa mudou. A operação não foi repetida.'
   } catch (caught) {
     if (mutation !== mutationGeneration || identity !== identityStamp.value || companyId.value !== targetCompanyId || membershipId.value !== targetMembershipId) return
     error.value = apiFailure(caught).message || 'Não foi possível atualizar a senha.'
@@ -137,8 +145,10 @@ async function sendRecovery() {
         await loadMember()
       }
     } else if (result.status === 'unknown') notice.value = `O envio não foi confirmado. Consulte a operação ${result.key}; nenhuma nova mensagem será enviada automaticamente.`
-    else if (result.status === 'failed') error.value = result.failure.message
-    else error.value = 'O contexto da empresa mudou. A operação não foi repetida.'
+    else if (result.status === 'failed') {
+      fieldErrors.value = result.failure.errors ?? {}
+      error.value = result.failure.message
+    } else error.value = 'O contexto da empresa mudou. A operação não foi repetida.'
   } finally {
     if (mutation === mutationGeneration) {
       busy.value = false
@@ -211,6 +221,7 @@ watch(identityStamp, () => {
   delivery.value = null
   password.value = ''
   passwordConfirmation.value = ''
+  fieldErrors.value = {}
   error.value = ''
   notice.value = ''
   void loadMember()
@@ -292,12 +303,19 @@ onBeforeUnmount(() => {
             </p>
           </div>
           <UForm
+            id="office-erp-member-password"
             :schema="schema"
             :state="{ password, password_confirmation: passwordConfirmation }"
             class="space-y-4"
             @submit="directReset"
+            @error="event => focusFormError(event, 'office-erp-member-password')"
           >
-            <UFormField label="Nova senha" name="password">
+            <UFormField
+              label="Nova senha"
+              name="password"
+              required
+              :error="fieldErrors.password?.[0]"
+            >
               <UInput
                 v-model="password"
                 type="password"
@@ -305,7 +323,12 @@ onBeforeUnmount(() => {
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="Confirmar senha" name="password_confirmation">
+            <UFormField
+              label="Confirmar senha"
+              name="password_confirmation"
+              required
+              :error="fieldErrors.password_confirmation?.[0]"
+            >
               <UInput
                 v-model="passwordConfirmation"
                 type="password"

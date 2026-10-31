@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import type { OfficeErpCommandResult, OfficeErpCompany, OfficeErpCompanyProfile } from '#shared/types/officeErpCommercial'
+import type { ContextToken, OfficeErpCommandResult, OfficeErpCompany, OfficeErpCompanyProfile } from '#shared/types/officeErpCommercial'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { useModalFocusReturn } from '~/composables/useModalFocusReturn'
 import { useOfficeErpReadIdentity } from '~/composables/useOfficeErpReadIdentity'
 import { useOfficeErpReads } from '~/composables/useOfficeErpReads'
 import { formatTaxId } from '~/utils/taxId'
 import { formatOfficeErpCompanyDate } from '~/utils/officeErpContractAmendment'
+import { focusFormError } from '~/utils/formPresentation'
 
 const open = defineModel<boolean>('open', { required: true })
 const restoreModalFocus = useModalFocusReturn(open)
-const props = defineProps<{ companyId: number | null }>()
-const emit = defineEmits<{ updated: [] }>()
+type CompanyProfileDetail = OfficeErpCompany & { profile: OfficeErpCompanyProfile, profile_version: string }
+const props = defineProps<{ companyId: number | null, initialCompany?: OfficeErpCompany | null, initialContext?: ContextToken | null }>()
+const emit = defineEmits<{ updated: [company?: CompanyProfileDetail] }>()
 const { api } = useAccessApi()
 const command = useOfficeErpCommand()
 const context = useOfficeErpContext()
@@ -50,30 +52,10 @@ const profileSections = [
 ]
 const taxRegimes = [{ label: 'MEI', value: 'mei' }, { label: 'Simples Nacional', value: 'simple_national' }, { label: 'Lucro presumido', value: 'presumed_profit' }, { label: 'Lucro real', value: 'actual_profit' }, { label: 'Outro', value: 'other' }]
 const hasChanges = computed(() => !!baseline.value && Object.keys(draft).some(key => draft[key as keyof OfficeErpCompanyProfile] !== baseline.value![key as keyof OfficeErpCompanyProfile]))
-const profileFacts = computed(() => profileSections.map((section) => {
-  const facts = section.fields.map(field => ({ label: field.label, value: profileValue(field.key), wide: false }))
-  if (section.title === 'Dados cadastrais') {
-    facts.splice(2, 0, { label: 'CNPJ', value: formatTaxId(company.value?.cnpj ?? ''), wide: false })
-    facts.push({ label: 'Cadastro no ERP', value: formatOfficeErpCompanyDate(company.value?.registered_at ?? ''), wide: false })
-  }
-  if (section.title === 'Endereço') {
-    const profile = baseline.value
-    const street = [profile?.street_type, profile?.street].filter(Boolean).join(' ')
-    return { ...section, facts: [
-      { label: 'Logradouro e número', value: street ? `${street}, ${profile?.address_number || 's/n'}` : 'Não informado', wide: true },
-      { label: 'Complemento', value: profileValue('address_complement'), wide: false },
-      { label: 'Bairro', value: profileValue('district'), wide: false },
-      { label: 'Cidade / UF', value: [profile?.city, profile?.state].filter(Boolean).join(' / ') || 'Não informado', wide: false },
-      { label: 'CEP', value: profileValue('postal_code'), wide: false }
-    ] }
-  }
-  return { ...section, facts }
-}))
-
-function profileValue(key: keyof OfficeErpCompanyProfile) {
-  const value = baseline.value?.[key]
-  return (key === 'tax_regime' ? taxRegimes.find(item => item.value === value)?.label : value) || 'Não informado'
-}
+const profileLocked = computed(() => !editing.value || !company.value?.capabilities.can_edit_profile || saving.value || command.pending.value)
+watch(fieldErrors, (errors) => {
+  if (editing.value && Object.keys(errors).length) void focusFormError(undefined, 'company-profile')
+})
 function requestClose(closeModal = true) {
   if (saving.value || command.pending.value) return
   if (editing.value && hasChanges.value && !command.recoveryKey.value) {
@@ -110,7 +92,7 @@ function changes() {
   }
   return patch
 }
-async function load() {
+async function load(fresh = false) {
   if (!open.value || !props.companyId) return
   const read = reads.begin('companyInspection')
   const request = ++generation
@@ -125,7 +107,10 @@ async function load() {
     if (!read.current() || request !== generation || identity !== identityStamp.value) return
     if (!context.capabilities.value?.can_read) throw new Error('A conta selecionada não pode consultar empresas comerciais.')
     const token = context.capture()
-    const response = await api<{ data: OfficeErpCompany & { profile: OfficeErpCompanyProfile, profile_version: string } }>('/erp-commercial/companies/' + props.companyId, { signal: read.signal })
+    const initial = props.initialCompany
+    const reusable = !fresh && props.initialContext && context.isCurrent(props.initialContext)
+      && initial?.id === props.companyId && initial.profile && typeof initial.profile_version === 'string' && /^[a-f\d]{64}$/i.test(initial.profile_version)
+    const response = reusable ? { data: initial as CompanyProfileDetail } : await api<{ data: CompanyProfileDetail }>('/erp-commercial/companies/' + props.companyId, { signal: read.signal })
     if (!read.current() || request !== generation || identity !== identityStamp.value || !context.isCurrent(token)) return
     if (response.data?.id !== props.companyId || !response.data.profile || !/^[a-f\d]{64}$/i.test(response.data.profile_version)) throw new Error('O detalhe cadastral da empresa está incompleto.')
     company.value = response.data
@@ -138,7 +123,7 @@ async function load() {
   }
 }
 async function save() {
-  if (!company.value || !profileVersion.value || saving.value || command.pending.value) return
+  if (!editing.value || !company.value?.capabilities.can_edit_profile || !profileVersion.value || saving.value || command.pending.value) return
   const targetCompanyId = company.value.id
   const mutation = ++mutationGeneration
   const expectedVersion = profileVersion.value
@@ -149,7 +134,8 @@ async function save() {
   const patch = changes()
   if (!Object.keys(patch).length) return
   if (Object.hasOwn(patch, 'name') && (typeof patch.name !== 'string' || patch.name.trim().length < 10 || patch.name.trim().length > 255)) {
-    error.value = 'A razão social deve ter entre 10 e 255 caracteres.'
+    fieldErrors.value = { name: ['A razão social deve ter entre 10 e 255 caracteres.'] }
+    error.value = fieldErrors.value.name![0]!
     return
   }
   saving.value = true
@@ -159,7 +145,7 @@ async function save() {
     if (response.status === 'confirmed') {
       if (response.data?.id !== targetCompanyId || !response.data.profile || !/^[a-f\d]{64}$/i.test(response.data.profile_version)) {
         error.value = 'A operação foi confirmada. Atualize a empresa selecionada para conferir o estado atual.'
-        await load()
+        await load(true)
         return
       }
       company.value = response.data
@@ -167,7 +153,7 @@ async function save() {
       assignProfile(response.data.profile)
       editing.value = false
       notice.value = 'Cadastro atualizado.'
-      emit('updated')
+      emit('updated', company.value?.profile && company.value.profile_version ? company.value as CompanyProfileDetail : undefined)
     } else if (response.status === 'unknown') notice.value = 'O resultado não foi confirmado. Consulte a operação ' + response.key + ' antes de reenviar.'
     else if (response.status === 'failed') {
       profileConflict.value = response.failure.http_status === 409
@@ -196,9 +182,10 @@ async function recover() {
         notice.value = 'Alteração confirmada e recuperada.'
       } else {
         notice.value = 'A operação foi confirmada. Atualize a empresa selecionada para conferir os dados atuais.'
-        await load()
+        await load(true)
       }
-      emit('updated')
+      editing.value = false
+      emit('updated', company.value?.profile && company.value.profile_version ? company.value as CompanyProfileDetail : undefined)
     } else if (result.status === 'unknown') notice.value = 'A operação ' + key + ' ainda não está disponível para confirmação.'
     else error.value = result.status === 'failed' ? result.failure.message : 'A operação pertence a outro contexto.'
   } finally {
@@ -310,7 +297,7 @@ onScopeDispose(() => {
               color="neutral"
               variant="outline"
               :loading="loading"
-              @click="load"
+              @click="load(true)"
             >
               Recarregar dados
             </UButton>
@@ -336,13 +323,13 @@ onScopeDispose(() => {
         </UAlert>
         <template v-if="company">
           <UForm
-            v-if="editing"
             id="company-profile"
             :state="draft"
             class="divide-y divide-default"
             @submit="save"
+            @error="event => focusFormError(event, 'company-profile')"
           >
-            <section v-for="section in profileSections" :key="section.title" class="space-y-4 py-6 first:pt-0 last:pb-0">
+            <section v-for="section in profileSections" :key="section.title" class="space-y-3 py-4 first:pt-0 last:pb-0">
               <h3 class="flex items-center gap-2 text-sm font-semibold text-highlighted">
                 <UIcon :name="section.icon" class="size-4 text-muted" />
                 {{ section.title }}
@@ -361,7 +348,7 @@ onScopeDispose(() => {
                     v-if="field.key === 'tax_regime'"
                     v-model="draft.tax_regime"
                     :items="taxRegimes"
-                    :disabled="!company.capabilities.can_edit_profile || saving"
+                    :disabled="profileLocked"
                     class="w-full"
                   />
                   <UInput
@@ -369,35 +356,26 @@ onScopeDispose(() => {
                     :model-value="draft[field.key] ?? ''"
                     :type="field.type ?? 'text'"
                     :maxlength="field.key === 'name' || field.key === 'trade_name' ? 255 : undefined"
-                    :disabled="!company.capabilities.can_edit_profile || saving"
+                    :readonly="profileLocked"
+                    :disabled="saving"
                     class="w-full"
-                    @update:model-value="value => updateField(field.key, value)"
+                    @update:model-value="value => { if (!profileLocked) updateField(field.key, value) }"
                   />
                 </UFormField>
-                <UFormField v-if="section.title === 'Dados cadastrais'" label="CNPJ" description="O CNPJ identifica a empresa e não pode ser alterado aqui.">
+                <UFormField
+                  v-if="section.title === 'Dados cadastrais'"
+                  name="cnpj"
+                  label="CNPJ"
+                  description="O CNPJ identifica a empresa e não pode ser alterado aqui."
+                >
                   <UInput :model-value="formatTaxId(company.cnpj)" readonly class="w-full" />
+                </UFormField>
+                <UFormField v-if="section.title === 'Dados cadastrais'" name="registered_at" label="Cadastro no ERP">
+                  <UInput :model-value="formatOfficeErpCompanyDate(company.registered_at)" readonly class="w-full" />
                 </UFormField>
               </div>
             </section>
           </UForm>
-          <div v-else class="divide-y divide-default">
-            <section v-for="section in profileFacts" :key="section.title" class="space-y-5 py-6 first:pt-0 last:pb-0">
-              <h3 class="flex items-center gap-2 text-sm font-semibold text-highlighted">
-                <UIcon :name="section.icon" class="size-4 text-muted" />
-                {{ section.title }}
-              </h3>
-              <dl class="grid grid-cols-2 gap-x-5 gap-y-6 text-sm sm:grid-cols-3">
-                <div v-for="fact in section.facts" :key="fact.label" :class="fact.wide ? 'col-span-2 sm:col-span-3' : 'min-w-0'">
-                  <dt class="text-xs text-muted">
-                    {{ fact.label }}
-                  </dt>
-                  <dd class="mt-1 font-medium wrap-anywhere text-highlighted">
-                    {{ fact.value }}
-                  </dd>
-                </div>
-              </dl>
-            </section>
-          </div>
         </template>
       </div>
     </template>
